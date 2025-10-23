@@ -1,0 +1,70 @@
+database:
+  type: sqlite  # sqlite or postgresql
+  host: localhost
+  port: 5432
+  name: siem_analyzer
+  user: admin
+  password: password
+  
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+  password: ""
+  log_queue: "siem:logs"
+  alert_queue: "siem:alerts"
+  
+email:
+  enabled: false
+  smtp:
+    host: smtp.gmail.com
+    port: 587
+    user: your-email@gmail.com
+    password: your-password
+    use_tls: true
+  from: siem-alerts@company.com
+  to:
+    - security-team@company.com
+    
+detection:
+  brute_force:
+    threshold: 5
+    time_window: 300  # seconds
+  port_scan:
+    threshold: 10
+    time_window: 60  # seconds
+    
+threat_intelligence:
+  enabled: true
+  update_interval: 3600  # seconds
+  feeds:
+    - name: "abuse_ch"
+      url: "https://feodotracker.abuse.ch/downloads/ipblocklist.csv"
+      type: "ip"
+    - name: "alienvault_otx"
+      enabled: false
+      api_key: ""
+      
+reporting:
+  enabled: true
+  schedule: "0 9 * * *"  # Daily at 9 AM
+  email_to:
+    - reports@company.com
+  formats:
+    - html
+    - csv
+    
+logging:
+  level: INFO
+  file: logs/siem_analyzer.log
+  max_bytes: 10485760  # 10MB
+  backup_count: 5
+  
+multi_tenant:
+  enabled: false
+  default_tenant: default
+  tenants:
+    - name: default
+      database_schema: public
+    - name: tenant1
+      database_schema: tenant1
