@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # Redis service for log queue
+  redis:
+    image: redis:7-alpine
+    container_name: siem-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+
+  # PostgreSQL database (optional - can use SQLite instead)
+  postgres:
+    image: postgres:15-alpine
+    container_name: siem-postgres
+    environment:
+      POSTGRES_DB: siem_analyzer
+      POSTGRES_USER: siem_user
+      POSTGRES_PASSWORD: siem_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # SIEM Analyzer application
+  siem-analyzer:
+    build: .
+    container_name: siem-analyzer
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      # Database configuration
+      DATABASE_TYPE: postgresql
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: siem_analyzer
+      DATABASE_USER: siem_user
+      DATABASE_PASSWORD: siem_password
+      
+      # Redis configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      
+      # Email configuration (optional)
+      EMAIL_ENABLED: "false"
+      
+      # Log level
+      LOG_LEVEL: INFO
+    volumes:
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+      - ./config:/app/config
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  postgres-data:
