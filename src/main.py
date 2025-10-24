@@ -1,5 +1,6 @@
 """Main SIEM Analyzer application."""
 
+from config import settings
 import logging
 import signal
 import sys
@@ -16,6 +17,7 @@ from src.analyzers.brute_force import BruteForceAnalyzer
 from src.analyzers.port_scan import PortScanAnalyzer
 from src.analyzers.threat_intel import ThreatIntelAnalyzer
 
+logging.basicConfig(level=settings.log_level)
 logger = get_logger(__name__)
 
 
@@ -142,6 +144,11 @@ def main():
     logger.info("="*60)
     logger.info("SIEM Analyzer Starting")
     logger.info("="*60)
+    
+    # new input
+    logger.info(f"Starting SIEM Analyzer for {settings.organization_id}")
+    logger.info(f"Redis URL: {settings.redis.url}")
+    logger.info(f"Brute force threshold: {settings.analysis.brute_force_threshold}")
     
     try:
         # Create and run application
