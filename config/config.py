@@ -40,7 +40,7 @@ class AnalysisSettings(BaseSettings):
 class Settings(BaseSettings):
     redis: RedisSettings = RedisSettings()
     database: DatabaseSettings = DatabaseSettings()
-    email: EmailSettings = EmailSettings()
+    # email: EmailSettings = EmailSettings()
     analysis: AnalysisSettings = AnalysisSettings()
     
     log_level: str = Field(default="INFO")

@@ -107,7 +107,7 @@ class AnalyzerManager:
         self.analyzers.append(analyzer)
         logger.info(f"Registered analyzer: {analyzer.name}")
     
-    def analyze_log(self, log: Log) -> List[Alert]:
+    def process_log(self, log: Log) -> List[Alert]:
         """Run all analyzers on a log entry.
         
         Args:

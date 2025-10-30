@@ -1,6 +1,6 @@
 """Main SIEM Analyzer application."""
 
-from config import settings
+from config.config import settings
 import logging
 import signal
 import sys
