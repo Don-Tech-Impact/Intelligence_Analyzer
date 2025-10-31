@@ -4,16 +4,23 @@ from typing import Optional, List
 import os
 
 class RedisSettings(BaseSettings):
-    host: str = Field(default="localhost", description="Redis server host")
-    port: int = Field(default=6379, description="Redis server port")
-    db: int = Field(default=0, description="Redis database number")
-    password: Optional[str] = Field(default=None, description="Redis password")
+    url : RedisDsn = Field(
+        default="redis://localhost:6381/0",
+        description="Redis connection URL"
+    )
+    log_queue: str = Field(default="log_queue", description="Queue for incoming logs from repo 1")
+    alert_queue: str = Field(default="siem:alerts", description="Queue for generated alerts")
     
-    @property
-    def url(self) -> str:
-        if self.password:
-            return f"redis://:{self.password}@{self.host}:{self.port}/{self.db}"
-        return f"redis://{self.host}:{self.port}/{self.db}"
+    # host: str = Field(default="localhost", description="Redis server host")
+    # port: int = Field(default=6379, description="Redis server port")
+    # db: int = Field(default=0, description="Redis database number")
+    # password: Optional[str] = Field(default=None, description="Redis password")
+    
+    # @property
+    # def url(self) -> str:
+    #     if self.password:
+    #         return f"redis://:{self.password}@{self.host}:{self.port}/{self.db}"
+    #     return f"redis://{self.host}:{self.port}/{self.db}"
 
 class DatabaseSettings(BaseSettings):
     url: PostgresDsn = Field(
@@ -50,6 +57,7 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         env_nested_delimiter = "__"  # Allows REDIS__HOST, REDIS__PORT
+        # to be chmanges 
 
 # Global settings instance
 settings = Settings()

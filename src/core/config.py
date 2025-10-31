@@ -108,28 +108,28 @@ class Config:
     # Redis configuration
     @property
     def redis_host(self) -> str:
-        return self.get('redis.host', 'localhost')
+        return self.get('REDIS__LOG_QUEUE', 'REDIS_URL')
     
-    @property
-    def redis_port(self) -> int:
-        return self.get('redis.port', 6379)
+    # @property
+    # def redis_port(self) -> int:
+    #     return self.get('redis.port', 6379)
     
-    @property
-    def redis_db(self) -> int:
-        return self.get('redis.db', 0)
+    # @property
+    # def redis_db(self) -> int:
+    #     return self.get('redis.db', 0)
     
-    @property
-    def redis_password(self) -> Optional[str]:
-        pwd = self.get('redis.password', '')
-        return pwd if pwd else None
+    # @property
+    # def redis_password(self) -> Optional[str]:
+    #     pwd = self.get('redis.password', '')
+    #     return pwd if pwd else None
     
     @property
     def redis_log_queue(self) -> str:
         return self.get('redis.log_queue', 'siem:logs')
     
-    @property
-    def redis_alert_queue(self) -> str:
-        return self.get('redis.alert_queue', 'siem:alerts')
+    # @property
+    # def redis_alert_queue(self) -> str:
+    #     return self.get('redis.alert_queue', 'siem:alerts')
     
     # Email configuration
     @property
