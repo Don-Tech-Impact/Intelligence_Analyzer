@@ -32,9 +32,9 @@ class DatabaseManager:
             # SQLite specific settings
             self.engine = create_engine(
                 database_url,
-                connect_args={'check_same_thread': False},
-                poolclass=StaticPool,
-                echo=False
+                connect_args={'check_same_thread': False}, ## Needed for SQLite to allow multi-threaded access
+                poolclass=StaticPool, # Use StaticPool for SQLite
+                echo=False # Disable SQL echoing
             )
         else:
             # PostgreSQL settings
@@ -48,12 +48,13 @@ class DatabaseManager:
         
         # Create session factory
         self.session_factory = sessionmaker(bind=self.engine)
-        self.Session = scoped_session(self.session_factory)
+        self.Session = scoped_session(self.session_factory) # Thread-safe sessions and safe from race conditions
         
         # Create all tables
         Base.metadata.create_all(self.engine)
         logger.info("Database tables created successfully")
     
+    ## this is for controlling the session outside the context manager and aswell the session scope
     def get_session(self):
         """Get a new database session.
         
@@ -64,16 +65,16 @@ class DatabaseManager:
             raise RuntimeError("Database not initialized. Call initialize() first.")
         return self.Session()
     
-    @contextmanager
+    @contextmanager # it imports context manager from contextlib and impplement the entire database transaction
     def session_scope(self) -> Generator:
         """Provide a transactional scope for database operations.
         
         Yields:
             SQLAlchemy session
         """
-        session = self.get_session()
+        session = self.get_session() # get me a fresh session
         try:
-            yield session
+            yield session # yield it to the caller 
             session.commit()
         except Exception as e:
             session.rollback()

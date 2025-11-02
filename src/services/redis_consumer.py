@@ -11,9 +11,22 @@ from src.core.config import config
 from src.models.database import Log
 from src.core.database import db_manager
 from config.config import settings
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_iso(dt_str: Optional[str]) -> Optional[datetime]:
+    """Safe ISO-8601 parser that tolerates trailing Z and None."""
+    if not dt_str:
+        return None
+    dt_str = dt_str.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(dt_str)
+    except ValueError:
+        logger.debug("Unable to parse datetime string: %s", dt_str)
+        return None
+        
 class RedisConsumer:
     """Consumes logs from Redis queue and stores them in database."""
     
@@ -74,37 +87,84 @@ class RedisConsumer:
             logger.debug(f"Invalid message: {message}")
             return None
     
+    # def store_log(self, log_data: Dict[str, Any]) -> Optional[Log]:
+    #     """Store log entry in database.
+        
+    #     Args:
+    #         log_data: Parsed log data dictionary
+            
+    #     Returns:
+    #         Created Log object or None if storage fails
+    #     """
+    #     try:
+    #         with db_manager.session_scope() as session:
+    #             log_entry = Log(
+    #                 tenant_id=log_data.get('tenant_id', config.default_tenant),
+    #                 timestamp=log_data.get('timestamp'),
+    #                 source_ip=log_data.get('source_ip'),
+    #                 destination_ip=log_data.get('destination_ip'),
+    #                 source_port=log_data.get('source_port'),
+    #                 destination_port=log_data.get('destination_port'),
+    #                 protocol=log_data.get('protocol'),
+    #                 action=log_data.get('action'),
+    #                 log_type=log_data.get('log_type', 'generic'),
+    #                 message=log_data.get('message', ''),
+    #                 raw_data=log_data
+    #             )
+    #             session.add(log_entry)
+    #             session.commit()
+    #             logger.debug(f"Stored log entry: {log_entry.id}")
+    #             return log_entry
+    #     except Exception as e:
+    #         logger.error(f"Failed to store log entry: {e}")
+    #         return None
+        
     def store_log(self, log_data: Dict[str, Any]) -> Optional[Log]:
         """Store log entry in database.
-        
-        Args:
-            log_data: Parsed log data dictionary
-            
-        Returns:
-            Created Log object or None if storage fails
         """
         try:
             with db_manager.session_scope() as session:
+                metadata = log_data.get("metadata", {})
+                event = log_data.get("event", {})
+                source = log_data.get("source") or {}
+                destination = log_data.get("destination") or {}
+                network = log_data.get("network") or {}
+                device = log_data.get("device") or {}
+                rule = log_data.get("rule") or {}
+                threat_intel = log_data.get("threat_intel") or {}
+                business_context = log_data.get("business_context") or {}
+                flags = log_data.get("flags") or []
+            
                 log_entry = Log(
-                    tenant_id=log_data.get('tenant_id', config.default_tenant),
-                    timestamp=log_data.get('timestamp'),
-                    source_ip=log_data.get('source_ip'),
-                    destination_ip=log_data.get('destination_ip'),
-                    source_port=log_data.get('source_port'),
-                    destination_port=log_data.get('destination_port'),
-                    protocol=log_data.get('protocol'),
-                    action=log_data.get('action'),
-                    log_type=log_data.get('log_type', 'generic'),
-                    message=log_data.get('message', ''),
-                    raw_data=log_data
+                    raw_id=log_data.get("raw_id"),
+                    tenant_id=log_data.get("tenant_id", config.default_tenant),
+                    received_at=_parse_iso(metadata.get("received_at")) or datetime.now(timezone.utc),
+                    event_time=_parse_iso(event.get("timestamp")),
+                    source=source,
+                    destination=destination,
+                    network=network,
+                    device=device,
+                    rule=rule,
+                    threat_intel=threat_intel,
+                    business_context=business_context,
+                    flags=flags,
+                    action=event.get("action") or log_data.get("action"),
+                    outcome=event.get("outcome"),
+                    log_type=log_data.get("log_type") or metadata.get("log_type"),
+                    category=event.get("category"),
+                    severity=event.get("severity"),
+                    severity_numeric=event.get("severity_numeric"),
+                    confidence=log_data.get("confidence") or metadata.get("confidence"),
+                    raw_message=metadata.get("raw_log") or log_data.get("raw_log"),
                 )
                 session.add(log_entry)
-                session.commit()
-                logger.debug(f"Stored log entry: {log_entry.id}")
+                session.flush()  # obtain generated ID
+                logger.debug("Stored log entry: %s", log_entry.id)
                 return log_entry
         except Exception as e:
-            logger.error(f"Failed to store log entry: {e}")
+            logger.error("Failed to store log entry: %s", e, exc_info=True)
             return None
+            
     
     def process_message(self, message: str) -> bool:
         """Process a single log message.
@@ -195,6 +255,21 @@ class RedisConsumer:
         except RedisError as e:
             logger.error(f"Failed to get queue size: {e}")
             return 0
+        
+    def get_log_message(self) -> Optional[str]:
+        """Get a single log message from the queue without removing it.
+        
+        Returns:
+            Log message string or None if queue is empty
+        """
+        if not self.redis_client:
+            return None
+        try:
+            message = self.redis_client.lindex(self.log_queue, 0)
+            return message
+        except RedisError as e:
+            logger.error(f"Failed to get log message: {e}")
+            return None
 
 
 # """Redis consumer service for log processing."""

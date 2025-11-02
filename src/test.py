@@ -45,6 +45,8 @@ from src.analyzers.base import analyzer_manager
 from src.analyzers.brute_force import BruteForceAnalyzer
 from src.analyzers.port_scan import PortScanAnalyzer
 
+from src.core.database import db_manager
+
 # --- Basic Logging Setup ---
 # This sets the logging level and format for terminal output.
 logging.basicConfig(
@@ -52,6 +54,25 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+def dump_queue(redis_consumer: RedisConsumer) -> None:
+        queue = settings.redis.log_queue
+        raw_items = redis_consumer.redis_client.lrange(queue, 0, -1)  # type: ignore[attr-defined]
+        if not raw_items:
+            logger.warning(f"No messages in '{queue}'.")
+            return
+
+        logger.info(f"Dumping {len(raw_items)} messages from '{queue}':")
+        for idx, item in enumerate(raw_items, 1):
+            logger.info("[%d] %s", idx, item)
+
+    # def run_consumer_with_analyzers():
+    #     # ...existing code...
+    #         redis_consumer = RedisConsumer()
+    #         redis_consumer.connect()
+
+    #         dump_queue(redis_consumer)        # <-- print everything first
+    #         redis_consumer.start()  
 
 def run_consumer_with_analyzers():
     """
@@ -70,16 +91,26 @@ def run_consumer_with_analyzers():
         analyzer_manager.register(PortScanAnalyzer())
         logger.info("Analyzers registered.")
 
+        db_manager.initialize()
         # --- Start the Consumer ---
         redis_consumer = RedisConsumer()
         redis_consumer.connect()
+        dump_queue(redis_consumer)
         # redis_consumer.start() # This will block and run forever until you press Ctrl+C
         
         # --- Check for data in the queue ---
         queue_name = settings.redis.log_queue
         queue_size = redis_consumer.get_queue_size()
+        # get_log_message = redis_consumer.get_log_message()
+        #dump_queue = redis_consumer.dump_queue(5)
+        # dump_queue = redis_consumer.dump_queue(5)
+        
+        
         logger.info(f"Current size of Redis queue '{queue_name}': {queue_size}")
         logger.info(f"Checking Redis queue '{queue_name}'...")
+        
+        # logger.info(f"Sample log message from queue: {get_log_message}")
+        
         if queue_size > 0:
             logger.info(f"SUCCESS: Found {queue_size} logs waiting in the queue.")
         else:
