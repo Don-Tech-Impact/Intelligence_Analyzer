@@ -125,5 +125,18 @@ def run_consumer_with_analyzers():
         logger.info("SIEM Analyzer Test Runner Shutting Down.")
 
 
+def test_bruteforce_replay():
+    from src.core.database import db_manager
+    from scripts.replay_bruteforce import replay_all
+    db_manager.initialize()
+    replay_all(auth_only=True)
+    # optionally assert alert count increased, etc.
+    
+    
+    # Simulate log entries and test the analyzer logic here
+    
+
+
 if __name__ == "__main__":
+    # run_consumer_with_analyzers()
     run_consumer_with_analyzers()

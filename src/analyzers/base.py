@@ -39,11 +39,12 @@ class BaseAnalyzer(ABC):
         self,
         alert_type: str,
         severity: str,
-        source_ip: str,
+        # source_ip: str,
         description: str,
         details: dict,
         tenant_id: str = 'default',
-        destination_ip: Optional[str] = None
+        # destination_ip: Optional[str] = None,
+        log_id: Optional[int] = None
     ) -> Optional[Alert]:
         """Create and store an alert.
         
@@ -62,11 +63,12 @@ class BaseAnalyzer(ABC):
         try:
             with db_manager.session_scope() as session:
                 alert = Alert(
+                    log_id=log_id, # newly added
                     tenant_id=tenant_id,
                     alert_type=alert_type,
                     severity=severity,
-                    source_ip=source_ip,
-                    destination_ip=destination_ip,
+                    # source_ip=source_ip,
+                    # destination_ip=destination_ip,
                     description=description,
                     details=details,
                     status='open',
@@ -74,7 +76,14 @@ class BaseAnalyzer(ABC):
                 )
                 session.add(alert)
                 session.commit()
-                logger.info(f"Created {severity} alert: {alert_type} from {source_ip}")
+                # logger.info(f"Created {severity} alert: {alert_type} from {source_ip}")
+                logger.info(
+                    "Created %s alert (%s) tenant=%s log_id=%s",
+                    severity,
+                    alert_type,
+                    tenant_id,
+                    log_id,
+                )
                 return alert
         except Exception as e:
             logger.error(f"Failed to create alert: {e}")

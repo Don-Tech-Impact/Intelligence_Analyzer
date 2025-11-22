@@ -33,8 +33,8 @@ class Log(Base):
     raw_id = Column(String(64), unique=True, index=True)              # UUID from Repo 1
     tenant_id = Column(String(100), default="default", index=True)
     received_at = Column(DateTime, default=datetime.utcnow, index=True)
-    event_time = Column(DateTime, index=True)
-    source = Column(JSON, nullable=False, index=True)                             # source IP, port, user, etc.
+    event_time = Column(DateTime, index=True) # to be checked
+    source = Column(JSON, nullable=False, index=True) # same                             # source IP, port, user, etc.
     destination = Column(JSON, nullable=True)
     network = Column(JSON, nullable=True)
     device = Column(JSON, nullable=True)

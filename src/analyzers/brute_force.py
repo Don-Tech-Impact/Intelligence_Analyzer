@@ -159,13 +159,18 @@ class BruteForceAnalyzer(BaseAnalyzer):
         
         return None
     
+    # def _is_auth_failure(self, log: Log) -> bool:
+    #     """Check if log represents an authentication failure."""
+    #     if log.log_type and 'auth' in log.log_type.lower():
+    #         failure_indicators = ['failed', 'failure', 'denied']
+    #         if log.action and any(indicator in log.action.lower() for indicator in failure_indicators):
+    #             return True
+    #     return False
+    
     def _is_auth_failure(self, log: Log) -> bool:
-        """Check if log represents an authentication failure."""
-        if log.log_type and 'auth' in log.log_type.lower():
-            failure_indicators = ['failed', 'failure', 'denied']
-            if log.action and any(indicator in log.action.lower() for indicator in failure_indicators):
-                return True
-        return False
+        text = " ".join(filter(None, [log.log_type, log.action, log.outcome, log.raw_message]))
+        text = text.lower()
+        return "failed password" in text or "login failure" in text
 
 
     def _get_recent_failed_attempts(
