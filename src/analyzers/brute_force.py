@@ -6,7 +6,7 @@ from typing import Optional, Dict
 from collections import defaultdict
 
 from src.analyzers.base import BaseAnalyzer
-from src.models.database import Log, Alert
+from src.models.database import NormalizedLog, Alert
 from src.core.config import config
 from src.core.database import db_manager
 
@@ -25,11 +25,11 @@ class BruteForceAnalyzer(BaseAnalyzer):
         # Cache for tracking failed attempts (source_ip -> count)
         self._attempt_cache: Dict[str, list] = defaultdict(list)
     
-    def analyze(self, log: Log) -> Optional[Alert]:
+    def analyze(self, log: NormalizedLog) -> Optional[Alert]:
         """Analyze log for brute force patterns.
         
         Args:
-            log: Log entry to analyze
+            log: NormalizedLog entry to analyze
             
         Returns:
             Alert if brute force detected, None otherwise
@@ -86,11 +86,11 @@ class BruteForceAnalyzer(BaseAnalyzer):
         
         return None
     
-    def _is_auth_failure(self, log: Log) -> bool:
+    def _is_auth_failure(self, log: NormalizedLog) -> bool:
         """Check if log represents an authentication failure.
         
         Args:
-            log: Log entry
+            log: NormalizedLog entry
             
         Returns:
             True if authentication failure, False otherwise
@@ -130,12 +130,12 @@ class BruteForceAnalyzer(BaseAnalyzer):
             time_threshold = timestamp - timedelta(seconds=self.time_window)
             
             with db_manager.session_scope() as session:
-                count = session.query(Log).filter(
-                    Log.tenant_id == tenant_id,
-                    Log.source_ip == source_ip,
-                    Log.timestamp >= time_threshold,
-                    Log.timestamp <= timestamp,
-                    Log.log_type.like('%auth%')
+                count = session.query(NormalizedLog).filter(
+                    NormalizedLog.tenant_id == tenant_id,
+                    NormalizedLog.source_ip == source_ip,
+                    NormalizedLog.timestamp >= time_threshold,
+                    NormalizedLog.timestamp <= timestamp,
+                    NormalizedLog.log_type.like('%auth%')
                 ).count()
                 
                 return count

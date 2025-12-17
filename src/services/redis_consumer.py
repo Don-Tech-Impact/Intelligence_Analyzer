@@ -8,8 +8,9 @@ import redis
 from redis.exceptions import RedisError, ConnectionError
 
 from src.core.config import config
-from src.models.database import Log
+from src.models.database import NormalizedLog
 from src.core.database import db_manager
+from src.services.log_ingestion import LogIngestionService
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ class RedisConsumer:
         self.redis_client: Optional[redis.Redis] = None
         self.running = False
         self.log_queue = config.redis_log_queue
+        self.ingestion_service = LogIngestionService()
         
     def connect(self):
         """Establish connection to Redis."""
@@ -66,38 +68,6 @@ class RedisConsumer:
             logger.debug(f"Invalid message: {message}")
             return None
     
-    def store_log(self, log_data: Dict[str, Any]) -> Optional[Log]:
-        """Store log entry in database.
-        
-        Args:
-            log_data: Parsed log data dictionary
-            
-        Returns:
-            Created Log object or None if storage fails
-        """
-        try:
-            with db_manager.session_scope() as session:
-                log_entry = Log(
-                    tenant_id=log_data.get('tenant_id', config.default_tenant),
-                    timestamp=log_data.get('timestamp'),
-                    source_ip=log_data.get('source_ip'),
-                    destination_ip=log_data.get('destination_ip'),
-                    source_port=log_data.get('source_port'),
-                    destination_port=log_data.get('destination_port'),
-                    protocol=log_data.get('protocol'),
-                    action=log_data.get('action'),
-                    log_type=log_data.get('log_type', 'generic'),
-                    message=log_data.get('message', ''),
-                    raw_data=log_data
-                )
-                session.add(log_entry)
-                session.commit()
-                logger.debug(f"Stored log entry: {log_entry.id}")
-                return log_entry
-        except Exception as e:
-            logger.error(f"Failed to store log entry: {e}")
-            return None
-    
     def process_message(self, message: str) -> bool:
         """Process a single log message.
         
@@ -111,8 +81,8 @@ class RedisConsumer:
         if log_data is None:
             return False
         
-        log_entry = self.store_log(log_data)
-        return log_entry is not None
+        # Use ingestion service to process (normalize, store, analyze)
+        return self.ingestion_service.process_log(log_data)
     
     def start(self):
         """Start consuming logs from Redis queue."""

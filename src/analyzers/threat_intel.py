@@ -5,7 +5,7 @@ from typing import Optional
 from datetime import datetime
 
 from src.analyzers.base import BaseAnalyzer
-from src.models.database import Log, Alert, ThreatIntelligence
+from src.models.database import NormalizedLog, Alert, ThreatIntelligence
 from src.core.database import db_manager
 
 logger = logging.getLogger(__name__)
@@ -18,11 +18,11 @@ class ThreatIntelAnalyzer(BaseAnalyzer):
         """Initialize threat intelligence analyzer."""
         super().__init__('threat_intel')
     
-    def analyze(self, log: Log) -> Optional[Alert]:
+    def analyze(self, log: NormalizedLog) -> Optional[Alert]:
         """Analyze log against threat intelligence indicators.
         
         Args:
-            log: Log entry to analyze
+            log: NormalizedLog entry to analyze
             
         Returns:
             Alert if threat indicator matched, None otherwise
@@ -70,14 +70,14 @@ class ThreatIntelAnalyzer(BaseAnalyzer):
     
     def _create_threat_alert(
         self,
-        log: Log,
+        log: NormalizedLog,
         threat: ThreatIntelligence,
         direction: str
     ) -> Optional[Alert]:
         """Create alert for threat intelligence match.
         
         Args:
-            log: Log entry
+            log: NormalizedLog entry
             threat: Matched threat intelligence
             direction: 'source' or 'destination'
             

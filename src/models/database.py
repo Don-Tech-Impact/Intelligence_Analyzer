@@ -11,8 +11,8 @@ from sqlalchemy.orm import relationship
 Base = declarative_base()
 
 
-class Log(Base):
-    """Log entry model."""
+class NormalizedLog(Base):
+    """Normalized log entry model."""
     __tablename__ = 'logs'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -37,7 +37,7 @@ class Log(Base):
     )
     
     def __repr__(self):
-        return f"<Log(id={self.id}, source_ip={self.source_ip}, timestamp={self.timestamp})>"
+        return f"<NormalizedLog(id={self.id}, source_ip={self.source_ip}, timestamp={self.timestamp})>"
 
 
 class Alert(Base):

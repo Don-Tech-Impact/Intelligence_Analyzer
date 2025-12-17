@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
-from src.models.database import Log, Alert, Report
+from src.models.database import NormalizedLog, Alert, Report
 from src.core.database import db_manager
 from src.core.config import config
 
@@ -125,10 +125,10 @@ class ReportGenerator:
         
         with db_manager.session_scope() as session:
             # Total logs
-            data['total_logs'] = session.query(Log).filter(
-                Log.tenant_id == tenant_id,
-                Log.timestamp >= start_date,
-                Log.timestamp <= end_date
+            data['total_logs'] = session.query(NormalizedLog).filter(
+                NormalizedLog.tenant_id == tenant_id,
+                NormalizedLog.timestamp >= start_date,
+                NormalizedLog.timestamp <= end_date
             ).count()
             
             # Total alerts
@@ -168,10 +168,10 @@ class ReportGenerator:
             data['top_source_ips'] = dict(top_sources)
             
             # Logs by type
-            logs = session.query(Log).filter(
-                Log.tenant_id == tenant_id,
-                Log.timestamp >= start_date,
-                Log.timestamp <= end_date
+            logs = session.query(NormalizedLog).filter(
+                NormalizedLog.tenant_id == tenant_id,
+                NormalizedLog.timestamp >= start_date,
+                NormalizedLog.timestamp <= end_date
             ).all()
             
             log_type_counts = {}

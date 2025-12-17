@@ -3,9 +3,9 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from src.models.database import Log, Alert
+from src.models.database import NormalizedLog, Alert
 from src.core.database import db_manager
 
 logger = logging.getLogger(__name__)
@@ -24,11 +24,11 @@ class BaseAnalyzer(ABC):
         self.enabled = True
     
     @abstractmethod
-    def analyze(self, log: Log) -> Optional[Alert]:
+    def analyze(self, log: NormalizedLog) -> Optional[Alert]:
         """Analyze a log entry for threats.
         
         Args:
-            log: Log entry to analyze
+            log: NormalizedLog entry to analyze
             
         Returns:
             Alert object if threat detected, None otherwise
@@ -61,6 +61,20 @@ class BaseAnalyzer(ABC):
         """
         try:
             with db_manager.session_scope() as session:
+                # Deduplication: Check if recent alert exists (last 5 minutes)
+                time_threshold = datetime.utcnow() - timedelta(minutes=5)
+                existing_alert = session.query(Alert).filter(
+                    Alert.tenant_id == tenant_id,
+                    Alert.alert_type == alert_type,
+                    Alert.source_ip == source_ip,
+                    Alert.status == 'open',
+                    Alert.created_at >= time_threshold
+                ).first()
+
+                if existing_alert:
+                    logger.debug(f"Duplicate alert suppressed: {alert_type} from {source_ip}")
+                    return None # Suppress duplicate alert
+
                 alert = Alert(
                     tenant_id=tenant_id,
                     alert_type=alert_type,
@@ -107,11 +121,11 @@ class AnalyzerManager:
         self.analyzers.append(analyzer)
         logger.info(f"Registered analyzer: {analyzer.name}")
     
-    def analyze_log(self, log: Log) -> List[Alert]:
+    def analyze_log(self, log: NormalizedLog) -> List[Alert]:
         """Run all analyzers on a log entry.
         
         Args:
-            log: Log entry to analyze
+            log: NormalizedLog entry to analyze
             
         Returns:
             List of generated alerts

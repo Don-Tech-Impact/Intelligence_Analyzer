@@ -6,7 +6,7 @@ from typing import Optional
 from sqlalchemy import func
 
 from src.analyzers.base import BaseAnalyzer
-from src.models.database import Log, Alert
+from src.models.database import NormalizedLog, Alert
 from src.core.config import config
 from src.core.database import db_manager
 
@@ -22,11 +22,11 @@ class PortScanAnalyzer(BaseAnalyzer):
         self.threshold = config.port_scan_threshold
         self.time_window = config.port_scan_time_window
     
-    def analyze(self, log: Log) -> Optional[Alert]:
+    def analyze(self, log: NormalizedLog) -> Optional[Alert]:
         """Analyze log for port scanning patterns.
         
         Args:
-            log: Log entry to analyze
+            log: NormalizedLog entry to analyze
             
         Returns:
             Alert if port scan detected, None otherwise
@@ -104,14 +104,14 @@ class PortScanAnalyzer(BaseAnalyzer):
             with db_manager.session_scope() as session:
                 # Count distinct destination ports
                 count = session.query(
-                    func.count(func.distinct(Log.destination_port))
+                    func.count(func.distinct(NormalizedLog.destination_port))
                 ).filter(
-                    Log.tenant_id == tenant_id,
-                    Log.source_ip == source_ip,
-                    Log.destination_ip == destination_ip,
-                    Log.timestamp >= time_threshold,
-                    Log.timestamp <= timestamp,
-                    Log.destination_port.isnot(None)
+                    NormalizedLog.tenant_id == tenant_id,
+                    NormalizedLog.source_ip == source_ip,
+                    NormalizedLog.destination_ip == destination_ip,
+                    NormalizedLog.timestamp >= time_threshold,
+                    NormalizedLog.timestamp <= timestamp,
+                    NormalizedLog.destination_port.isnot(None)
                 ).scalar()
                 
                 return count or 0
