@@ -216,3 +216,4 @@ reports/*.csv
 reports/*.pdf
 config/.env
 *.rdb
+data/

@@ -1,0 +1,123 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "fr-ser-sqlite-datasource",
+        "uid": "P1809F7DD0D724D3B"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "footer": {
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "fr-ser-sqlite-datasource",
+            "uid": "P1809F7DD0D724D3B"
+          },
+          "rawSql": "SELECT * FROM logs_view ORDER BY timestamp DESC LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "Recent Logs",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "fr-ser-sqlite-datasource",
+        "uid": "P1809F7DD0D724D3B"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "fr-ser-sqlite-datasource",
+            "uid": "P1809F7DD0D724D3B"
+          },
+          "rawSql": "SELECT alert_type, count(*) as value FROM alerts_view GROUP BY alert_type",
+          "refId": "A"
+        }
+      ],
+      "title": "Alerts by Type",
+      "type": "piechart"
+    }
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": [],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "SIEM Dashboard",
+  "uid": "siem-main",
+  "version": 1,
+  "weekStart": ""
+}

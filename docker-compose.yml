@@ -32,15 +32,11 @@ services:
     container_name: siem-analyzer
     depends_on:
       - redis
-      - postgres
+      # - postgres # Not needed for SQLite v1
     environment:
-      # Database configuration
-      DATABASE_TYPE: postgresql
-      DATABASE_HOST: postgres
-      DATABASE_PORT: 5432
-      DATABASE_NAME: siem_analyzer
-      DATABASE_USER: siem_user
-      DATABASE_PASSWORD: siem_password
+      # Database configuration - using SQLite for v1
+      DATABASE_TYPE: sqlite
+      DATABASE_URL: sqlite:////data/siem_analyzer.db
       
       # Redis configuration
       REDIS_HOST: redis
@@ -55,8 +51,28 @@ services:
       - ./logs:/app/logs
       - ./reports:/app/reports
       - ./config:/app/config
+      - ./scripts:/app/scripts
+      - ./data:/data  # Mount data directory for SQLite DB
+    restart: unless-stopped
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: siem-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_INSTALL_PLUGINS=fr-ser-sqlite-datasource
+      - GF_SECURITY_ADMIN_PASSWORD=admin  # Default password
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+      - ./data:/data:ro  # Read-only access to SQLite DB
+    depends_on:
+      - siem-analyzer
     restart: unless-stopped
 
 volumes:
   redis-data:
   postgres-data:
+  grafana-data:
