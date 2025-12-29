@@ -2,6 +2,30 @@
 
 A comprehensive Python-based Security Information and Event Management (SIEM) system that consumes logs from Redis queues, performs real-time threat detection, and generates automated security reports.
 
+## Quick Start (Docker)
+
+The easiest way to run the SIEM Analyzer with Grafana visualization is using Docker Compose.
+
+1.  **Start the Stack:**
+    ```bash
+    docker-compose up -d
+    ```
+    This starts Redis, the SIEM Analyzer, and Grafana.
+
+2.  **Access Grafana:**
+    *   Open http://localhost:3000
+    *   Login: `admin` / `admin`
+    *   View the **SIEM Dashboard** to see logs and alerts in real-time.
+
+3.  **Generate Test Data:**
+    You can simulate attacks (Brute Force, Port Scans) to verify the system:
+    ```bash
+    # Run locally (requires python env)
+    python scripts/generate_test_logs.py
+    ```
+
+    *See [GRAFANA_SETUP.md](GRAFANA_SETUP.md) for detailed setup instructions.*
+
 ## Features
 
 ### Core Capabilities
@@ -34,7 +58,7 @@ Intelligence_Analyzer/
 │   │   ├── database.py    # Database session management
 │   │   └── logging_config.py  # Logging setup
 │   ├── models/            # Database models
-│   │   └── database.py    # SQLAlchemy models
+│   │   ├── database.py    # SQLAlchemy models
 │   ├── services/          # Business logic services
 │   │   ├── redis_consumer.py      # Redis log consumer
 │   │   ├── email_alert.py         # Email alerting
@@ -55,7 +79,7 @@ Intelligence_Analyzer/
 └── requirements.txt       # Python dependencies
 ```
 
-## Installation
+## Installation (Manual)
 
 ### Prerequisites
 - Python 3.9 or higher
@@ -84,6 +108,11 @@ cp config/.env.example config/.env
 4. Initialize the database:
 ```bash
 python -c "from src.core.database import db_manager; from src.core.config import config; db_manager.initialize()"
+```
+
+5. Create Grafana Views (Recommended):
+```bash
+python scripts/create_grafana_view.py
 ```
 
 ## Configuration
