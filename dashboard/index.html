@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intelligence SIEM | Advanced Threat Defense</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <script>
+        // Auth check before anything else
+        if (!localStorage.getItem('siem_token')) {
+            window.location.href = 'login.html';
+        }
+    </script>
+</head>
+
+<body>
+    <div id="app">
+        <aside>
+            <div class="logo">
+                <i data-lucide="shield-check" style="width: 24px; height: 24px;"></i>
+                <span>INTELLIGENCE</span>
+            </div>
+            <ul class="nav-links">
+                <li><a href="#" class="active" onclick="switchView('overview')"><i data-lucide="layout-dashboard"></i>
+                        Overview</a></li>
+                <li><a href="#" onclick="switchView('alerts')"><i data-lucide="alert-octagon"></i> Alerts</a></li>
+                <li><a href="#" onclick="switchView('logs')"><i data-lucide="list"></i> Logs</a></li>
+                <li><a href="#" onclick="switchView('log-stream')"><i data-lucide="terminal"></i> Log Streams</a></li>
+                <li><a href="#" onclick="switchView('analytics')"><i data-lucide="activity"></i> Analytics</a></li>
+                <li><a href="#" onclick="switchView('reports')"><i data-lucide="file-text"></i> Reports</a></li>
+                <li id="nav-settings"><a href="#" onclick="switchView('settings')"><i data-lucide="settings"></i>
+                        Settings</a></li>
+                <li id="nav-admin" style="display: none;"><a href="#" onclick="switchView('admin')"><i
+                            data-lucide="shield-alert"></i> Superadmin</a></li>
+            </ul>
+            <div class="sidebar-footer"
+                style="padding: 1.5rem; border-top: 1px solid var(--glass-border); margin-top: auto;">
+                <button class="btn-secondary" onclick="logout()" style="width: 100%; justify-content: center;">
+                    <i data-lucide="log-out" size="16"></i> Logout
+                </button>
+            </div>
+        </aside>
+
+        <main>
+            <header>
+                <div class="header-title">
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <button class="hamburger-btn"
+                            style="background: none; border: none; color: var(--text-high); cursor: pointer;">
+                            <i data-lucide="menu"></i>
+                        </button>
+                        <div>
+                            <h1 class="fade-in" id="view-title">Security Operations Center</h1>
+                            <p class="fade-in" id="view-subtitle"
+                                style="text-transform: none; color: var(--text-low); font-size: 0.9rem;">Real-time
+                                threat monitoring and response</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div style="display: flex; gap: 1rem; align-items: center;">
+                        <div class="icon-btn glass"
+                            style="position: relative; padding: 0.5rem; border-radius: 12px; cursor: pointer;">
+                            <i data-lucide="bell" size="20"></i>
+                            <span
+                                style="position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; background: #F43F5E; border-radius: 50%; border: 2px solid var(--bg-surface);"></span>
+                        </div>
+                        <div class="icon-btn glass" style="padding: 0.5rem; border-radius: 12px; cursor: pointer;">
+                            <i data-lucide="settings" size="20"></i>
+                        </div>
+
+                        <div class="user-profile glass" onclick="toggleProfileMenu()">
+                            <div class="avatar">
+                                <i data-lucide="user" size="18"></i>
+                            </div>
+                            <div class="user-info">
+                                <span id="profile-username">User</span>
+                                <span id="profile-role">SOC Analyst</span>
+                            </div>
+                            <i data-lucide="chevron-down" size="14"></i>
+                            <div id="profile-menu" class="dropdown-menu glass">
+                                <div class="menu-header">
+                                    <p id="menu-user">admin</p>
+                                    <p id="menu-tenant" style="font-size: 0.7rem; color: var(--text-low);">tenant_id</p>
+                                </div>
+                                <a href="#" onclick="switchView('settings')"><i data-lucide="settings" size="14"></i>
+                                    Account Settings</a>
+                                <a href="#" onclick="logout()" style="color: var(--danger);"><i data-lucide="log-out"
+                                        size="14"></i> Sign Out</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <div id="overview-view" class="dashboard-view active">
+                <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
+                    <div class="stat-card glass">
+                        <div class="stat-top"
+                            style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem;">
+                            <div class="stat-icon-wrapper"
+                                style="width: 44px; height: 44px; background: rgba(59, 130, 246, 0.1); color: #3B82F6; display: flex; align-items: center; justify-content: center; border-radius: 12px;">
+                                <i data-lucide="shield-check"></i>
+                            </div>
+                            <div class="trend up"
+                                style="color: #10B981; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 0.25rem;">
+                                +12.5% <i data-lucide="trending-up" size="14"></i>
+                            </div>
+                        </div>
+                        <div class="stat-content">
+                            <h2 id="stats-total-logs"
+                                style="font-size: 2.25rem; font-weight: 700; color: var(--text-high); margin-bottom: 0.5rem;">
+                                2,847</h2>
+                            <p style="color: var(--text-low); font-size: 0.875rem;">Threats Blocked</p>
+                        </div>
+                    </div>
+
+                    <div class="stat-card glass">
+                        <div class="stat-top"
+                            style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem;">
+                            <div class="stat-icon-wrapper"
+                                style="width: 44px; height: 44px; background: rgba(244, 63, 94, 0.1); color: #F43F5E; display: flex; align-items: center; justify-content: center; border-radius: 12px;">
+                                <i data-lucide="alert-triangle"></i>
+                            </div>
+                            <div class="trend down"
+                                style="color: #F43F5E; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 0.25rem;">
+                                -8.3% <i data-lucide="trending-down" size="14"></i>
+                            </div>
+                        </div>
+                        <div class="stat-content">
+                            <h2 id="stats-critical-alerts"
+                                style="font-size: 2.25rem; font-weight: 700; color: var(--text-high); margin-bottom: 0.5rem;">
+                                23</h2>
+                            <p style="color: var(--text-low); font-size: 0.875rem;">Active Incidents</p>
+                        </div>
+                    </div>
+
+                    <div class="stat-card glass">
+                        <div class="stat-top"
+                            style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem;">
+                            <div class="stat-icon-wrapper"
+                                style="width: 44px; height: 44px; background: rgba(16, 185, 129, 0.1); color: #10B981; display: flex; align-items: center; justify-content: center; border-radius: 12px;">
+                                <i data-lucide="activity"></i>
+                            </div>
+                            <div class="trend up"
+                                style="color: #10B981; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 0.25rem;">
+                                +3.2% <i data-lucide="trending-up" size="14"></i>
+                            </div>
+                        </div>
+                        <div class="stat-content">
+                            <h2 id="stats-monitored-assets"
+                                style="font-size: 2.25rem; font-weight: 700; color: var(--text-high); margin-bottom: 0.5rem;">
+                                1,542</h2>
+                            <p style="color: var(--text-low); font-size: 0.875rem;">Monitored Assets</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-container fade-in" style="animation-delay: 0.5s">
+                        <h3 style="margin-bottom: 1.5rem;">Event Volume (24h)</h3>
+                        <div id="volume-chart"></div>
+                    </div>
+                    <div class="chart-container fade-in" style="animation-delay: 0.6s">
+                        <h3 style="margin-bottom: 1.5rem;">Alert Distribution</h3>
+                        <div id="distribution-chart"></div>
+                    </div>
+                </div>
+
+                <div class="data-table-container fade-in" style="animation-delay: 0.7s">
+                    <div class="table-header">
+                        <h3>Recent Alerts</h3>
+                        <a href="#" onclick="switchView('alerts')"
+                            style="color: var(--accent-color); font-size: 0.875rem; text-decoration: none;">View All</a>
+                    </div>
+                    <table id="alerts-table-mini">
+                        <thead>
+                            <tr>
+                                <th>TIME</th>
+                                <th>TYPE</th>
+                                <th>SOURCE IP</th>
+                                <th>SEVERITY</th>
+                                <th>STATUS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="overview-alerts-body">
+                            <!-- Data populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="alerts-view" class="dashboard-view">
+                <div class="data-table-container">
+                    <div class="table-header">
+                        <h3>Security Alerts Feed</h3>
+                        <div class="table-filters">
+                            <select id="filter-severity" class="glass-input" onchange="fetchData()">
+                                <option value="">All Severities</option>
+                                <option value="critical">Critical</option>
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                            </select>
+                        </div>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>TIME</th>
+                                <th>TYPE</th>
+                                <th>SOURCE IP</th>
+                                <th>SEVERITY</th>
+                                <th>DESCRIPTION</th>
+                                <th>STATUS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="full-alerts-body">
+                            <!-- Data populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="analytics-view" class="dashboard-view">
+                <div class="analytics-grid">
+                    <div class="chart-container">
+                        <h3>Top Source IPs</h3>
+                        <div id="top-sources-chart"></div>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Protocol Distribution</h3>
+                        <div id="protocol-chart"></div>
+                    </div>
+                </div>
+
+                <h2 style="margin: 2rem 0 1.5rem; color: var(--text-high);">Business Strategy Insights</h2>
+                <div class="analytics-grid">
+                    <div class="chart-container">
+                        <h3>Log Activity (Business vs After Hours)</h3>
+                        <div id="business-hours-chart"></div>
+                        <p class="help-text" style="margin-top: 1rem; text-align: center;">Differentiate patterns
+                            between office hours and suspicious night-time activity</p>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Log Activity (Weekday vs Weekend)</h3>
+                        <div id="weekend-activity-chart"></div>
+                        <p class="help-text" style="margin-top: 1rem; text-align: center;">Identify anomalies in data
+                            transfer during non-working days</p>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Endpoint Device Breakdown</h3>
+                        <div id="vendor-breakdown-chart"></div>
+                        <p class="help-text" style="margin-top: 1rem; text-align: center;">Ubiquiti, pfSense, and Cisco
+                            contribution to total log volume</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="settings-view" class="dashboard-view">
+                <div class="settings-container glass full-width">
+                    <h3>System Configuration</h3>
+                    <form id="settings-form" onsubmit="saveSettings(event)">
+                        <div class="form-group">
+                            <label>Brute Force Threshold</label>
+                            <div class="input-wrapper">
+                                <input type="number" id="bf-threshold" class="glass-input">
+                                <span class="help-text">Number of failures before triggering a security alert</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Port Scan Threshold</label>
+                            <div class="input-wrapper">
+                                <input type="number" id="ps-threshold" class="glass-input">
+                                <span class="help-text">Number of unique ports scanned per minute from a single
+                                    source</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>System Log Level</label>
+                            <div class="input-wrapper">
+                                <select id="log-level" class="glass-input">
+                                    <option value="DEBUG">DEBUG</option>
+                                    <option value="INFO">INFO</option>
+                                    <option value="WARNING">WARNING</option>
+                                    <option value="ERROR">ERROR</option>
+                                </select>
+                                <span class="help-text">Set the verbosity of the system analyzer logs</span>
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-top: 3rem; border: none;">
+                            <div></div>
+                            <button type="submit" class="btn-primary">Apply Changes</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div id="logs-view" class="dashboard-view">
+                <div class="data-table-container">
+                    <div class="table-header">
+                        <h3>Historical Log Archive</h3>
+                        <div class="table-filters">
+                            <select id="log-filter-vendor" class="glass-input" onchange="fetchLogsData()">
+                                <option value="">All Vendors</option>
+                                <option value="pfsense">pfSense</option>
+                                <option value="ubiquiti_edge">Ubiquiti</option>
+                                <option value="cisco_meraki">Cisco</option>
+                            </select>
+                            <select id="log-filter-severity" class="glass-input" onchange="fetchLogsData()">
+                                <option value="">All Severities</option>
+                                <option value="critical">Critical</option>
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                            </select>
+                            <input type="text" id="log-search" placeholder="Search message..." class="glass-input"
+                                oninput="fetchLogsData()">
+                        </div>
+                    </div>
+                    <table class="mono-table">
+                        <thead>
+                            <tr>
+                                <th>TIME</th>
+                                <th>TYPE</th>
+                                <th>SOURCE</th>
+                                <th>DESTINATION</th>
+                                <th>PROTO</th>
+                                <th>ACTION</th>
+                                <th>VENDOR</th>
+                                <th>DEVICE</th>
+                                <th>MESSAGE</th>
+                            </tr>
+                        </thead>
+                        <tbody id="full-logs-body">
+                            <!-- Data populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="log-stream-view" class="dashboard-view">
+                <div class="data-table-container">
+                    <div class="table-header">
+                        <h3>Live Traffic Stream</h3>
+                        <div class="table-filters" id="stream-status">
+                            <span class="live-indicator"><span class="pulse"></span> STREAMING</span>
+                        </div>
+                    </div>
+                    <div class="stream-console" id="log-stream-console">
+                        <!-- High density logs added here via JS -->
+                    </div>
+                </div>
+            </div>
+
+            <div id="reports-view" class="dashboard-view">
+                <div class="data-table-container">
+                    <div class="table-header">
+                        <div class="header-info">
+                            <h3>Report Archive</h3>
+                            <p class="help-text">View and manage recurring security reports</p>
+                        </div>
+                        <div class="table-filters">
+                            <select id="report-filter-type" class="glass-input" onchange="fetchReportsData()">
+                                <option value="">All Types</option>
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly">Monthly</option>
+                            </select>
+                            <input type="date" id="report-filter-start" class="glass-input"
+                                onchange="fetchReportsData()">
+                            <input type="date" id="report-filter-end" class="glass-input" onchange="fetchReportsData()">
+                        </div>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>REPORT TYPE</th>
+                                <th>GENERATED AT</th>
+                                <th>PERIOD</th>
+                                <th>LOGS</th>
+                                <th>ALERTS</th>
+                                <th>ACTION</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reports-table-body">
+                            <!-- Data populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div id="admin-view" class="dashboard-view">
+                <div class="analytics-grid">
+                    <div class="settings-container glass">
+                        <h3>Create New Business (Tenant)</h3>
+                        <form onsubmit="adminCreateTenant(event)">
+                            <div class="form-group">
+                                <label>Business Name</label>
+                                <input type="text" id="admin-tenant-name" class="glass-input" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Tenant ID (Short Identifier)</label>
+                                <input type="text" id="admin-tenant-id" class="glass-input"
+                                    placeholder="e.g. university-a" required>
+                            </div>
+                            <button type="submit" class="btn-primary" style="margin-top: 1rem;">Provision
+                                Tenant</button>
+                        </form>
+                    </div>
+                    <div class="settings-container glass">
+                        <h3>Create Business User</h3>
+                        <form onsubmit="adminCreateUser(event)">
+                            <div class="form-group">
+                                <label>Username</label>
+                                <input type="text" id="admin-user-name" class="glass-input" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Password</label>
+                                <input type="password" id="admin-user-pass" class="glass-input" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Assign to Tenant</label>
+                                <select id="admin-user-tenant" class="glass-input" required>
+                                    <!-- Populated by JS -->
+                                </select>
+                            </div>
+                            <button type="submit" class="btn-primary" style="margin-top: 1rem;">Create User</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        lucide.createIcons();
+
+        // Hide/Show elements based on role
+        const role = localStorage.getItem('siem_role');
+        if (role === 'superadmin') {
+            document.getElementById('nav-admin').style.display = 'block';
+        } else {
+            document.querySelector('.tenant-selector').style.display = 'none';
+        }
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = 'login.html';
+        }
+    </script>
+</body>
+
+</html>
