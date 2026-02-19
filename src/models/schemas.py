@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, IPvAnyAddress, validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional, Any, Dict, List, Generic, TypeVar
 from datetime import datetime
 
@@ -31,7 +31,8 @@ class NormalizedLogSchema(BaseModel):
     raw_data: Dict[str, Any] = Field(default_factory=dict)
     business_context: Dict[str, Any] = Field(default_factory=dict)
 
-    @validator('timestamp', pre=True)
+    @field_validator('timestamp', mode='before')
+    @classmethod
     def parse_timestamp(cls, v):
         if isinstance(v, str):
             try:
@@ -65,18 +66,18 @@ class UserCreate(UserBase):
     password: str
     confirm_password: str
 
-    @validator('confirm_password')
-    def passwords_match(cls, v, values, **kwargs):
-        if 'password' in values and v != values['password']:
+    @field_validator('confirm_password')
+    @classmethod
+    def passwords_match(cls, v, info):
+        if 'password' in info.data and v != info.data['password']:
             raise ValueError('passwords do not match')
         return v
 
 class UserResponse(UserBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     is_active: bool
     username: str   
     business_details: Optional[Dict[str, Any]] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True

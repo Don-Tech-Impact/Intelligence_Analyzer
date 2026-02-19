@@ -46,11 +46,11 @@ class TestServices:
         mock_enrich.assert_called_once_with(log_entry)
         mock_analyze.assert_called_once_with(log_entry)
 
-    @patch('src.services.redis_consumer.redis.Redis')
-    def test_redis_consumer_connection(self, mock_redis):
+    @patch('src.services.redis_consumer.redis.from_url')
+    def test_redis_consumer_connection(self, mock_from_url):
         consumer = RedisConsumer()
         mock_client = MagicMock()
-        mock_redis.return_value = mock_client
+        mock_from_url.return_value = mock_client
         
         consumer.connect()
         

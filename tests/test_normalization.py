@@ -5,8 +5,9 @@ from src.models.schemas import NormalizedLogSchema
 
 def test_pfsense_normalization():
     raw_log = {
+        "tenant_id": "pfsense_tenant",
+        "vendor": "pfSense",
         "metadata": {
-            "tenant_id": "pfsense_tenant",
             "vendor": "pfSense"
         },
         "event": {
@@ -61,8 +62,9 @@ def test_generic_standard_normalization():
     assert normalized.message == "Failed login attempt for user admin"
 
 def test_validation_failure_fallback():
-    # Pass missing required fields (if any, but pydantic defaults many)
-    # The LogAdapter now catches errors and returns a fallback schema
+    # Pass invalid data — LogAdapter should return a fallback schema without crashing
     normalized = LogAdapter.normalize({"metadata": "invalid"})
     
-    assert "Validation error" in normalized.message
+    # The fallback should have a valid schema (not raise)
+    assert normalized is not None
+    assert normalized.tenant_id == "default"

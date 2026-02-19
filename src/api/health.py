@@ -139,15 +139,24 @@ def get_metrics():
         pass
 
     # Get Redis queue size
+    
     try:
         redis_client = redis.from_url(config.redis_url, socket_connect_timeout=2)
-        queue_size = redis_client.llen(config.redis_log_queue)
+        queue_size = 0
+        for key in redis_client.scan_iter(match='logs:*:ingest', count=100):
+            queue_size += redis_client.llen(key)
+        for key in redis_client.scan_iter(match='logs:*:clean', count=100):
+            queue_size += redis_client.llen(key)    
+        for key in redis_client.scan_iter(match='logs:*:dead', count=100):
+            queue_size += redis_client.llen(key)   
+
         lines.extend([
             "",
             "# HELP siem_redis_queue_size Current size of log queue",
             "# TYPE siem_redis_queue_size gauge",
             f"siem_redis_queue_size {queue_size}",
         ])
+
     except Exception:
         pass
 
@@ -183,8 +192,15 @@ def get_metrics_json():
     # Get Redis queue size
     try:
         redis_client = redis.from_url(config.redis_url, socket_connect_timeout=2)
+        queue_size = 0
+        for key in redis_client.scan_iter(match='logs:*:ingest', count=100):
+            queue_size += redis_client.llen(key)
+        for key in redis_client.scan_iter(match='logs:*:clean', count=100):
+            queue_size += redis_client.llen(key)    
+        for key in redis_client.scan_iter(match='logs:*:dead', count=100):
+            queue_size += redis_client.llen(key)   
         result["redis"] = {
-            "queue_size": redis_client.llen(config.redis_log_queue)
+            "queue_size": queue_size
         }
     except Exception as e:
         result["redis"] = {"error": str(e)}

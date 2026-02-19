@@ -27,6 +27,10 @@ class Config:
         self._config_path = config_path
         
         # Override with environment variables for specific queue names if needed
+        if os.getenv('REDIS_QUEUE_PATTERN'):
+            self.set('redis.queue_pattern', os.getenv('REDIS_QUEUE_PATTERN'))
+        if os.getenv('REDIS_QUEUE_SCAN_INTERVAL'):
+            self.set('redis.queue_scan_interval', os.getenv('REDIS_QUEUE_SCAN_INTERVAL'))   
         if os.getenv('REDIS_DEAD_QUEUE'):
             self.set('redis.dead_queue', os.getenv('REDIS_DEAD_QUEUE'))
         if os.getenv('REDIS_INGEST_QUEUE'):
@@ -171,9 +175,15 @@ class Config:
         return self.get('redis.port', 6379)
     
     @property
-    def redis_dead_queue(self) -> str:
-        return self.get('redis.dead_queue', 'dead_logs')
-    
+    def redis_queue_pattern(self) -> str:
+        """Pattern for discovering tenant queues. Default: logs:*"""
+        return self.get('redis.queue_pattern', 'logs:*')
+
+    @property
+    def redis_queue_scan_interval(self) -> int:
+        """How often (seconds) to re-scan for new tenant queues."""
+        return self.get('redis.queue_scan_interval', 30)
+
     @property
     def redis_ingest_queue(self) -> str:
         return self.get('redis.ingest_queue', 'ingest_logs')
@@ -183,8 +193,8 @@ class Config:
         return self.get('redis.clean_queue', 'clean_logs')
     
     @property
-    def redis_alert_queue(self) -> str:
-        return self.get('redis.alert_queue', 'siem:alerts')
+    def redis_dead_queue(self) -> str:
+        return self.get('redis.dead_queue', 'dead_logs')
     
     # Email configuration
     @property

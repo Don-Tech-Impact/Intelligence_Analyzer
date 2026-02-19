@@ -15,9 +15,12 @@ from sqlalchemy import (
     Column, Integer, BigInteger, String, DateTime, Text, Boolean, Float, 
     ForeignKey, Index, JSON, event
 )
+
+# SQLite only auto-increments "INTEGER PRIMARY KEY" (not BIGINT).
+# This type uses BigInteger on PostgreSQL but Integer on SQLite.
+PortableBigInt = BigInteger().with_variant(Integer(), "sqlite")
 from sqlalchemy.dialects.postgresql import INET, JSONB
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, Session
+from sqlalchemy.orm import declarative_base, relationship, Session
 
 Base = declarative_base()
 
@@ -47,9 +50,10 @@ class NormalizedLog(Base):
     """
     __tablename__ = 'logs'
     
-    # Primary key must include partition key (timestamp)
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime(timezone=True), primary_key=True, default=datetime.utcnow, index=True)
+    # PostgreSQL partitioning (composite PK) is handled by init_db.sql.
+    # SQLAlchemy model uses single PK for cross-DB compatibility.
+    id = Column(PortableBigInt, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     
     # Tenant isolation
     tenant_id = Column(String(64), nullable=False, default='default', index=True)
@@ -134,7 +138,7 @@ class DeadLetter(Base):
     """
     __tablename__ = 'dead_letters'
     
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(PortableBigInt, primary_key=True, autoincrement=True)
     tenant_id = Column(String(64), index=True)
     received_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     source_queue = Column(String(64))  # Which queue it came from
@@ -157,7 +161,7 @@ class Alert(Base):
     """Security alert model."""
     __tablename__ = 'alerts'
     
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(PortableBigInt, primary_key=True, autoincrement=True)
     tenant_id = Column(String(64), nullable=False, default='default', index=True)
     company_id = Column(String(100), index=True, nullable=True)
     device_id = Column(String(100), index=True, nullable=True)
@@ -207,7 +211,7 @@ class ThreatIntelligence(Base):
     """Threat intelligence indicator model."""
     __tablename__ = 'threat_intelligence'
     
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(PortableBigInt, primary_key=True, autoincrement=True)
     indicator_type = Column(String(32), nullable=False, index=True)  # ip, domain, hash, url
     indicator_value = Column(String(256), nullable=False, unique=True, index=True)
     threat_type = Column(String(64))  # malware, botnet, phishing, c2, scanner
@@ -232,7 +236,7 @@ class Report(Base):
     """Generated report model."""
     __tablename__ = 'reports'
     
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(PortableBigInt, primary_key=True, autoincrement=True)
     tenant_id = Column(String(64), default='default', index=True)
     report_type = Column(String(32), nullable=False)  # daily, weekly, monthly, custom
     start_date = Column(DateTime(timezone=True), nullable=False)
@@ -255,7 +259,7 @@ class Tenant(Base):
     """Multi-tenant configuration model."""
     __tablename__ = 'tenants'
     
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(PortableBigInt, primary_key=True, autoincrement=True)
     tenant_id = Column(String(64), unique=True, nullable=False, index=True)
     name = Column(String(128), nullable=False)
     description = Column(Text)
@@ -272,7 +276,7 @@ class User(Base):
     """User model for authentication and authorization."""
     __tablename__ = 'users'
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(PortableBigInt, primary_key=True, autoincrement=True)
     tenant_id = Column(String(64), nullable=False, default='default', index=True)
     username = Column(String(64), unique=True, nullable=False, index=True)
     email = Column(String(128), unique=True)

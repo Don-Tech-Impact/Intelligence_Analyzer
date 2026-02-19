@@ -3,10 +3,10 @@
 =============================================================================
 ARCHITECTURE
 =============================================================================
-Multi-Queue Consumer:
-  - dead_logs: Store-only (no analysis)
-  - ingest_logs: Full pipeline (normalize → enrich → analyze → store)
-  - clean_logs: Fast-path (already normalized, enrich → analyze → store)
+Tenant-Scoped Multi-Queue Consumer:
+  - Discovers queues dynamically: logs:{TENANT}:ingest, logs:{TENANT}:dead, logs:{TENANT}:clean
+  - Re-scans Redis every 30s for new tenants
+  - Routes by queue suffix: :dead → store-only, :ingest → full pipeline, :clean → fast-path
 
 Batch Processing:
   - Accumulates logs until batch_size (100) OR timeout (1 sec)
@@ -25,7 +25,7 @@ import logging
 import time
 import os
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Set
 from collections import defaultdict
 import redis
 from redis.exceptions import RedisError, ConnectionError
@@ -51,10 +51,10 @@ class RedisConsumer:
     """
     Consumes logs from Redis queues and processes them in batches.
     
-    Queues:
-        - dead_logs: Malformed/failed logs (store only)
-        - ingest_logs: Raw parsed logs (full pipeline)
-        - clean_logs: Pre-normalized logs (fast path)
+    Dynamically discovers tenant-scoped queues:
+        - logs:{TENANT}:ingest  — Raw logs (full pipeline)
+        - logs:{TENANT}:clean   — Pre-normalized logs (fast path)
+        - logs:{TENANT}:dead    — Failed logs (store only)
     """
     
     def __init__(self):
@@ -62,12 +62,11 @@ class RedisConsumer:
         self.redis_client: Optional[redis.Redis] = None
         self.running = False
         
-        # Queue configuration from environment
-        self.queues = [
-            config.redis_ingest_queue,  # Priority 1: New logs
-            config.redis_clean_queue,   # Priority 2: Pre-normalized
-            config.redis_dead_queue     # Priority 3: Failed logs
-        ]
+        # Dynamic queue discovery
+        self.discovered_queues: List[str] = []
+        self.known_tenants: Set[str] = set()
+        self.last_scan_time = 0.0
+        self.scan_interval = config.redis_queue_scan_interval
         
         # Batch accumulators (one per log type)
         self.batch_ingest: List[Dict] = []
@@ -81,7 +80,8 @@ class RedisConsumer:
             'logs_failed': 0,
             'batches_committed': 0,
             'batch_sizes': [],
-            'processing_times': []
+            'processing_times': [],
+            'tenants_discovered': 0
         }
         
         # Initialize database
@@ -115,6 +115,102 @@ class RedisConsumer:
             self.redis_client.close()
             logger.info("Disconnected from Redis")
     
+    # =========================================================================
+    # TENANT QUEUE DISCOVERY
+    # =========================================================================
+    
+    def _discover_tenant_queues(self):
+        """
+        Scan Redis for tenant-scoped queues.
+        
+        Pattern: logs:*:ingest → discovers tenant IDs
+        Then builds full list: logs:{T}:ingest, logs:{T}:clean, logs:{T}:dead
+        """
+        if not self.redis_client:
+            return
+        
+        try:
+            new_tenants: Set[str] = set()
+            
+            # Scan for all tenant ingest queues
+            for key in self.redis_client.scan_iter(match='logs:*:ingest', count=100):
+                # key format: "logs:EBK:ingest" → extract "EBK"
+                parts = key.split(':')
+                if len(parts) == 3:
+                    tenant_id = parts[1]
+                    new_tenants.add(tenant_id)
+            
+            # Also check for dead and clean queues (tenant may only have dead)
+            for key in self.redis_client.scan_iter(match='logs:*:dead', count=100):
+                parts = key.split(':')
+                if len(parts) == 3:
+                    new_tenants.add(parts[1])
+            
+            for key in self.redis_client.scan_iter(match='logs:*:clean', count=100):
+                parts = key.split(':')
+                if len(parts) == 3:
+                    new_tenants.add(parts[1])
+            
+            # Check if new tenants were discovered
+            if new_tenants != self.known_tenants:
+                added = new_tenants - self.known_tenants
+                removed = self.known_tenants - new_tenants
+                
+                if added:
+                    logger.info(f"New tenants discovered: {added}")
+                if removed:
+                    logger.info(f"Tenants no longer active: {removed}")
+                
+                self.known_tenants = new_tenants
+                
+                # Build queue list: ingest first (priority), then clean, then dead
+                self.discovered_queues = []
+                for tenant in sorted(self.known_tenants):
+                    self.discovered_queues.append(f'logs:{tenant}:ingest')
+                    self.discovered_queues.append(f'logs:{tenant}:clean')
+                    self.discovered_queues.append(f'logs:{tenant}:dead')
+                
+                self.metrics['tenants_discovered'] = len(self.known_tenants)
+                logger.info(
+                    f"Monitoring {len(self.discovered_queues)} queues "
+                    f"across {len(self.known_tenants)} tenants: {sorted(self.known_tenants)}"
+                )
+            
+            self.last_scan_time = time.time()
+            
+        except RedisError as e:
+            logger.error(f"Failed to discover tenant queues: {e}")
+    
+    def _should_rescan(self) -> bool:
+        """Check if it's time to re-scan for new tenants."""
+        return (time.time() - self.last_scan_time) >= self.scan_interval
+    
+    @staticmethod
+    def _get_queue_type(queue_name: str) -> str:
+        """
+        Extract queue type from tenant-scoped queue name.
+        
+        'logs:EBK:ingest' → 'ingest'
+        'logs:EBK:dead'   → 'dead'
+        'logs:EBK:clean'  → 'clean'
+        """
+        parts = queue_name.split(':')
+        if len(parts) == 3:
+            return parts[2]  # ingest, dead, or clean
+        return 'unknown'
+    
+    @staticmethod
+    def _get_queue_tenant(queue_name: str) -> str:
+        """
+        Extract tenant ID from tenant-scoped queue name.
+        
+        'logs:EBK:ingest' → 'EBK'
+        """
+        parts = queue_name.split(':')
+        if len(parts) == 3:
+            return parts[1]
+        return 'unknown'
+    
     def parse_log_message(self, message: str) -> Optional[Dict[str, Any]]:
         """Parse log message from JSON string."""
         try:
@@ -131,22 +227,32 @@ class RedisConsumer:
         """
         Handle dead logs (store only, no analysis).
         
-        Dead logs are malformed or failed validation in Repo1.
-        We store them for audit/debugging but don't analyze.
-        Supports v2.0 schema where tenant_id is at root level.
+        Repo1 dead log schema:
+        {
+            "tenant_id": "EBK",
+            "raw_log": "...",
+            "error_type": "tenant_resolution_failed",
+            "error_message": "Tenant configuration not found: EBK",
+            "vendor": null,
+            "source_info": { ... },
+            "failed_at": "2026-02-19T21:22:12+00:00"
+        }
         """
-        # v2.0 has tenant_id at root, legacy had it in metadata
         tenant_id = (
             log_data.get('tenant_id') or 
             log_data.get('metadata', {}).get('tenant_id', 'unknown')
         )
         
+        # Parse failed_at timestamp
+        failed_at = log_data.get('failed_at')
+        received_at = LogAdapter._parse_timestamp(failed_at) if failed_at else datetime.utcnow()
+        
         self.batch_dead.append({
             'tenant_id': tenant_id,
-            'received_at': datetime.utcnow(),
-            'source_queue': 'dead_logs',
-            'error_type': log_data.get('metadata', {}).get('error') or log_data.get('reason', 'unknown'),
-            'error_message': log_data.get('error', ''),
+            'received_at': received_at,
+            'source_queue': 'dead',
+            'error_type': log_data.get('error_type') or log_data.get('metadata', {}).get('error', 'unknown'),
+            'error_message': log_data.get('error_message') or log_data.get('error', ''),
             'raw_payload': log_data,
             'retry_count': 0
         })
@@ -159,7 +265,7 @@ class RedisConsumer:
         Pipeline: Parse → Normalize → Enrich → Analyze → Batch Store
         """
         try:
-            # 1. Normalize using LogAdapter
+            # 1. Normalize using LogAdapter (handles V1 and V2 schemas)
             normalized = self.log_adapter.normalize(log_data)
             
             # 2. Convert to dict for batch insert
@@ -187,11 +293,12 @@ class RedisConsumer:
             
         except Exception as e:
             logger.error(f"Failed to process ingest log: {e}")
-            # Move to dead letter on failure
             self._handle_dead_log({
-                'reason': 'processing_error',
-                'error': str(e),
-                'original': log_data
+                'tenant_id': log_data.get('tenant_id', 'unknown'),
+                'raw_log': log_data.get('raw_log', ''),
+                'error_type': 'processing_error',
+                'error_message': str(e),
+                'failed_at': datetime.utcnow().isoformat()
             })
             return False
 
@@ -199,14 +306,11 @@ class RedisConsumer:
         """
         Handle clean logs (fast path, already normalized by Repo1).
         
-        These come from Repo1's clean_logs queue in v2.0 schema format.
-        We use LogAdapter to normalize field paths, then batch for insert.
+        These come from Repo1's logs:{TENANT}:clean queue in v2.0 schema format.
         """
         try:
-            # Use LogAdapter to handle v2.0 schema conversion
             normalized = self.log_adapter.normalize(log_data)
             
-            # Convert to dict for batch insert
             log_dict = {
                 'tenant_id': normalized.tenant_id,
                 'timestamp': normalized.timestamp or datetime.utcnow(),
@@ -241,11 +345,9 @@ class RedisConsumer:
         """Check if batch should be flushed (size or timeout)."""
         total_pending = len(self.batch_ingest) + len(self.batch_clean) + len(self.batch_dead)
         
-        # Flush if batch size reached
         if total_pending >= BATCH_SIZE:
             return True
         
-        # Flush if timeout exceeded and we have pending logs
         elapsed_ms = (time.time() - self.last_batch_time) * 1000
         if total_pending > 0 and elapsed_ms >= BATCH_TIMEOUT_MS:
             return True
@@ -259,18 +361,14 @@ class RedisConsumer:
         
         try:
             with db_manager.session_scope() as session:
-                # =========================================================
                 # BATCH INSERT: logs (ingest + clean combined)
-                # =========================================================
                 all_logs = self.batch_ingest + self.batch_clean
                 if all_logs:
                     session.bulk_insert_mappings(NormalizedLog, all_logs)
                     total_inserted += len(all_logs)
                     logger.debug(f"Inserted {len(all_logs)} logs")
                 
-                # =========================================================
                 # BATCH INSERT: dead letters
-                # =========================================================
                 if self.batch_dead:
                     session.bulk_insert_mappings(DeadLetter, self.batch_dead)
                     logger.debug(f"Inserted {len(self.batch_dead)} dead letters")
@@ -290,10 +388,8 @@ class RedisConsumer:
         except Exception as e:
             logger.error(f"Batch insert failed: {e}", exc_info=True)
             self.metrics['logs_failed'] += len(self.batch_ingest) + len(self.batch_clean)
-            # TODO: Implement retry logic with exponential backoff
             
         finally:
-            # Clear batches
             self.batch_ingest.clear()
             self.batch_clean.clear()
             self.batch_dead.clear()
@@ -303,24 +399,18 @@ class RedisConsumer:
         """
         Run intelligence analysis on a batch of logs.
         
-        This calls the analyzer_manager which now uses Redis for state
-        instead of database queries.
+        Uses analyzer_manager with Redis for state.
         """
         for log_dict in logs:
             try:
-                # Create a temporary NormalizedLog object for analyzers
-                # This is lighter than ORM objects
                 class LogProxy:
                     def __init__(self, d):
                         for k, v in d.items():
                             setattr(self, k, v)
                 
                 log_proxy = LogProxy(log_dict)
-                
-                # Run analyzers (Redis-based, O(1) operations)
                 alerts = analyzer_manager.analyze_log(log_proxy)
                 
-                # Store any generated alerts
                 if alerts:
                     self._store_alerts(alerts)
                     
@@ -349,14 +439,16 @@ class RedisConsumer:
             return False
             
         try:
-            if queue_name == config.redis_dead_queue:
+            queue_type = self._get_queue_type(queue_name)
+            
+            if queue_type == 'dead':
                 return self._handle_dead_log(log_data)
-            elif queue_name == config.redis_ingest_queue:
+            elif queue_type == 'ingest':
                 return self._handle_ingest_log(log_data)
-            elif queue_name == config.redis_clean_queue:
+            elif queue_type == 'clean':
                 return self._handle_clean_log(log_data)
             else:
-                logger.warning(f"Unknown queue: {queue_name}")
+                logger.warning(f"Unknown queue type '{queue_type}' from queue: {queue_name}")
                 return False
         except Exception as e:
             logger.error(f"Error processing from {queue_name}: {e}", exc_info=True)
@@ -368,18 +460,36 @@ class RedisConsumer:
             self.connect()
         
         self.running = True
-        logger.info(f"Starting Redis consumer on queues: {', '.join(self.queues)}")
+        
+        # Initial queue discovery
+        self._discover_tenant_queues()
+        
+        if not self.discovered_queues:
+            logger.warning("No tenant queues found. Waiting for tenants to appear...")
+        
         logger.info(f"Batch config: size={BATCH_SIZE}, timeout={BATCH_TIMEOUT_MS}ms")
+        logger.info(f"Queue scan interval: {self.scan_interval}s")
         
         consecutive_errors = 0
         max_consecutive_errors = 10
         
         while self.running:
             try:
-                # =========================================================
-                # BLPOP with short timeout for batch timing
-                # =========================================================
-                result = self.redis_client.blpop(self.queues, timeout=1)
+                # ==========================================================
+                # PERIODIC RESCAN for new tenants
+                # ==========================================================
+                if self._should_rescan():
+                    self._discover_tenant_queues()
+                
+                # ==========================================================
+                # BLPOP across all discovered queues
+                # ==========================================================
+                if not self.discovered_queues:
+                    # No queues yet, wait and rescan
+                    time.sleep(5)
+                    continue
+                
+                result = self.redis_client.blpop(self.discovered_queues, timeout=1)
                 
                 if result:
                     queue_name, message = result
@@ -389,11 +499,10 @@ class RedisConsumer:
                     else:
                         consecutive_errors += 1
                 
-                # =========================================================
+                # ==========================================================
                 # CHECK BATCH FLUSH
-                # =========================================================
+                # ==========================================================
                 if self._should_flush_batch():
-                    # Run analysis before flushing
                     all_logs = self.batch_ingest + self.batch_clean
                     if all_logs:
                         self._run_analysis_on_batch(all_logs)
@@ -409,7 +518,6 @@ class RedisConsumer:
                     self.running = False
                     break
                 
-                # Reconnect
                 logger.info("Attempting to reconnect to Redis...")
                 time.sleep(5)
                 try:
@@ -449,6 +557,7 @@ class RedisConsumer:
         logger.info(f"Total logs processed: {self.metrics['logs_processed']}")
         logger.info(f"Total logs failed: {self.metrics['logs_failed']}")
         logger.info(f"Total batches: {self.metrics['batches_committed']}")
+        logger.info(f"Tenants monitored: {self.metrics['tenants_discovered']}")
         
         if self.metrics['batch_sizes']:
             avg_batch = sum(self.metrics['batch_sizes']) / len(self.metrics['batch_sizes'])
@@ -458,19 +567,23 @@ class RedisConsumer:
             avg_time = sum(self.metrics['processing_times']) / len(self.metrics['processing_times'])
             logger.info(f"Average batch time: {avg_time:.1f}ms")
     
-    def get_queue_size(self, queue_name: Optional[str] = None) -> int:
-        """Get size of queues."""
+    def get_queue_sizes(self) -> Dict[str, int]:
+        """Get size of all discovered queues."""
         if not self.redis_client:
-            return 0
+            return {}
             
         try:
-            if queue_name:
-                return self.redis_client.llen(queue_name)
-            
-            return sum(self.redis_client.llen(q) for q in self.queues)
+            sizes = {}
+            for queue in self.discovered_queues:
+                sizes[queue] = self.redis_client.llen(queue)
+            return sizes
         except RedisError as e:
-            logger.error(f"Failed to get queue size: {e}")
-            return 0
+            logger.error(f"Failed to get queue sizes: {e}")
+            return {}
+    
+    def get_total_queue_size(self) -> int:
+        """Get total items across all queues."""
+        return sum(self.get_queue_sizes().values())
 
 
 # =============================================================================
@@ -482,7 +595,6 @@ def main():
     import signal
     import sys
     
-    # Setup logging
     logging.basicConfig(
         level=getattr(logging, os.getenv('LOG_LEVEL', 'INFO')),
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -490,7 +602,6 @@ def main():
     
     consumer = RedisConsumer()
     
-    # Handle graceful shutdown
     def signal_handler(signum, frame):
         logger.info(f"Received signal {signum}")
         consumer.stop()

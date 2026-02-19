@@ -1,9 +1,4 @@
 """
-Log Adapter Service for Repo1 Schema Normalization.
-
-=============================================================================
-SCHEMA SUPPORT
-=============================================================================
 This adapter handles multiple log formats from Repo1:
 
  1. Repo1 V1 Schema (raw ingest):

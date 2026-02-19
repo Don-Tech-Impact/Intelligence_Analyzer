@@ -622,4 +622,76 @@ class TestLogAdapterRealRepo1Format:
         assert "pfSense filterlog" in result.message
 
 
+
+## Just added 
+class TestLogAdapterV1Schema:
+    """Tests for Repo1 V1 raw ingest schema."""
+
+    def test_v1_schema_detected(self):
+        """V1 schema routes to _normalize_v1."""
+        log = {
+            "schema_version": "v1",
+            "tenant_id": "EBK",
+            "raw_log": "%ASA-6-302013: Built outbound TCP connection",
+            "timestamp": "2026-02-19T20:22:27.068798",
+            "level": "info",
+            "metadata": {
+                "device_type": "cisco_asa",
+                "source_ip": "192.168.1.100"
+            }
+        }
+        result = LogAdapter.normalize(log)
+        assert result.tenant_id == "EBK"
+        assert result.log_type == "raw_ingest"
+        assert result.vendor == "cisco"
+        assert result.source_ip == "192.168.1.100"
+        assert "%ASA-6-302013" in result.message
+
+    def test_v1_device_type_mapping(self):
+        """All device_type values map to correct vendor."""
+        cases = {
+            "cisco_asa": "cisco",
+            "cisco_ios": "cisco",
+            "fortinet": "fortinet",
+            "fortigate": "fortinet",
+            "ubiquiti": "ubiquiti",
+            "pfsense": "pfsense",
+            "generic_syslog": "generic",
+            "unknown_device": "unknown_device",  # Passthrough
+        }
+        for device_type, expected_vendor in cases.items():
+            log = {
+                "schema_version": "v1",
+                "tenant_id": "T1",
+                "raw_log": "test",
+                "metadata": {"device_type": device_type}
+            }
+            result = LogAdapter.normalize(log)
+            assert result.vendor == expected_vendor, f"{device_type} → {result.vendor}"
+
+    def test_v1_raw_log_preserved_as_message(self):
+        """raw_log is stored in message field."""
+        raw = "Feb 19 20:22:27 fw01 %ASA-6-302013: Built outbound TCP"
+        log = {
+            "schema_version": "v1",
+            "tenant_id": "EBK",
+            "raw_log": raw,
+            "metadata": {"device_type": "cisco_asa"}
+        }
+        result = LogAdapter.normalize(log)
+        assert result.message == raw
+
+    def test_v1_original_payload_in_raw_data(self):
+        """Full original V1 payload is stored in raw_data."""
+        log = {
+            "schema_version": "v1",
+            "log_id": "abc-123",
+            "tenant_id": "EBK",
+            "raw_log": "test",
+            "metadata": {"device_type": "cisco_asa", "source_ip": "10.0.0.1"}
+        }
+        result = LogAdapter.normalize(log)
+        assert result.raw_data["log_id"] == "abc-123"
+        assert result.raw_data["metadata"]["source_ip"] == "10.0.0.1"
+
 # Run with: pytest tests/test_log_adapter.py -v

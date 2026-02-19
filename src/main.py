@@ -85,7 +85,7 @@ class SIEMAnalyzer:
         self.api_thread.start()
         
         logger.info("SIEM Analyzer started successfully")
-        logger.info(f"Redis queue: {config.redis_log_queue}")
+        logger.info(f"Redis queue: {config.redis_queue_pattern}")
         logger.info(f"Database: {config.database_type}")
         logger.info(f"Email alerts: {'enabled' if config.email_enabled else 'disabled'}")
         logger.info(f"Reports: {'enabled' if config.report_enabled else 'disabled'}")

@@ -50,9 +50,20 @@ try:
     import redis
     import os
     r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+    print("[OK] Redis") 
     r.ping()
-    queue_len = r.llen("ingest_logs")
-    print(f"[OK] Redis: {queue_len} logs waiting in queue")
+    total = 0
+    tenant = set()
+    for key in r.scan_iter(match='logs:*:ingest', count=100):
+        tenant.add(key.split(":")[1])
+        total += r.llen(key)
+    for key in r.scan_iter(match='logs:*:clean', count=100):
+        total += r.llen(key)
+    for key in r.scan_iter(match='logs:*:dead', count=100):
+        total += r.llen(key)
+    print(f"[OK] Redis: {total} logs across {len(tenant)} tenants: {sorted(tenant)}")
+
+
 except Exception as e:
     print(f"[WARN] Redis: {e}")
 

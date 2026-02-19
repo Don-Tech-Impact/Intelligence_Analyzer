@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, Query, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -29,13 +30,38 @@ from starlette.responses import JSONResponse, HTMLResponse
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 
 limiter = Limiter(key_func=get_remote_address)
+
+@asynccontextmanager
+async def lifespan(app):
+    """FastAPI lifespan handler — runs on startup and shutdown."""
+    # --- Startup ---
+    if db_manager.engine is None:
+        db_manager.initialize()
+    # Create default superadmin if not exists
+    with db_manager.session_scope() as session:
+        admin = session.query(User).filter(User.role == 'superadmin').first()
+        if not admin:
+            from src.utils.auth import get_password_hash
+            default_admin = User(
+                username="admin",
+                password_hash=get_password_hash("admin123"),
+                role="superadmin",
+                tenant_id="system"
+            )
+            session.add(default_admin)
+            session.commit()
+            print("Default superadmin created: admin / admin123")
+    yield
+    # --- Shutdown (cleanup if needed) ---
+
 app = FastAPI(
     title="Intelligence Analyzer API", 
     version="1.0.0",
     description="SIEM Intelligence Engine API - V1",
     docs_url=None,  # Disable built-in docs
     redoc_url="/redoc",
-    openapi_url="/openapi.json"
+    openapi_url="/openapi.json",
+    lifespan=lifespan
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -152,24 +178,7 @@ def get_db():
     finally:
         db.close()
 
-@app.on_event("startup")
-def startup_event():
-    if db_manager.engine is None:
-        db_manager.initialize()
-    # Create default superadmin if not exists
-    with db_manager.session_scope() as session:
-        admin = session.query(User).filter(User.role == 'superadmin').first()
-        if not admin:
-            from src.utils.auth import get_password_hash
-            default_admin = User(
-                username="admin",
-                password_hash=get_password_hash("admin123"),
-                role="superadmin",
-                tenant_id="system"
-            )
-            session.add(default_admin)
-            session.commit()
-            print("Default superadmin created: admin / admin123")
+# Startup logic is handled by the lifespan context manager above.
 
 async def get_current_user(token: str = Depends(oauth2_scheme), token_query: Optional[str] = Query(None, alias="token"), db: Session = Depends(get_db)):
     if not token and token_query:
@@ -556,7 +565,7 @@ def get_dashboard_summary(request: Request, tenant_id: str = "default", db: Sess
     trends = get_trends(tenant_id, db, user)
     top_ips = get_top_ips(tenant_id, 10, db, user)
     protocols = get_protocol_breakdown(tenant_id, db, user)
-    recent_alerts = get_alerts(tenant_id, 5, None, db, user)
+    recent_alerts = get_alerts(request, tenant_id, 5, None, db, user)
     business_insights = get_business_insights(tenant_id, db, user)
     
     # Intelligence Exposure - Enriched metadata
