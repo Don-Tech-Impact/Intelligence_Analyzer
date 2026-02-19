@@ -1,23 +1,27 @@
 """
-Log Adapter Service for Repo1 v2.0 Schema Normalization.
+Log Adapter Service for Repo1 Schema Normalization.
 
 =============================================================================
 SCHEMA SUPPORT
 =============================================================================
 This adapter handles multiple log formats from Repo1:
 
-1. v2.0 Schema (Current Production):
-   - Fields nested under: source, destination, event, network, device
-   - Example: log["source"]["ip"], log["event"]["action"]
+ 1. Repo1 V1 Schema (raw ingest):
+    - Raw syslog in: log["raw_log"]
+    - Metadata:      log["metadata"]["device_type"], log["metadata"]["source_ip"]
 
-2. Legacy 'normalized' Wrapper:
-   - Fields inside: log["normalized"]["source_ip"]
+ 2. v2.0 Schema (Current Production):
+    - Fields nested under: source, destination, event, network, device
+    - Example: log["source"]["ip"], log["event"]["action"]
 
-3. Legacy 'parsed/metadata' Wrapper:
-   - Fields inside: log["parsed"]["src_ip"], log["metadata"]["tenant_id"]
+ 3. Legacy 'normalized' Wrapper:
+    - Fields inside: log["normalized"]["source_ip"]
 
-4. Flat Format:
-   - Direct fields: log["source_ip"], log["action"]
+ 4. Legacy 'parsed/metadata' Wrapper:
+    - Fields inside: log["parsed"]["src_ip"], log["metadata"]["tenant_id"]
+
+ 5. Flat Format:
+    - Direct fields: log["source_ip"], log["action"]
 =============================================================================
 """
 
@@ -33,7 +37,7 @@ class LogAdapter:
     """
     Adapts raw log data from Repo1 to NormalizedLogSchema.
     
-    Supports Repo1 v2.0 schema with nested structures.
+    Supports Repo1 V1 (raw), v2.0 (structured), and legacy formats.
     """
 
     @staticmethod
@@ -42,10 +46,11 @@ class LogAdapter:
         Convert any supported log format to NormalizedLogSchema.
         
         Detection Order:
-        1. Check for v2.0 schema (has 'schema_version' starting with 'v2.')
-        2. Check for 'normalized' wrapper (legacy clean_log format)
-        3. Check for 'parsed' wrapper (legacy ingest_log format)
-        4. Assume flat or nested SIF format
+        1. Check for V1 schema (has 'schema_version' starting with 'v1')
+        2. Check for v2.0 schema (has 'schema_version' starting with 'v2.')
+        3. Check for 'normalized' wrapper (legacy clean_log format)
+        4. Check for 'parsed' wrapper (legacy ingest_log format)
+        5. Assume flat or nested SIF format
         
         Args:
             raw_log: Raw log dictionary from Redis queue
@@ -57,31 +62,35 @@ class LogAdapter:
             schema_version = raw_log.get('schema_version', '')
             
             # =================================================================
-            # CASE 1: Repo1 v2.0 Schema (PRIORITY - most common in production)
+            # CASE 1: Repo1 V1 Schema (raw ingest — has raw_log string)
+            # =================================================================
+            if schema_version.startswith('v1'):
+                return LogAdapter._normalize_v1(raw_log)
+            
+            # =================================================================
+            # CASE 2: Repo1 v2.0 Schema (parsed and structured)
             # =================================================================
             if schema_version.startswith('v2.'):
                 return LogAdapter._normalize_v2(raw_log)
             
             # =================================================================
-            # CASE 2: Legacy 'normalized' Wrapper
+            # CASE 3: Legacy 'normalized' Wrapper
             # =================================================================
             if 'normalized' in raw_log and isinstance(raw_log.get('normalized'), dict):
                 inner = raw_log['normalized']
-                # Check if inner is v2.0
                 if inner.get('schema_version', '').startswith('v2.'):
                     return LogAdapter._normalize_v2(inner)
                 return LogAdapter._normalize_flat(inner, raw_log)
             
             # =================================================================
-            # CASE 3: Legacy 'parsed/metadata' Wrapper
+            # CASE 4: Legacy 'parsed/metadata' Wrapper
             # =================================================================
             if 'parsed' in raw_log and isinstance(raw_log.get('parsed'), dict):
                 return LogAdapter._normalize_parsed_wrapper(raw_log)
             
             # =================================================================
-            # CASE 4: Nested SIF or Flat Format (detect by structure)
+            # CASE 5: Nested SIF or Flat Format (detect by structure)
             # =================================================================
-            # If has nested objects like 'source', 'destination', 'event'
             if any(key in raw_log for key in ['source', 'destination', 'event']):
                 return LogAdapter._normalize_v2(raw_log)
             
@@ -91,6 +100,78 @@ class LogAdapter:
         except Exception as e:
             logger.error(f"Log normalization failed: {e}", exc_info=True)
             return LogAdapter._create_error_log(raw_log, str(e))
+
+    # =========================================================================
+    # V1 SCHEMA (Repo1 raw ingest)
+    # =========================================================================
+
+    @staticmethod
+    def _normalize_v1(log: Dict[str, Any]) -> NormalizedLogSchema:
+        """
+        Normalize Repo1 V1 schema (raw ingest).
+        
+        V1 Structure (from logs:{TENANT}:ingest):
+        {
+            "schema_version": "v1",
+            "log_id": "uuid",
+            "tenant_id": "EBK",
+            "api_key_id": "...",
+            "raw_log": "%ASA-6-302013: Built outbound TCP connection...",
+            "timestamp": "2026-02-19T20:22:27.068798",
+            "level": "info",
+            "metadata": {
+                "tenant_id": "EBK",
+                "device_type": "cisco_asa",
+                "source_ip": "192.168.1.100",
+                "environment": "production",
+                "tags": []
+            }
+        }
+        """
+        metadata = log.get('metadata', {})
+        
+        # Map device_type to vendor name
+        device_type = metadata.get('device_type', 'unknown')
+        vendor = LogAdapter._map_device_type_to_vendor(device_type)
+        
+        return NormalizedLogSchema(
+            tenant_id=str(log.get('tenant_id', 'default')).strip('[]'),
+            company_id=log.get('tenant_id'),
+            device_id=metadata.get('device_id') or f"{vendor}_{device_type}",
+            timestamp=LogAdapter._parse_timestamp(log.get('timestamp')),
+            source_ip=metadata.get('source_ip'),
+            destination_ip=None,
+            source_port=None,
+            destination_port=None,
+            protocol=None,
+            action=None,
+            log_type='raw_ingest',
+            vendor=vendor,
+            device_hostname=None,
+            severity=log.get('level', 'info'),
+            message=log.get('raw_log', ''),
+            raw_data=log,
+            business_context={}
+        )
+
+    @staticmethod
+    def _map_device_type_to_vendor(device_type: str) -> str:
+        """Map Repo1 device_type to vendor name."""
+        mapping = {
+            'cisco_asa': 'cisco',
+            'cisco_ios': 'cisco',
+            'pfsense': 'pfsense',
+            'ubiquiti': 'ubiquiti',
+            'ubiquiti_edge': 'ubiquiti',
+            'fortinet': 'fortinet',
+            'fortigate': 'fortinet',
+            'generic_syslog': 'generic',
+        }
+        return mapping.get(device_type, device_type or 'unknown')
+
+    # =========================================================================
+    # V2 SCHEMA (Repo1 parsed/structured)
+    # =========================================================================
 
     @staticmethod
     def _normalize_v2(log: Dict[str, Any]) -> NormalizedLogSchema:
@@ -114,7 +195,6 @@ class LogAdapter:
             "raw": {"message": "[original log line]"}
         }
         """
-        # Extract nested objects with safe defaults
         event = log.get('event', {})
         source = log.get('source', {})
         destination = log.get('destination', {})
@@ -125,50 +205,33 @@ class LogAdapter:
         business_context = log.get('business_context', {})
         raw = log.get('raw', {})
         
-        # Parse timestamp
         timestamp = LogAdapter._parse_timestamp(
             event.get('timestamp') or metadata.get('parsed_at') or log.get('timestamp')
         )
         
-        # Map to flat schema
         return NormalizedLogSchema(
-            # Identity
             tenant_id=str(log.get('tenant_id', 'default')).strip('[]'),
-            company_id=log.get('tenant_id'),  # Map tenant to company for compatibility
+            company_id=log.get('tenant_id'),
             device_id=f"{device.get('vendor', 'unknown')}_{device.get('hostname', 'unknown')}",
-            
-            # Timing
             timestamp=timestamp,
-            
-            # Source (v2.0: source.ip, source.port)
             source_ip=source.get('ip'),
             source_port=LogAdapter._safe_int(source.get('port')),
-            
-            # Destination (v2.0: destination.ip, destination.port)
             destination_ip=destination.get('ip'),
             destination_port=LogAdapter._safe_int(destination.get('port')),
-            
-            # Network (v2.0: network.protocol)
             protocol=network.get('protocol'),
-            
-            # Event (v2.0: event.action, event.category, event.severity)
             action=event.get('action') or event.get('outcome'),
             log_type=event.get('category', 'generic'),
             severity=event.get('severity', 'low'),
-            
-            # Device (v2.0: vendor at root, device.hostname)
             vendor=log.get('vendor') or device.get('vendor', 'unknown'),
             device_hostname=device.get('hostname'),
-            
-            # Content (v2.0: raw.message OR metadata.raw_log for real Repo1 logs)
             message=raw.get('message') or metadata.get('raw_log', ''),
-            
-            # Store complete original log
             raw_data=log,
-            
-            # Business context (pass through)
             business_context=business_context
         )
+
+    # =========================================================================
+    # LEGACY FORMATS
+    # =========================================================================
 
     @staticmethod
     def _normalize_parsed_wrapper(log: Dict[str, Any]) -> NormalizedLogSchema:
@@ -231,6 +294,10 @@ class LogAdapter:
             log_type='error'
         )
 
+    # =========================================================================
+    # UTILITIES
+    # =========================================================================
+
     @staticmethod
     def _parse_timestamp(ts: Any) -> datetime:
         """Parse timestamp from various formats."""
@@ -248,11 +315,9 @@ class LogAdapter:
         
         if isinstance(ts, str):
             try:
-                # Handle ISO 8601 with Z suffix
                 return datetime.fromisoformat(ts.replace('Z', '+00:00'))
             except ValueError:
                 try:
-                    # Try common formats
                     for fmt in ['%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S']:
                         try:
                             return datetime.strptime(ts, fmt)
