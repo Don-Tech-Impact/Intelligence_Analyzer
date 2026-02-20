@@ -14,8 +14,7 @@ const VIEWS = {
     'log-stream': { title: 'Live Traffic Stream', subtitle: 'Global stream of incoming endpoint telemetry' },
     analytics: { title: 'Advanced Analytics', subtitle: 'Deep dive into security trends and business insights' },
     reports: { title: 'Report Archive', subtitle: 'View and manage generated security summaries' },
-    settings: { title: 'System Settings', subtitle: 'Configure analyzers and tenant parameters' },
-    admin: { title: 'Superadmin Dashboard', subtitle: 'Manage tenants and user accounts' }
+    settings: { title: 'System Settings', subtitle: 'Configure analyzers and tenant parameters' }
 };
 
 let businessHoursChart, weekendActivityChart, vendorBreakdownChart;
@@ -25,14 +24,10 @@ let streamLogs = [];
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
     // Role based setup
-    const role = localStorage.getItem('siem_role');
-    if (role === 'superadmin') populateAdminTenantDropdown();
-
     initCharts();
     initAnalyticsCharts();
     initBusinessCharts();
     setupProfile();
-    await fetchTenants();
     fetchData();
     setInterval(fetchData, 5000); // 5s live polling
     setInterval(fetchStreamData, 2000); // 2s for "live" feel
@@ -90,22 +85,6 @@ async function authenticatedFetch(url, options = {}) {
     return response;
 }
 
-async function fetchTenants() {
-    try {
-        const res = await authenticatedFetch(`${API_BASE_URL}/tenants`);
-        if (res.ok) {
-            const tenants = await res.json();
-            const dropdown = document.getElementById('tenant-dropdown');
-            dropdown.innerHTML = '';
-            tenants.forEach(t => {
-                const opt = document.createElement('option');
-                opt.value = t.tenant_id;
-                opt.textContent = t.name;
-                dropdown.appendChild(opt);
-            });
-        }
-    } catch (e) { console.error('Tenant fetch failed', e); }
-}
 
 async function fetchData() {
     try {
@@ -284,43 +263,6 @@ async function saveSettings(e) {
     if (res && res.ok) alert('Configuration updated successfully!');
 }
 
-// Admin Functions
-async function adminCreateTenant(e) {
-    e.preventDefault();
-    const name = document.getElementById('admin-tenant-name').value;
-    const id = document.getElementById('admin-tenant-id').value;
-
-    const res = await authenticatedFetch(`${API_BASE_URL}/admin/tenants?name=${name}&tenant_id=${id}`, {
-        method: 'POST'
-    });
-    if (res && res.ok) {
-        alert('Tenant created successfully');
-        fetchTenants(); // Refresh main dropdown
-        populateAdminTenantDropdown(); // Refresh user creation dropdown
-    }
-}
-
-async function adminCreateUser(e) {
-    e.preventDefault();
-    const user = document.getElementById('admin-user-name').value;
-    const pass = document.getElementById('admin-user-pass').value;
-    const tenant = document.getElementById('admin-user-tenant').value;
-
-    const res = await authenticatedFetch(`${API_BASE_URL}/admin/users?username=${user}&password=${pass}&tenant_id=${tenant}`, {
-        method: 'POST'
-    });
-    if (res && res.ok) alert('Business user created successfully');
-}
-
-async function populateAdminTenantDropdown() {
-    const res = await authenticatedFetch(`${API_BASE_URL}/tenants`);
-    if (res && res.ok) {
-        const tenants = await res.json();
-        const dropdown = document.getElementById('admin-user-tenant');
-        if (!dropdown) return;
-        dropdown.innerHTML = tenants.map(t => `<option value="${t.tenant_id}">${t.name}</option>`).join('');
-    }
-}
 
 function updateStats(stats) {
     document.getElementById('stats-total-logs').textContent = stats.total_logs.toLocaleString();
@@ -401,10 +343,6 @@ function switchView(viewId) {
     fetchData();
 }
 
-function handleTenantChange() {
-    currentTenant = document.getElementById('tenant-dropdown').value;
-    fetchData();
-}
 
 // Chart Initializers
 function initCharts() {

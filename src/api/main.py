@@ -8,7 +8,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 
 from src.core.database import db_manager
-from src.models.database import NormalizedLog, Alert, ThreatIntelligence, Report, Tenant, User
+from src.models.database import NormalizedLog, Alert, ThreatIntelligence, Report, User
 from src.utils.auth import get_password_hash, verify_password, create_access_token, decode_access_token
 
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -203,9 +203,6 @@ def superadmin_only(user: User = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Not enough permissions")
     return user
 
-class LoginRequest(BaseModel):
-    username: str
-    password: str
 
 @app.post("/auth/login")
 @limiter.limit("5/minute")
@@ -232,46 +229,6 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db
         }
     }
 
-# Admin Endpoints
-@app.post("/admin/tenants")
-def create_tenant(name: str, tenant_id: str, db: Session = Depends(get_db), admin: User = Depends(superadmin_only)):
-    existing = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Tenant ID already exists")
-    
-    new_tenant = Tenant(tenant_id=tenant_id, name=name)
-    db.add(new_tenant)
-    db.commit()
-    return {"status": "success", "tenant_id": tenant_id}
-
-@app.post("/admin/users")
-def create_business_user(username: str, password: str, tenant_id: str, db: Session = Depends(get_db), admin: User = Depends(superadmin_only)):
-    existing = db.query(User).filter(User.username == username).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Username already exists")
-    
-    new_user = User(
-        username=username,
-        password_hash=get_password_hash(password),
-        role="business",
-        tenant_id=tenant_id
-    )
-    db.add(new_user)
-    db.commit()
-    return {"status": "success", "username": username}
-
-@app.get("/health")
-def health_check():
-    return {"status": "success", "data": {"status": "healthy", "timestamp": datetime.utcnow()}}
-
-@app.get("/tenants")
-def get_tenants(db: Session = Depends(get_db)):
-    """Get list of all active tenants."""
-    tenants = db.query(Tenant).filter(Tenant.is_active == True).all()
-    # If no tenants exist, return a default one
-    if not tenants:
-        return [{"tenant_id": "default", "name": "Default Tenant"}]
-    return tenants
 
 @app.get("/stats")
 def get_stats(tenant_id: str = "default", db: Session = Depends(get_db), user: User = Depends(get_current_user)):

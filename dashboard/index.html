@@ -33,8 +33,7 @@
                 <li><a href="#" onclick="switchView('reports')"><i data-lucide="file-text"></i> Reports</a></li>
                 <li id="nav-settings"><a href="#" onclick="switchView('settings')"><i data-lucide="settings"></i>
                         Settings</a></li>
-                <li id="nav-admin" style="display: none;"><a href="#" onclick="switchView('admin')"><i
-                            data-lucide="shield-alert"></i> Superadmin</a></li>
+
             </ul>
             <div class="sidebar-footer"
                 style="padding: 1.5rem; border-top: 1px solid var(--glass-border); margin-top: auto;">
@@ -392,46 +391,7 @@
                     </table>
                 </div>
             </div>
-            <div id="admin-view" class="dashboard-view">
-                <div class="analytics-grid">
-                    <div class="settings-container glass">
-                        <h3>Create New Business (Tenant)</h3>
-                        <form onsubmit="adminCreateTenant(event)">
-                            <div class="form-group">
-                                <label>Business Name</label>
-                                <input type="text" id="admin-tenant-name" class="glass-input" required>
-                            </div>
-                            <div class="form-group">
-                                <label>Tenant ID (Short Identifier)</label>
-                                <input type="text" id="admin-tenant-id" class="glass-input"
-                                    placeholder="e.g. university-a" required>
-                            </div>
-                            <button type="submit" class="btn-primary" style="margin-top: 1rem;">Provision
-                                Tenant</button>
-                        </form>
-                    </div>
-                    <div class="settings-container glass">
-                        <h3>Create Business User</h3>
-                        <form onsubmit="adminCreateUser(event)">
-                            <div class="form-group">
-                                <label>Username</label>
-                                <input type="text" id="admin-user-name" class="glass-input" required>
-                            </div>
-                            <div class="form-group">
-                                <label>Password</label>
-                                <input type="password" id="admin-user-pass" class="glass-input" required>
-                            </div>
-                            <div class="form-group">
-                                <label>Assign to Tenant</label>
-                                <select id="admin-user-tenant" class="glass-input" required>
-                                    <!-- Populated by JS -->
-                                </select>
-                            </div>
-                            <button type="submit" class="btn-primary" style="margin-top: 1rem;">Create User</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
+
         </main>
     </div>
 
@@ -441,11 +401,6 @@
 
         // Hide/Show elements based on role
         const role = localStorage.getItem('siem_role');
-        if (role === 'superadmin') {
-            document.getElementById('nav-admin').style.display = 'block';
-        } else {
-            document.querySelector('.tenant-selector').style.display = 'none';
-        }
 
         function logout() {
             localStorage.clear();
