@@ -9,7 +9,6 @@ from src.core.database import db_manager
 from src.models.database import Alert, NormalizedLog
 from src.services.analytics import AnalyticsService
 from src.services.assets import AssetService
-from src.utils.auth import get_current_user
 from src.models.schemas import ApiResponse
 
 # Create V1 router
@@ -22,9 +21,9 @@ def get_db():
         yield session
 
 
-# Dependency for getting tenant_id from current user
-def get_tenant_id(current_user=Depends(get_current_user)) -> str:
-    return current_user.tenant_id
+# Tenant ID is passed as a query parameter (auth handled by Repo 1)
+def get_tenant_id(tenant_id: str = Query("default")) -> str:
+    return tenant_id
 
 
 # ============================================

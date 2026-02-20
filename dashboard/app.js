@@ -33,16 +33,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     setInterval(fetchStreamData, 2000); // 2s for "live" feel
 });
 
-async function authenticatedFetch(url, options = {}) {
-    const token = localStorage.getItem('siem_token');
-    if (!token) {
-        window.location.href = 'login.html';
-        return;
-    }
-
+async function apiFetch(url, options = {}) {
     const defaultOptions = {
         headers: {
-            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
         }
     };
@@ -57,11 +50,6 @@ async function authenticatedFetch(url, options = {}) {
     };
 
     const response = await fetch(url, combinedOptions);
-    if (response.status === 401) {
-        localStorage.clear();
-        window.location.href = 'login.html';
-        return;
-    }
 
     // Standard Envelope Handling for Dashboard compatibility
     if (response.ok) {
@@ -69,8 +57,6 @@ async function authenticatedFetch(url, options = {}) {
         try {
             const body = await clone.json();
             if (body && body.status === "success" && body.hasOwnProperty('data')) {
-                // If it's a standard envelope, return a new "mock" response object 
-                // that .json() returns the actual data payload
                 return {
                     ok: true,
                     status: response.status,
@@ -99,20 +85,20 @@ async function fetchData() {
 }
 
 async function fetchOverviewData() {
-    const stats = await (await authenticatedFetch(`${API_BASE_URL}/stats?tenant_id=${currentTenant}`)).json();
+    const stats = await (await apiFetch(`${API_BASE_URL}/stats?tenant_id=${currentTenant}`)).json();
     updateStats(stats);
     updateDistributionChart(stats.severity_breakdown);
 
-    const alerts = await (await authenticatedFetch(`${API_BASE_URL}/alerts?tenant_id=${currentTenant}&limit=5`)).json();
+    const alerts = await (await apiFetch(`${API_BASE_URL}/alerts?tenant_id=${currentTenant}&limit=5`)).json();
     populateTable('overview-alerts-body', alerts, 'mini');
 
-    const trends = await (await authenticatedFetch(`${API_BASE_URL}/trends?tenant_id=${currentTenant}`)).json();
+    const trends = await (await apiFetch(`${API_BASE_URL}/trends?tenant_id=${currentTenant}`)).json();
     updateVolumeChart(trends);
 }
 
 async function fetchAlertsData() {
     const sev = document.getElementById('filter-severity').value;
-    const alerts = await (await authenticatedFetch(`${API_BASE_URL}/alerts?tenant_id=${currentTenant}&limit=50${sev ? `&severity=${sev}` : ''}`)).json();
+    const alerts = await (await apiFetch(`${API_BASE_URL}/alerts?tenant_id=${currentTenant}&limit=50${sev ? `&severity=${sev}` : ''}`)).json();
     populateTable('full-alerts-body', alerts, 'full');
 }
 
@@ -126,15 +112,15 @@ async function fetchLogsData() {
     if (severity) url += `&severity=${severity}`;
     if (search) url += `&search=${search}`;
 
-    const logs = await (await authenticatedFetch(url)).json();
+    const logs = await (await apiFetch(url)).json();
     populateLogsTable(logs);
 }
 
 async function fetchAnalyticsData() {
     try {
-        const ipRes = await authenticatedFetch(`${API_BASE_URL}/analytics/top-ips?tenant_id=${currentTenant}`);
-        const protoRes = await authenticatedFetch(`${API_BASE_URL}/analytics/protocols?tenant_id=${currentTenant}`);
-        const businessRes = await authenticatedFetch(`${API_BASE_URL}/analytics/business-insights?tenant_id=${currentTenant}`);
+        const ipRes = await apiFetch(`${API_BASE_URL}/analytics/top-ips?tenant_id=${currentTenant}`);
+        const protoRes = await apiFetch(`${API_BASE_URL}/analytics/protocols?tenant_id=${currentTenant}`);
+        const businessRes = await apiFetch(`${API_BASE_URL}/analytics/business-insights?tenant_id=${currentTenant}`);
 
         if (ipRes && ipRes.ok && protoRes && protoRes.ok && businessRes && businessRes.ok) {
             const ipData = await ipRes.json();
@@ -167,7 +153,7 @@ async function fetchReportsData() {
     if (start) url += `&start_date=${start}`;
     if (end) url += `&end_date=${end}`;
 
-    const res = await authenticatedFetch(url);
+    const res = await apiFetch(url);
     if (res && res.ok) {
         const reports = await res.json();
         populateReportsTable(reports);
@@ -176,7 +162,7 @@ async function fetchReportsData() {
 
 async function fetchStreamData() {
     // Only fetch if on log-stream view OR if we want background buffering
-    const res = await authenticatedFetch(`${API_BASE_URL}/logs?tenant_id=${currentTenant}&limit=20`);
+    const res = await apiFetch(`${API_BASE_URL}/logs?tenant_id=${currentTenant}&limit=20`);
     if (res && res.ok) {
         const logs = await res.json();
         // Reverse to show newest at bottom for "stream" feel
@@ -233,13 +219,12 @@ function populateReportsTable(reports) {
 }
 
 async function downloadReport(id) {
-    const token = localStorage.getItem('siem_token');
-    window.open(`${API_BASE_URL}/reports/${id}/download?token=${token}`, '_blank');
+    window.open(`${API_BASE_URL}/reports/${id}/download`, '_blank');
 }
 
 async function fetchSettingsData() {
     // Only fetch if form is not dirty
-    const res = await authenticatedFetch(`${API_BASE_URL}/config`);
+    const res = await apiFetch(`${API_BASE_URL}/config`);
     if (res && res.ok) {
         const config = await res.json();
         document.getElementById('bf-threshold').value = config.brute_force_threshold;
@@ -255,7 +240,7 @@ async function saveSettings(e) {
         port_scan_threshold: document.getElementById('ps-threshold').value,
         log_level: document.getElementById('log-level').value
     };
-    const res = await authenticatedFetch(`${API_BASE_URL}/config`, {
+    const res = await apiFetch(`${API_BASE_URL}/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -308,15 +293,11 @@ function populateLogsTable(logs) {
 }
 
 function setupProfile() {
-    const user = localStorage.getItem('siem_user') || 'Admin';
-    const role = localStorage.getItem('siem_role') || 'Tenant';
-    const tenant = localStorage.getItem('siem_tenant') || '-';
+    document.getElementById('profile-username').textContent = 'Analyst';
+    document.getElementById('profile-role').textContent = 'SOC Operator';
 
-    document.getElementById('profile-username').textContent = user;
-    document.getElementById('profile-role').textContent = role.charAt(0).toUpperCase() + role.slice(1);
-
-    document.getElementById('menu-user').textContent = user;
-    document.getElementById('menu-tenant').textContent = `ID: ${tenant}`;
+    document.getElementById('menu-user').textContent = 'Analyst';
+    document.getElementById('menu-tenant').textContent = `Tenant: ${currentTenant}`;
 }
 
 function toggleProfileMenu() {

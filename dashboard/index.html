@@ -8,12 +8,6 @@
     <link rel="stylesheet" href="styles.css">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-    <script>
-        // Auth check before anything else
-        if (!localStorage.getItem('siem_token')) {
-            window.location.href = 'login.html';
-        }
-    </script>
 </head>
 
 <body>
@@ -35,12 +29,6 @@
                         Settings</a></li>
 
             </ul>
-            <div class="sidebar-footer"
-                style="padding: 1.5rem; border-top: 1px solid var(--glass-border); margin-top: auto;">
-                <button class="btn-secondary" onclick="logout()" style="width: 100%; justify-content: center;">
-                    <i data-lucide="log-out" size="16"></i> Logout
-                </button>
-            </div>
         </aside>
 
         <main>
@@ -87,8 +75,6 @@
                                 </div>
                                 <a href="#" onclick="switchView('settings')"><i data-lucide="settings" size="14"></i>
                                     Account Settings</a>
-                                <a href="#" onclick="logout()" style="color: var(--danger);"><i data-lucide="log-out"
-                                        size="14"></i> Sign Out</a>
                             </div>
                         </div>
                     </div>
@@ -398,14 +384,6 @@
     <script src="app.js"></script>
     <script>
         lucide.createIcons();
-
-        // Hide/Show elements based on role
-        const role = localStorage.getItem('siem_role');
-
-        function logout() {
-            localStorage.clear();
-            window.location.href = 'login.html';
-        }
     </script>
 </body>
 

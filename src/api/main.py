@@ -8,10 +8,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 
 from src.core.database import db_manager
-from src.models.database import NormalizedLog, Alert, ThreatIntelligence, Report, User
-from src.utils.auth import get_password_hash, verify_password, create_access_token, decode_access_token
-
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from src.models.database import NormalizedLog, Alert, ThreatIntelligence, Report
 from pydantic import BaseModel
 from src.models.schemas import AlertUpdateSchema, DashboardSummarySchema, ApiResponse
 from src.services.log_ingestion import AnalysisPipeline
@@ -27,8 +24,6 @@ from slowapi.middleware import SlowAPIMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, HTMLResponse
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
-
 limiter = Limiter(key_func=get_remote_address)
 
 @asynccontextmanager
@@ -37,20 +32,6 @@ async def lifespan(app):
     # --- Startup ---
     if db_manager.engine is None:
         db_manager.initialize()
-    # Create default superadmin if not exists
-    with db_manager.session_scope() as session:
-        admin = session.query(User).filter(User.role == 'superadmin').first()
-        if not admin:
-            from src.utils.auth import get_password_hash
-            default_admin = User(
-                username="admin",
-                password_hash=get_password_hash("admin123"),
-                role="superadmin",
-                tenant_id="system"
-            )
-            session.add(default_admin)
-            session.commit()
-            print("Default superadmin created: admin / admin123")
     yield
     # --- Shutdown (cleanup if needed) ---
 
@@ -179,64 +160,12 @@ def get_db():
         db.close()
 
 # Startup logic is handled by the lifespan context manager above.
-
-async def get_current_user(token: str = Depends(oauth2_scheme), token_query: Optional[str] = Query(None, alias="token"), db: Session = Depends(get_db)):
-    if not token and token_query:
-        token = token_query
-    
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        
-    username: str = payload.get("sub")
-    user = db.query(User).filter(User.username == username).first()
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-    return user
-
-def superadmin_only(user: User = Depends(get_current_user)):
-    if user.role != 'superadmin':
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-    return user
-
-
-@app.post("/auth/login")
-@limiter.limit("5/minute")
-def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    print(f"Login attempt for user: {form_data.username}")
-    user = db.query(User).filter(User.username == form_data.username).first()
-    if not user:
-        print(f"User {form_data.username} not found in DB")
-        raise HTTPException(status_code=401, detail="Incorrect username or password")
-    
-    if not verify_password(form_data.password, user.password_hash):
-        print(f"Password verification failed for user: {form_data.username}")
-        raise HTTPException(status_code=401, detail="Incorrect username or password")
-    
-    print(f"Login successful for user: {form_data.username}")
-    access_token = create_access_token(data={"sub": user.username, "role": user.role, "tenant_id": user.tenant_id})
-    return {
-        "status": "success",
-        "data": {
-            "access_token": access_token, 
-            "token_type": "bearer", 
-            "role": user.role, 
-            "tenant_id": user.tenant_id
-        }
-    }
+# Authentication removed — managed by Repo 1 (Afric Analyzer).
 
 
 @app.get("/stats")
-def get_stats(tenant_id: str = "default", db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def get_stats(tenant_id: str = "default", db: Session = Depends(get_db)):
     """Get high-level statistics."""
-    # Enforce tenant isolation
-    if user.role != 'superadmin':
-        tenant_id = user.tenant_id
-    
     query_logs = db.query(NormalizedLog).filter(NormalizedLog.tenant_id == tenant_id)
     query_alerts = db.query(Alert).filter(Alert.tenant_id == tenant_id)
     
@@ -271,13 +200,9 @@ def get_alerts(
     tenant_id: str = "default",
     limit: int = 50, 
     severity: Optional[str] = None, 
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """Get recent alerts."""
-    if user.role != 'superadmin':
-        tenant_id = user.tenant_id
-        
     query = db.query(Alert).filter(Alert.tenant_id == tenant_id)
     if severity:
         query = query.filter(Alert.severity == severity)
@@ -296,13 +221,9 @@ def get_logs(
     device: Optional[str] = None,
     severity: Optional[str] = None,
     search: Optional[str] = None,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """Get recent logs with enhanced filtering and search."""
-    if user.role != 'superadmin':
-        tenant_id = user.tenant_id
-        
     query = db.query(NormalizedLog).filter(NormalizedLog.tenant_id == tenant_id)
     if vendor:
         query = query.filter(NormalizedLog.vendor == vendor)
@@ -324,13 +245,9 @@ def list_reports(
     report_type: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    db: Session = Depends(get_db), 
-    user: User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """List generated reports for a tenant with filtering."""
-    if user.role != 'superadmin':
-        tenant_id = user.tenant_id
-    
     query = db.query(Report).filter(Report.tenant_id == tenant_id)
     if report_type:
         query = query.filter(Report.report_type == report_type)
@@ -345,17 +262,12 @@ def list_reports(
 @app.get("/reports/{report_id}/download")
 def download_report(
     report_id: int, 
-    token: Optional[str] = Query(None),
-    db: Session = Depends(get_db), 
-    user: Optional[User] = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
-    """Download a specific report file. Supports token via query param for browser downloads."""
+    """Download a specific report file."""
     report = db.query(Report).filter(Report.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
-    
-    if user.role != 'superadmin' and report.tenant_id != user.tenant_id:
-        raise HTTPException(status_code=403, detail="Access denied")
     
     if not os.path.exists(report.file_path):
         raise HTTPException(status_code=404, detail="Report file missing on server")
@@ -364,11 +276,8 @@ def download_report(
     return FileResponse(report.file_path, filename=os.path.basename(report.file_path))
 
 @app.get("/analytics/business-insights")
-def get_business_insights(tenant_id: str = "default", db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def get_business_insights(tenant_id: str = "default", db: Session = Depends(get_db)):
     """Analyze logs based on business context (hours/days)."""
-    if user.role != 'superadmin':
-        tenant_id = user.tenant_id
-        
     # Get last 7 days of logs for more stable insights
     since = datetime.utcnow() - timedelta(days=7)
     logs = db.query(NormalizedLog).filter(
@@ -409,11 +318,8 @@ def get_business_insights(tenant_id: str = "default", db: Session = Depends(get_
     return {"status": "success", "data": insights}
 
 @app.get("/trends")
-def get_trends(tenant_id: str = "default", db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def get_trends(tenant_id: str = "default", db: Session = Depends(get_db)):
     """Get data for activity charts."""
-    if user.role != 'superadmin':
-        tenant_id = user.tenant_id
-        
     now = datetime.utcnow()
     last_24h = now - timedelta(hours=24)
     
@@ -446,11 +352,8 @@ def get_trends(tenant_id: str = "default", db: Session = Depends(get_db), user: 
     }
 
 @app.get("/analytics/top-ips")
-def get_top_ips(tenant_id: str = "default", limit: int = 10, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def get_top_ips(tenant_id: str = "default", limit: int = 10, db: Session = Depends(get_db)):
     """Get top source and destination IPs."""
-    if user.role != 'superadmin':
-        tenant_id = user.tenant_id
-        
     top_sources = db.query(NormalizedLog.source_ip, func.count(NormalizedLog.id).label('count'))\
         .filter(NormalizedLog.tenant_id == tenant_id)\
         .group_by(NormalizedLog.source_ip).order_by(desc('count')).limit(limit).all()
@@ -468,11 +371,8 @@ def get_top_ips(tenant_id: str = "default", limit: int = 10, db: Session = Depen
     }
 
 @app.get("/analytics/protocols")
-def get_protocol_breakdown(tenant_id: str = "default", db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def get_protocol_breakdown(tenant_id: str = "default", db: Session = Depends(get_db)):
     """Get protocol distribution."""
-    if user.role != 'superadmin':
-        tenant_id = user.tenant_id
-        
     protocols = db.query(NormalizedLog.protocol, func.count(NormalizedLog.id).label('count'))\
         .filter(NormalizedLog.tenant_id == tenant_id)\
         .group_by(NormalizedLog.protocol).all()
@@ -481,8 +381,8 @@ def get_protocol_breakdown(tenant_id: str = "default", db: Session = Depends(get
 
 
 @app.get("/config")
-def get_siem_config(user: User = Depends(superadmin_only)):
-    """Get current SIEM configuration (Superadmin only)."""
+def get_siem_config():
+    """Get current SIEM configuration."""
     from src.core.config import config as siem_config
     return {
         "brute_force_threshold": siem_config.brute_force_threshold,
@@ -492,7 +392,7 @@ def get_siem_config(user: User = Depends(superadmin_only)):
     }
 
 @app.post("/config")
-def update_siem_config(new_config: dict, user: User = Depends(superadmin_only)):
+def update_siem_config(new_config: dict):
     """Update SIEM configuration and persist to yaml."""
     from src.core.config import config as siem_config
     try:
@@ -509,21 +409,18 @@ def update_siem_config(new_config: dict, user: User = Depends(superadmin_only)):
 
 @app.get("/api/dashboard-summary")
 @limiter.limit("10/minute")
-def get_dashboard_summary(request: Request, tenant_id: str = "default", db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def get_dashboard_summary(request: Request, tenant_id: str = "default", db: Session = Depends(get_db)):
     """
     Get a comprehensive summary for the dashboard in a single request.
     This reduces the number of initial API calls needed by the React frontend.
     """
-    if user.role != 'superadmin':
-        tenant_id = user.tenant_id
-        
     # Reuse existing logic to compile data
-    stats = get_stats(tenant_id, db, user)
-    trends = get_trends(tenant_id, db, user)
-    top_ips = get_top_ips(tenant_id, 10, db, user)
-    protocols = get_protocol_breakdown(tenant_id, db, user)
-    recent_alerts = get_alerts(request, tenant_id, 5, None, db, user)
-    business_insights = get_business_insights(tenant_id, db, user)
+    stats = get_stats(tenant_id, db)
+    trends = get_trends(tenant_id, db)
+    top_ips = get_top_ips(tenant_id, 10, db)
+    protocols = get_protocol_breakdown(tenant_id, db)
+    recent_alerts = get_alerts(request, tenant_id, 5, None, db)
+    business_insights = get_business_insights(tenant_id, db)
     
     # Intelligence Exposure - Enriched metadata
     # Top 5 threats by score
@@ -562,15 +459,11 @@ def get_dashboard_summary(request: Request, tenant_id: str = "default", db: Sess
     }
 
 @app.patch("/alerts/{alert_id}")
-def update_alert_status(alert_id: int, update_data: AlertUpdateSchema, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def update_alert_status(alert_id: int, update_data: AlertUpdateSchema, db: Session = Depends(get_db)):
     """Update alert status (e.g., mark as acknowledged or resolved)."""
     alert = db.query(Alert).filter(Alert.id == alert_id).first()
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
-        
-    if user.role != 'superadmin' and alert.tenant_id != user.tenant_id:
-        raise HTTPException(status_code=403, detail="Not authorized to update this alert")
-        
     alert.status = update_data.status
     if update_data.analyst_comment:
         # Assuming we might want to store comments in the description or a new field

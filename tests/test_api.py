@@ -2,8 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from src.api.main import app
 from src.core.database import db_manager
-from src.models.database import User, Tenant, Alert
-from src.utils.auth import get_password_hash
+from src.models.database import Tenant, Alert
 
 import os
 from src.models.database import Base
@@ -28,15 +27,6 @@ def test_db():
     # Create test tenant
     tenant = Tenant(tenant_id="test_tenant", name="Test Tenant")
     db.add(tenant)
-    
-    # Create test user
-    user = User(
-        username="test_user",
-        password_hash=get_password_hash("test_pass"),
-        role="business",
-        tenant_id="test_tenant"
-    )
-    db.add(user)
     
     # Create a dummy alert
     alert = Alert(
@@ -65,26 +55,15 @@ def test_health_check(client):
     assert response.json()["status"] in ["healthy", "degraded"]
     assert "components" in response.json()
 
-def get_test_token(client):
-    response = client.post(
-        "/auth/login",
-        data={"username": "test_user", "password": "test_pass"}
-    )
-    return response.json()["data"]["access_token"]
-
-def test_login(client):
-    response = client.post(
-        "/auth/login",
-        data={"username": "test_user", "password": "test_pass"}
-    )
+def test_stats_endpoint(client):
+    """Test stats endpoint works without auth."""
+    response = client.get("/stats?tenant_id=test_tenant")
     assert response.status_code == 200
-    assert response.json()["status"] == "success"
-    assert "access_token" in response.json()["data"]
+    data = response.json()["data"]
+    assert "total_logs" in data
 
 def test_dashboard_summary(client):
-    token = get_test_token(client)
-    headers = {"Authorization": f"Bearer {token}"}
-    response = client.get("/api/dashboard-summary", headers=headers)
+    response = client.get("/api/dashboard-summary?tenant_id=test_tenant")
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["tenant_id"] == "test_tenant"
@@ -92,16 +71,12 @@ def test_dashboard_summary(client):
     assert "recent_alerts" in data
 
 def test_update_alert_status(client, test_db):
-    token = get_test_token(client)
-    headers = {"Authorization": f"Bearer {token}"}
-    
     # Get the alert ID
     alert = test_db.query(Alert).filter(Alert.tenant_id == "test_tenant").first()
     alert_id = alert.id
     
     response = client.patch(
         f"/alerts/{alert_id}",
-        headers=headers,
         json={"status": "acknowledged", "analyst_comment": "Checking this now"}
     )
     assert response.status_code == 200
