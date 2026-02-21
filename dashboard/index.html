@@ -4,7 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Intelligence SIEM | Advanced Threat Defense</title>
+    <title>Afric-Analyze | Security Operations Center</title>
+    <meta name="description" content="Afric-Analyze — Real-time threat monitoring and security intelligence">
     <link rel="stylesheet" href="styles.css">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
@@ -12,176 +13,185 @@
 
 <body>
     <div id="app">
+        <!-- ===== Sidebar ===== -->
         <aside>
             <div class="logo">
-                <i data-lucide="shield-check" style="width: 24px; height: 24px;"></i>
-                <span>INTELLIGENCE</span>
+                <div class="logo-icon">
+                    <i data-lucide="shield-check" style="width:18px;height:18px;"></i>
+                </div>
+                <span>SecureOps</span>
             </div>
+
             <ul class="nav-links">
                 <li><a href="#" class="active" onclick="switchView('overview')"><i data-lucide="layout-dashboard"></i>
-                        Overview</a></li>
-                <li><a href="#" onclick="switchView('alerts')"><i data-lucide="alert-octagon"></i> Alerts</a></li>
-                <li><a href="#" onclick="switchView('logs')"><i data-lucide="list"></i> Logs</a></li>
-                <li><a href="#" onclick="switchView('log-stream')"><i data-lucide="terminal"></i> Log Streams</a></li>
-                <li><a href="#" onclick="switchView('analytics')"><i data-lucide="activity"></i> Analytics</a></li>
-                <li><a href="#" onclick="switchView('reports')"><i data-lucide="file-text"></i> Reports</a></li>
-                <li id="nav-settings"><a href="#" onclick="switchView('settings')"><i data-lucide="settings"></i>
-                        Settings</a></li>
-
+                        Dashboard</a></li>
+                <li><a href="#" onclick="switchView('alerts')"><i data-lucide="shield-alert"></i> Threats</a></li>
+                <li><a href="#" onclick="switchView('logs')"><i data-lucide="alert-triangle"></i> Incidents</a></li>
+                <li><a href="#" onclick="switchView('log-stream')"><i data-lucide="bot"></i> AI Assistant <span
+                            class="badge-pro">PRO</span></a></li>
+                <li><a href="#" onclick="switchView('analytics')"><i data-lucide="bar-chart-3"></i> Analytics</a></li>
+                <li><a href="#" onclick="switchView('compliance')"><i data-lucide="file-check"></i> Compliance</a></li>
+                <li><a href="#" onclick="switchView('reports')"><i data-lucide="clipboard-list"></i> Reports</a></li>
+                <li><a href="#" onclick="switchView('settings')"><i data-lucide="settings"></i> Settings</a></li>
             </ul>
-        </aside>
 
-        <main>
-            <header>
-                <div class="header-title">
-                    <div style="display: flex; align-items: center; gap: 1rem;">
-                        <button class="hamburger-btn"
-                            style="background: none; border: none; color: var(--text-high); cursor: pointer;">
-                            <i data-lucide="menu"></i>
-                        </button>
-                        <div>
-                            <h1 class="fade-in" id="view-title">Security Operations Center</h1>
-                            <p class="fade-in" id="view-subtitle"
-                                style="text-transform: none; color: var(--text-low); font-size: 0.9rem;">Real-time
-                                threat monitoring and response</p>
-                        </div>
+            <div class="sidebar-bottom">
+                <div class="api-status">
+                    <span class="dot" id="api-status-dot"></span>
+                    <span id="api-status-text">API Offline · Using mock data</span>
+                </div>
+                <div class="sidebar-user">
+                    <div class="avatar">
+                        <i data-lucide="user" style="width:14px;height:14px;"></i>
+                    </div>
+                    <div class="user-info">
+                        <span class="name">Admin User</span>
+                        <span class="email">admin@secureops.io</span>
                     </div>
                 </div>
-                <div class="header-right">
-                    <div style="display: flex; gap: 1rem; align-items: center;">
-                        <div class="icon-btn glass"
-                            style="position: relative; padding: 0.5rem; border-radius: 12px; cursor: pointer;">
-                            <i data-lucide="bell" size="20"></i>
-                            <span
-                                style="position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; background: #F43F5E; border-radius: 50%; border: 2px solid var(--bg-surface);"></span>
-                        </div>
-                        <div class="icon-btn glass" style="padding: 0.5rem; border-radius: 12px; cursor: pointer;">
-                            <i data-lucide="settings" size="20"></i>
-                        </div>
+            </div>
+        </aside>
 
-                        <div class="user-profile glass" onclick="toggleProfileMenu()">
-                            <div class="avatar">
-                                <i data-lucide="user" size="18"></i>
-                            </div>
-                            <div class="user-info">
-                                <span id="profile-username">User</span>
-                                <span id="profile-role">SOC Analyst</span>
-                            </div>
-                            <i data-lucide="chevron-down" size="14"></i>
-                            <div id="profile-menu" class="dropdown-menu glass">
-                                <div class="menu-header">
-                                    <p id="menu-user">admin</p>
-                                    <p id="menu-tenant" style="font-size: 0.7rem; color: var(--text-low);">tenant_id</p>
-                                </div>
-                                <a href="#" onclick="switchView('settings')"><i data-lucide="settings" size="14"></i>
-                                    Account Settings</a>
-                            </div>
-                        </div>
+        <!-- ===== Main Content ===== -->
+        <main>
+            <!-- Header -->
+            <header>
+                <div class="header-title">
+                    <h1 id="view-title">Security Operations Center</h1>
+                    <p id="view-subtitle">Real-time threat monitoring and response</p>
+                </div>
+                <div class="header-right">
+                    <div class="status-badge offline" id="status-badge" onclick="toggleApiStatus()">
+                        <i data-lucide="wifi-off"></i>
+                        <span>Offline</span>
+                    </div>
+
+                    <div class="search-bar">
+                        <i data-lucide="search"></i>
+                        <input type="text" placeholder="Search threats, IPs, domains." id="global-search">
+                    </div>
+
+                    <div class="icon-btn" id="notification-btn">
+                        <i data-lucide="bell" style="width:18px;height:18px;"></i>
+                        <span class="notification-badge" id="notification-dot" style="display:none;"></span>
+                    </div>
+
+                    <div class="icon-btn">
+                        <i data-lucide="settings" style="width:18px;height:18px;"></i>
                     </div>
                 </div>
             </header>
 
+            <!-- ============================================ -->
+            <!-- OVERVIEW VIEW                                -->
+            <!-- ============================================ -->
             <div id="overview-view" class="dashboard-view active">
-                <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
-                    <div class="stat-card glass">
-                        <div class="stat-top"
-                            style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem;">
-                            <div class="stat-icon-wrapper"
-                                style="width: 44px; height: 44px; background: rgba(59, 130, 246, 0.1); color: #3B82F6; display: flex; align-items: center; justify-content: center; border-radius: 12px;">
-                                <i data-lucide="shield-check"></i>
+
+                <!-- Stat Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-top">
+                            <div class="stat-icon-wrapper icon-teal">
+                                <i data-lucide="shield" style="width:20px;height:20px;"></i>
                             </div>
-                            <div class="trend up"
-                                style="color: #10B981; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 0.25rem;">
-                                +12.5% <i data-lucide="trending-up" size="14"></i>
-                            </div>
+                            <span class="trend up" id="trend-blocked"><i data-lucide="trending-up"></i> +12.5%</span>
                         </div>
-                        <div class="stat-content">
-                            <h2 id="stats-total-logs"
-                                style="font-size: 2.25rem; font-weight: 700; color: var(--text-high); margin-bottom: 0.5rem;">
-                                2,847</h2>
-                            <p style="color: var(--text-low); font-size: 0.875rem;">Threats Blocked</p>
-                        </div>
+                        <div class="stat-value" id="stats-total-logs">—</div>
+                        <div class="stat-label">Threats Blocked</div>
                     </div>
 
-                    <div class="stat-card glass">
-                        <div class="stat-top"
-                            style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem;">
-                            <div class="stat-icon-wrapper"
-                                style="width: 44px; height: 44px; background: rgba(244, 63, 94, 0.1); color: #F43F5E; display: flex; align-items: center; justify-content: center; border-radius: 12px;">
-                                <i data-lucide="alert-triangle"></i>
+                    <div class="stat-card">
+                        <div class="stat-top">
+                            <div class="stat-icon-wrapper icon-orange">
+                                <i data-lucide="alert-triangle" style="width:20px;height:20px;"></i>
                             </div>
-                            <div class="trend down"
-                                style="color: #F43F5E; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 0.25rem;">
-                                -8.3% <i data-lucide="trending-down" size="14"></i>
-                            </div>
+                            <span class="trend down" id="trend-incidents"><i data-lucide="trending-down"></i>
+                                -8.3%</span>
                         </div>
-                        <div class="stat-content">
-                            <h2 id="stats-critical-alerts"
-                                style="font-size: 2.25rem; font-weight: 700; color: var(--text-high); margin-bottom: 0.5rem;">
-                                23</h2>
-                            <p style="color: var(--text-low); font-size: 0.875rem;">Active Incidents</p>
-                        </div>
+                        <div class="stat-value" id="stats-total-alerts">—</div>
+                        <div class="stat-label">Active Incidents</div>
                     </div>
 
-                    <div class="stat-card glass">
-                        <div class="stat-top"
-                            style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem;">
-                            <div class="stat-icon-wrapper"
-                                style="width: 44px; height: 44px; background: rgba(16, 185, 129, 0.1); color: #10B981; display: flex; align-items: center; justify-content: center; border-radius: 12px;">
-                                <i data-lucide="activity"></i>
+                    <div class="stat-card">
+                        <div class="stat-top">
+                            <div class="stat-icon-wrapper icon-purple">
+                                <i data-lucide="activity" style="width:20px;height:20px;"></i>
                             </div>
-                            <div class="trend up"
-                                style="color: #10B981; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 0.25rem;">
-                                +3.2% <i data-lucide="trending-up" size="14"></i>
+                            <span class="trend up" id="trend-assets"><i data-lucide="trending-up"></i> +3.2%</span>
+                        </div>
+                        <div class="stat-value" id="stats-critical-high">—</div>
+                        <div class="stat-label">Monitored Assets</div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-top">
+                            <div class="stat-icon-wrapper icon-green">
+                                <i data-lucide="check-circle" style="width:20px;height:20px;"></i>
                             </div>
+                            <span class="trend up" id="trend-score"><i data-lucide="trending-up"></i> +2.1%</span>
                         </div>
-                        <div class="stat-content">
-                            <h2 id="stats-monitored-assets"
-                                style="font-size: 2.25rem; font-weight: 700; color: var(--text-high); margin-bottom: 0.5rem;">
-                                1,542</h2>
-                            <p style="color: var(--text-low); font-size: 0.875rem;">Monitored Assets</p>
-                        </div>
+                        <div class="stat-value" id="stats-active-threats">—</div>
+                        <div class="stat-label">Security Score</div>
                     </div>
                 </div>
 
+                <!-- Charts Row -->
                 <div class="charts-grid">
-                    <div class="chart-container fade-in" style="animation-delay: 0.5s">
-                        <h3 style="margin-bottom: 1.5rem;">Event Volume (24h)</h3>
+                    <!-- Threat Activity Timeline -->
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <div class="chart-header-left">
+                                <h3>Threat Activity Timeline</h3>
+                                <p>Last 24 hours</p>
+                            </div>
+                            <div class="chart-tabs">
+                                <button class="active" onclick="setChartRange('24h')">24h</button>
+                                <button onclick="setChartRange('7d')">7d</button>
+                                <button onclick="setChartRange('30d')">30d</button>
+                            </div>
+                        </div>
                         <div id="volume-chart"></div>
                     </div>
-                    <div class="chart-container fade-in" style="animation-delay: 0.6s">
-                        <h3 style="margin-bottom: 1.5rem;">Alert Distribution</h3>
-                        <div id="distribution-chart"></div>
+
+                    <!-- Top Threat Vectors -->
+                    <div class="chart-container" style="min-height:auto;">
+                        <div class="threat-vectors-header">
+                            <div>
+                                <h3>Top Threat Vectors</h3>
+                                <p>Most common attacks</p>
+                            </div>
+                            <i data-lucide="alert-triangle" class="alert-icon"></i>
+                        </div>
+                        <div id="threat-vectors-list">
+                            <!-- Populated by JS -->
+                        </div>
+                        <button class="btn-outline" onclick="switchView('alerts')">View All Threats</button>
                     </div>
                 </div>
 
-                <div class="data-table-container fade-in" style="animation-delay: 0.7s">
-                    <div class="table-header">
-                        <h3>Recent Alerts</h3>
-                        <a href="#" onclick="switchView('alerts')"
-                            style="color: var(--accent-color); font-size: 0.875rem; text-decoration: none;">View All</a>
+                <!-- Security Event Log -->
+                <div class="event-log-container">
+                    <div class="event-log-header">
+                        <div>
+                            <h3>Security Event Log</h3>
+                            <p>Recent activity and alerts</p>
+                        </div>
+                        <a href="#" class="view-all" onclick="switchView('logs')">View All <i
+                                data-lucide="external-link" style="width:12px;height:12px;"></i></a>
                     </div>
-                    <table id="alerts-table-mini">
-                        <thead>
-                            <tr>
-                                <th>TIME</th>
-                                <th>TYPE</th>
-                                <th>SOURCE IP</th>
-                                <th>SEVERITY</th>
-                                <th>STATUS</th>
-                            </tr>
-                        </thead>
-                        <tbody id="overview-alerts-body">
-                            <!-- Data populated by JS -->
-                        </tbody>
-                    </table>
+                    <div id="event-log-list">
+                        <!-- Populated by JS -->
+                    </div>
                 </div>
             </div>
 
+            <!-- ============================================ -->
+            <!-- ALERTS (THREATS) VIEW                        -->
+            <!-- ============================================ -->
             <div id="alerts-view" class="dashboard-view">
                 <div class="data-table-container">
                     <div class="table-header">
-                        <h3>Security Alerts Feed</h3>
+                        <h3>Security Alerts</h3>
                         <div class="table-filters">
                             <select id="filter-severity" class="glass-input" onchange="fetchData()">
                                 <option value="">All Severities</option>
@@ -195,73 +205,107 @@
                     <table>
                         <thead>
                             <tr>
-                                <th>TIME</th>
-                                <th>TYPE</th>
-                                <th>SOURCE IP</th>
-                                <th>SEVERITY</th>
-                                <th>DESCRIPTION</th>
-                                <th>STATUS</th>
+                                <th>Time</th>
+                                <th>Type</th>
+                                <th>Source IP</th>
+                                <th>Severity</th>
+                                <th>Description</th>
+                                <th>Status</th>
                             </tr>
                         </thead>
                         <tbody id="full-alerts-body">
-                            <!-- Data populated by JS -->
+                            <!-- Populated by JS -->
                         </tbody>
                     </table>
                 </div>
             </div>
 
+            <!-- ============================================ -->
+            <!-- ANALYTICS VIEW                               -->
+            <!-- ============================================ -->
             <div id="analytics-view" class="dashboard-view">
                 <div class="analytics-grid">
                     <div class="chart-container">
-                        <h3>Top Source IPs</h3>
+                        <div class="chart-header">
+                            <div class="chart-header-left">
+                                <h3>Top Source IPs</h3>
+                            </div>
+                        </div>
                         <div id="top-sources-chart"></div>
                     </div>
                     <div class="chart-container">
-                        <h3>Protocol Distribution</h3>
+                        <div class="chart-header">
+                            <div class="chart-header-left">
+                                <h3>Protocol Distribution</h3>
+                            </div>
+                        </div>
                         <div id="protocol-chart"></div>
                     </div>
                 </div>
 
-                <h2 style="margin: 2rem 0 1.5rem; color: var(--text-high);">Business Strategy Insights</h2>
+                <h2 class="analytics-section-title">Business Intelligence</h2>
                 <div class="analytics-grid">
                     <div class="chart-container">
-                        <h3>Log Activity (Business vs After Hours)</h3>
+                        <div class="chart-header">
+                            <div class="chart-header-left">
+                                <h3>Business vs After Hours</h3>
+                            </div>
+                        </div>
                         <div id="business-hours-chart"></div>
-                        <p class="help-text" style="margin-top: 1rem; text-align: center;">Differentiate patterns
-                            between office hours and suspicious night-time activity</p>
+                        <p class="help-text" style="margin-top:0.75rem;text-align:center;">Office hours vs night-time
+                            activity patterns</p>
                     </div>
                     <div class="chart-container">
-                        <h3>Log Activity (Weekday vs Weekend)</h3>
+                        <div class="chart-header">
+                            <div class="chart-header-left">
+                                <h3>Weekday vs Weekend</h3>
+                            </div>
+                        </div>
                         <div id="weekend-activity-chart"></div>
-                        <p class="help-text" style="margin-top: 1rem; text-align: center;">Identify anomalies in data
-                            transfer during non-working days</p>
+                        <p class="help-text" style="margin-top:0.75rem;text-align:center;">Detect anomalous weekend data
+                            transfers</p>
                     </div>
                     <div class="chart-container">
-                        <h3>Endpoint Device Breakdown</h3>
+                        <div class="chart-header">
+                            <div class="chart-header-left">
+                                <h3>Endpoint Breakdown</h3>
+                            </div>
+                        </div>
                         <div id="vendor-breakdown-chart"></div>
-                        <p class="help-text" style="margin-top: 1rem; text-align: center;">Ubiquiti, pfSense, and Cisco
-                            contribution to total log volume</p>
+                        <p class="help-text" style="margin-top:0.75rem;text-align:center;">Contribution by device vendor
+                        </p>
                     </div>
                 </div>
             </div>
 
+            <!-- ============================================ -->
+            <!-- COMPLIANCE VIEW (NEW)                        -->
+            <!-- ============================================ -->
+            <div id="compliance-view" class="dashboard-view">
+                <div class="compliance-grid" id="compliance-cards">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- ============================================ -->
+            <!-- SETTINGS VIEW                                -->
+            <!-- ============================================ -->
             <div id="settings-view" class="dashboard-view">
-                <div class="settings-container glass full-width">
-                    <h3>System Configuration</h3>
+                <div class="settings-container">
+                    <h3>Analyzer Configuration</h3>
                     <form id="settings-form" onsubmit="saveSettings(event)">
                         <div class="form-group">
                             <label>Brute Force Threshold</label>
                             <div class="input-wrapper">
                                 <input type="number" id="bf-threshold" class="glass-input">
-                                <span class="help-text">Number of failures before triggering a security alert</span>
+                                <span class="help-text">Failed logins before alert triggers</span>
                             </div>
                         </div>
                         <div class="form-group">
                             <label>Port Scan Threshold</label>
                             <div class="input-wrapper">
                                 <input type="number" id="ps-threshold" class="glass-input">
-                                <span class="help-text">Number of unique ports scanned per minute from a single
-                                    source</span>
+                                <span class="help-text">Unique ports/min from single source</span>
                             </div>
                         </div>
                         <div class="form-group">
@@ -273,21 +317,23 @@
                                     <option value="WARNING">WARNING</option>
                                     <option value="ERROR">ERROR</option>
                                 </select>
-                                <span class="help-text">Set the verbosity of the system analyzer logs</span>
+                                <span class="help-text">Analyzer engine verbosity</span>
                             </div>
                         </div>
-                        <div class="form-group" style="margin-top: 3rem; border: none;">
-                            <div></div>
+                        <div style="margin-top:1.5rem;display:flex;justify-content:flex-end;">
                             <button type="submit" class="btn-primary">Apply Changes</button>
                         </div>
                     </form>
                 </div>
             </div>
 
+            <!-- ============================================ -->
+            <!-- LOGS (INCIDENTS) VIEW                        -->
+            <!-- ============================================ -->
             <div id="logs-view" class="dashboard-view">
                 <div class="data-table-container">
                     <div class="table-header">
-                        <h3>Historical Log Archive</h3>
+                        <h3>Event Log Archive</h3>
                         <div class="table-filters">
                             <select id="log-filter-vendor" class="glass-input" onchange="fetchLogsData()">
                                 <option value="">All Vendors</option>
@@ -302,52 +348,55 @@
                                 <option value="medium">Medium</option>
                                 <option value="low">Low</option>
                             </select>
-                            <input type="text" id="log-search" placeholder="Search message..." class="glass-input"
-                                oninput="fetchLogsData()">
+                            <input type="text" id="log-search" placeholder="Search..." class="glass-input"
+                                oninput="fetchLogsData()" style="width:160px;">
                         </div>
                     </div>
                     <table class="mono-table">
                         <thead>
                             <tr>
-                                <th>TIME</th>
-                                <th>TYPE</th>
-                                <th>SOURCE</th>
-                                <th>DESTINATION</th>
-                                <th>PROTO</th>
-                                <th>ACTION</th>
-                                <th>VENDOR</th>
-                                <th>DEVICE</th>
-                                <th>MESSAGE</th>
+                                <th>Time</th>
+                                <th>Type</th>
+                                <th>Source</th>
+                                <th>Destination</th>
+                                <th>Proto</th>
+                                <th>Action</th>
+                                <th>Vendor</th>
+                                <th>Device</th>
+                                <th>Message</th>
                             </tr>
                         </thead>
                         <tbody id="full-logs-body">
-                            <!-- Data populated by JS -->
+                            <!-- Populated by JS -->
                         </tbody>
                     </table>
                 </div>
             </div>
 
+            <!-- ============================================ -->
+            <!-- LOG STREAM (AI ASSISTANT) VIEW               -->
+            <!-- ============================================ -->
             <div id="log-stream-view" class="dashboard-view">
                 <div class="data-table-container">
                     <div class="table-header">
                         <h3>Live Traffic Stream</h3>
-                        <div class="table-filters" id="stream-status">
+                        <div class="table-filters">
                             <span class="live-indicator"><span class="pulse"></span> STREAMING</span>
                         </div>
                     </div>
                     <div class="stream-console" id="log-stream-console">
-                        <!-- High density logs added here via JS -->
+                        <!-- Log lines added via JS -->
                     </div>
                 </div>
             </div>
 
+            <!-- ============================================ -->
+            <!-- REPORTS VIEW                                 -->
+            <!-- ============================================ -->
             <div id="reports-view" class="dashboard-view">
                 <div class="data-table-container">
                     <div class="table-header">
-                        <div class="header-info">
-                            <h3>Report Archive</h3>
-                            <p class="help-text">View and manage recurring security reports</p>
-                        </div>
+                        <h3>Report Archive</h3>
                         <div class="table-filters">
                             <select id="report-filter-type" class="glass-input" onchange="fetchReportsData()">
                                 <option value="">All Types</option>
@@ -363,16 +412,16 @@
                     <table>
                         <thead>
                             <tr>
-                                <th>REPORT TYPE</th>
-                                <th>GENERATED AT</th>
-                                <th>PERIOD</th>
-                                <th>LOGS</th>
-                                <th>ALERTS</th>
-                                <th>ACTION</th>
+                                <th>Report Type</th>
+                                <th>Generated</th>
+                                <th>Period</th>
+                                <th>Logs</th>
+                                <th>Alerts</th>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody id="reports-table-body">
-                            <!-- Data populated by JS -->
+                            <!-- Populated by JS -->
                         </tbody>
                     </table>
                 </div>
@@ -382,9 +431,7 @@
     </div>
 
     <script src="app.js"></script>
-    <script>
-        lucide.createIcons();
-    </script>
+    <script>lucide.createIcons();</script>
 </body>
 
 </html>

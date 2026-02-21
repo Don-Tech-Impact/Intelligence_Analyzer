@@ -171,10 +171,6 @@ logger = logging.getLogger(__name__)
 def get_db():
     db = db_manager.get_session()
     try:
-        # Expire all cached ORM state so this request re-reads from disk.
-        # Critical for SQLite: consumer writes from a separate process,
-        # and StaticPool reuses the same connection across requests.
-        db.expire_all()
         yield db
     finally:
         db.close()

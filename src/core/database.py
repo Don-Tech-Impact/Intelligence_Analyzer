@@ -1,8 +1,8 @@
 """Database management and session handling."""
 
 from sqlalchemy import create_engine, event, text
-from sqlalchemy.orm import sessionmaker, scoped_session, Session
-from sqlalchemy.pool import StaticPool, NullPool
+from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.pool import StaticPool, QueuePool
 from contextlib import contextmanager
 from typing import Generator
 import logging
@@ -31,16 +31,29 @@ class DatabaseManager:
         if config.database_type == 'sqlite':
             # In-memory SQLite (tests): must use StaticPool to keep the
             # same connection alive, otherwise tables vanish.
-            # File-based SQLite (production): use NullPool so each session
-            # opens a fresh connection that sees writes from other processes
-            # (e.g., the consumer writing while the API reads).
+            # File-based SQLite (production): use QueuePool with a single
+            # connection + pool_pre_ping to detect stale connections.
+            # NullPool was causing "closed database" errors because it
+            # disposes connections immediately, breaking scoped_session.
             is_memory = ':memory:' in database_url or database_url == 'sqlite://'
-            self.engine = create_engine(
-                database_url,
-                connect_args={'check_same_thread': False},
-                poolclass=StaticPool if is_memory else NullPool,
-                echo=False
-            )
+            if is_memory:
+                self.engine = create_engine(
+                    database_url,
+                    connect_args={'check_same_thread': False},
+                    poolclass=StaticPool,
+                    echo=False
+                )
+            else:
+                self.engine = create_engine(
+                    database_url,
+                    connect_args={'check_same_thread': False},
+                    poolclass=QueuePool,
+                    pool_size=1,
+                    max_overflow=2,
+                    pool_pre_ping=True,
+                    pool_recycle=300,
+                    echo=False
+                )
         else:
             # PostgreSQL settings
             self.engine = create_engine(
@@ -51,9 +64,12 @@ class DatabaseManager:
                 echo=False
             )
         
-        # Create session factory
+        # Create session factory — plain sessionmaker, NOT scoped_session.
+        # FastAPI's Depends(get_db) already creates one session per request,
+        # so scoped_session's thread-local caching is unnecessary and causes
+        # "session is provisioning a new connection" errors with pool_pre_ping.
         self.session_factory = sessionmaker(bind=self.engine)
-        self.Session = scoped_session(self.session_factory)
+        self.Session = self.session_factory
         
         # Create all tables
         Base.metadata.create_all(self.engine)
@@ -89,8 +105,6 @@ class DatabaseManager:
     
     def close(self):
         """Close database connections."""
-        if self.Session:
-            self.Session.remove()
         if self.engine:
             self.engine.dispose()
         logger.info("Database connections closed")

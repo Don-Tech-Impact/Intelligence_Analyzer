@@ -18,7 +18,6 @@ router = APIRouter(prefix="/api/v1", tags=["V1 API"])
 # Dependency for getting DB session
 def get_db():
     with db_manager.session_scope() as session:
-        session.expire_all()
         yield session
 
 
