@@ -57,20 +57,20 @@ class AnalyticsService:
         severity_map = {s: c for s, c in alerts_by_severity}
         total_threats = sum(severity_map.values())
 
-        # Affected assets (unique device_ids with alerts)
-        affected_assets = db.query(func.count(func.distinct(NormalizedLog.device_id))).filter(
+        # Affected assets (fallback to source_ip if device_id is missing)
+        affected_assets = db.query(func.count(func.distinct(
+            func.coalesce(NormalizedLog.device_id, NormalizedLog.source_ip)
+        ))).filter(
             NormalizedLog.tenant_id == tenant_id,
-            NormalizedLog.device_id.isnot(None),
             NormalizedLog.timestamp >= last_24h
         ).scalar() or 0
 
-        # Asset types breakdown
+        # Asset types breakdown (fallback to source_ip if device_id is missing)
         asset_types = db.query(
             NormalizedLog.vendor,
-            func.count(func.distinct(NormalizedLog.device_id))
+            func.count(func.distinct(func.coalesce(NormalizedLog.device_id, NormalizedLog.source_ip)))
         ).filter(
-            NormalizedLog.tenant_id == tenant_id,
-            NormalizedLog.device_id.isnot(None)
+            NormalizedLog.tenant_id == tenant_id
         ).group_by(NormalizedLog.vendor).all()
 
         # Risk score calculation (simple weighted formula)

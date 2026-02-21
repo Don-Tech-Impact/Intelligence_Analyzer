@@ -2,10 +2,11 @@
 const API_BASE_URL = 'http://localhost:8000';
 
 // ===== Global State =====
+const urlParams = new URLSearchParams(window.location.search);
+let currentTenant = urlParams.get('tenant') || urlParams.get('tenant_id') || 'default';
 let volumeChart;
 let topSourcesChart, protocolChart;
 let businessHoursChart, weekendActivityChart, vendorBreakdownChart;
-let currentTenant = 'EBK';
 let currentView = 'overview';
 let currentTimeRange = '24h';
 let fetchInProgress = false;
@@ -74,7 +75,7 @@ async function apiFetch(url) {
 // ===== API Status Check =====
 async function checkApiStatus() {
     try {
-        const res = await fetch(`${API_BASE_URL}/stats?tenant_id=${currentTenant}`, { signal: AbortSignal.timeout(3000) });
+        const res = await fetch(`${API_BASE_URL}/health`, { signal: AbortSignal.timeout(3000) });
         setApiOnline(res.ok);
     } catch (e) {
         setApiOnline(false);
@@ -115,18 +116,18 @@ async function fetchData() {
 
 // ===== Overview =====
 async function fetchOverviewData() {
-    // Stats
+    // Stats (using V1 summary)
     try {
-        const statsRes = await apiFetch(`${API_BASE_URL}/stats?tenant_id=${currentTenant}`);
-        if (statsRes && statsRes.ok) {
-            const stats = await statsRes.json();
-            updateStats(stats);
+        const summaryRes = await apiFetch(`${API_BASE_URL}/api/v1/dashboard/summary?tenant_id=${currentTenant}`);
+        if (summaryRes && summaryRes.ok) {
+            const summary = await summaryRes.json();
+            updateStatsFromSummary(summary);
         }
-    } catch (e) { console.error('[SIEM] stats error:', e); }
+    } catch (e) { console.error('[SIEM] v1 summary error:', e); }
 
-    // Alerts for event log + threat vectors
+    // Alerts for event log + threat vectors (using V1 alerts)
     try {
-        const alertsRes = await apiFetch(`${API_BASE_URL}/alerts?tenant_id=${currentTenant}&limit=10`);
+        const alertsRes = await apiFetch(`${API_BASE_URL}/api/v1/alerts?tenant_id=${currentTenant}&limit=10`);
         if (alertsRes && alertsRes.ok) {
             const alerts = await alertsRes.json();
             const alertsArr = Array.isArray(alerts) ? alerts : [];
@@ -135,48 +136,46 @@ async function fetchOverviewData() {
             const dot = document.getElementById('notification-dot');
             if (dot) dot.style.display = (alertsArr.length > 0) ? 'block' : 'none';
         }
-    } catch (e) { console.error('[SIEM] alerts error:', e); }
+    } catch (e) { console.error('[SIEM] v1 alerts error:', e); }
 
-    // Trends for chart
+    // Trends for chart (using V1 timeline)
     try {
-        const trendsRes = await apiFetch(`${API_BASE_URL}/trends?tenant_id=${currentTenant}`);
-        if (trendsRes && trendsRes.ok) {
-            const trends = await trendsRes.json();
-            updateVolumeChart(trends);
+        const timelineRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/timeline?tenant_id=${currentTenant}&range=${currentTimeRange}`);
+        if (timelineRes && timelineRes.ok) {
+            const timeline = await timelineRes.json();
+            updateVolumeChart(timeline);
         }
-    } catch (e) { console.error('[SIEM] trends error:', e); }
+    } catch (e) { console.error('[SIEM] v1 timeline error:', e); }
 }
 
-// ===== Update Stats (bulletproof) =====
-function updateStats(stats) {
-    if (!stats) return;
+// ===== Update Stats (V1 Support) =====
+function updateStatsFromSummary(summary) {
+    if (!summary) return;
 
     const el1 = document.getElementById('stats-total-logs');
-    if (el1) el1.textContent = (stats.total_logs != null) ? Number(stats.total_logs).toLocaleString() : '0';
+    if (el1) el1.textContent = formatNumber(summary.total_events?.count || 0);
 
     const el2 = document.getElementById('stats-total-alerts');
-    if (el2) el2.textContent = (stats.total_alerts != null) ? Number(stats.total_alerts).toLocaleString() : '0';
+    if (el2) el2.textContent = formatNumber(summary.active_threats?.count || 0);
 
     const el3 = document.getElementById('stats-critical-high');
     if (el3) {
-        const sb = stats.severity_breakdown || {};
-        const val = (Number(sb.critical) || 0) + (Number(sb.high) || 0);
-        el3.textContent = val.toLocaleString();
+        const val = (Number(summary.active_threats?.critical) || 0) + (Number(summary.active_threats?.high) || 0);
+        el3.textContent = formatNumber(val);
     }
 
     const el4 = document.getElementById('stats-active-threats');
-    if (el4) el4.textContent = (stats.active_threats != null) ? Number(stats.active_threats).toLocaleString() : '0';
+    if (el4) el4.textContent = formatNumber(summary.risk_score?.score || 0);
 
-    // Compute trends vs previous poll
-    if (previousStats) {
-        updateTrend('trend-blocked', stats.total_logs, previousStats.total_logs);
-        updateTrend('trend-incidents', stats.total_alerts, previousStats.total_alerts);
-        const curCH = (Number(stats.severity_breakdown?.critical) || 0) + (Number(stats.severity_breakdown?.high) || 0);
-        const prevCH = (Number(previousStats.severity_breakdown?.critical) || 0) + (Number(previousStats.severity_breakdown?.high) || 0);
-        updateTrend('trend-assets', curCH, prevCH);
-        updateTrend('trend-score', stats.active_threats || 0, previousStats.active_threats || 0);
+    // V1 summary already includes computed trends for event volume
+    const trendEl = document.getElementById('trend-blocked');
+    if (trendEl) {
+        const trend = summary.total_events?.trend || 0;
+        const isUp = trend >= 0;
+        trendEl.className = `trend ${isUp ? 'up' : 'down'}`;
+        trendEl.innerHTML = `<i data-lucide="${isUp ? 'trending-up' : 'trending-down'}"></i> ${isUp ? '+' : ''}${trend}%`;
+        lucide.createIcons();
     }
-    previousStats = { ...stats };
 }
 
 function updateTrend(id, current, previous) {
@@ -271,10 +270,10 @@ function renderThreatVectors(alerts) {
     }).join('');
 }
 
-// ===== Alerts View =====
+// ===== Alerts View (V1) =====
 async function fetchAlertsData() {
     const sev = document.getElementById('filter-severity')?.value || '';
-    const url = `${API_BASE_URL}/alerts?tenant_id=${currentTenant}&limit=50${sev ? `&severity=${sev}` : ''}`;
+    const url = `${API_BASE_URL}/api/v1/alerts?tenant_id=${currentTenant}&limit=50${sev ? `&severity=${sev}` : ''}`;
     const res = await apiFetch(url);
     if (res && res.ok) {
         const alerts = await res.json();
@@ -282,12 +281,12 @@ async function fetchAlertsData() {
     }
 }
 
-// ===== Logs View =====
+// ===== Logs View (V1) =====
 async function fetchLogsData() {
     const vendor = document.getElementById('log-filter-vendor')?.value || '';
     const severity = document.getElementById('log-filter-severity')?.value || '';
     const search = document.getElementById('log-search')?.value || '';
-    let url = `${API_BASE_URL}/logs?tenant_id=${currentTenant}&limit=100`;
+    let url = `${API_BASE_URL}/api/v1/logs?tenant_id=${currentTenant}&limit=100`;
     if (vendor) url += `&vendor=${vendor}`;
     if (severity) url += `&severity=${severity}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
@@ -298,11 +297,11 @@ async function fetchLogsData() {
     }
 }
 
-// ===== Stream View =====
+// ===== Stream View (V1) =====
 async function fetchStreamData() {
     if (currentView !== 'log-stream' && currentView !== 'overview') return;
     try {
-        const res = await apiFetch(`${API_BASE_URL}/logs?tenant_id=${currentTenant}&limit=20`);
+        const res = await apiFetch(`${API_BASE_URL}/api/v1/logs?tenant_id=${currentTenant}&limit=20`);
         if (res && res.ok) {
             const logs = await res.json();
             if (logs && currentView === 'log-stream') renderStreamLogs(Array.isArray(logs) ? logs : []);
@@ -324,38 +323,37 @@ function renderStreamLogs(logs) {
     }).join('');
 }
 
-// ===== Analytics View (fixed endpoints) =====
+// ===== Analytics View (V1) =====
 async function fetchAnalyticsData() {
     try {
-        // Top Source IPs
-        const ipsRes = await apiFetch(`${API_BASE_URL}/analytics/top-ips?tenant_id=${currentTenant}`);
+        // Top Source IPs (V1)
+        const ipsRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/top-ips?tenant_id=${currentTenant}`);
         if (ipsRes && ipsRes.ok) {
-            const data = await ipsRes.json();
-            const sources = data.sources || data;
+            const sources = await ipsRes.json();
             if (Array.isArray(sources) && sources.length > 0 && topSourcesChart) {
                 const labels = sources.map(s => s.ip || s.source);
                 const values = sources.map(s => s.count);
                 updateBarChart(topSourcesChart, labels, values, 'top-sources-chart');
             }
         }
-    } catch (e) { console.error('[SIEM] top-ips error:', e); }
+    } catch (e) { console.error('[SIEM] v1 top-ips error:', e); }
 
     try {
-        // Protocol Distribution
-        const protoRes = await apiFetch(`${API_BASE_URL}/analytics/protocols?tenant_id=${currentTenant}`);
+        // Protocol Distribution (V1 Traffic)
+        const protoRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/traffic?tenant_id=${currentTenant}`);
         if (protoRes && protoRes.ok) {
             const data = await protoRes.json();
             if (Array.isArray(data) && data.length > 0 && protocolChart) {
                 const labels = data.map(p => p.protocol);
-                const series = data.map(p => p.count);
+                const series = data.map(p => p.connection_count || p.count);
                 updatePieChart(protocolChart, labels, series, 'protocol-chart');
             }
         }
-    } catch (e) { console.error('[SIEM] protocols error:', e); }
+    } catch (e) { console.error('[SIEM] v1 traffic error:', e); }
 
     try {
-        // Business Insights
-        const bizRes = await apiFetch(`${API_BASE_URL}/analytics/business-insights?tenant_id=${currentTenant}`);
+        // Business Insights (V1)
+        const bizRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/business-insights?tenant_id=${currentTenant}`);
         if (bizRes && bizRes.ok) {
             const data = await bizRes.json();
             if (businessHoursChart && (data.business_hours || data.after_hours)) {
@@ -719,17 +717,18 @@ function createDonutSmall(selector) {
 }
 
 // ===== Chart Updaters =====
-function updateVolumeChart(trends) {
-    if (!trends?.logs || trends.logs.length === 0 || !volumeChart) return;
+function updateVolumeChart(timeline) {
+    if (!timeline || !timeline.series || timeline.series.length === 0 || !volumeChart) return;
 
-    const totalData = trends.logs.map(t => ({ x: new Date(t.hour).getTime(), y: t.count }));
-    const blockedData = trends.logs.map(t => ({ x: new Date(t.hour).getTime(), y: Math.round(t.count * 0.7) }));
-    const suspiciousData = trends.logs.map(t => ({ x: new Date(t.hour).getTime(), y: Math.round(t.count * 0.15) }));
+    const series = timeline.series;
+    const totalData = series.map(t => ({ x: new Date(t.timestamp).getTime(), y: t.events }));
+    const blockedData = series.map(t => ({ x: new Date(t.timestamp).getTime(), y: Math.round(t.events * 0.7) }));
+    const suspiciousData = series.map(t => ({ x: new Date(t.timestamp).getTime(), y: t.threats || Math.round(t.events * 0.1) }));
 
     volumeChart.updateSeries([
-        { name: 'Total Threats', data: totalData },
+        { name: 'Total Activity', data: totalData },
         { name: 'Blocked', data: blockedData },
-        { name: 'Suspicious', data: suspiciousData }
+        { name: 'Threats', data: suspiciousData }
     ]);
 }
 

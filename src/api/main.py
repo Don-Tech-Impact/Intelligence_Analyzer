@@ -13,9 +13,10 @@ from pydantic import BaseModel
 from src.models.schemas import AlertUpdateSchema, DashboardSummarySchema, ApiResponse
 from src.services.log_ingestion import AnalysisPipeline
 
-# V1 API Router and Health endpoints
+# V1 API Router, Health endpoints, and Admin API
 from src.api.v1_router import router as v1_router
 from src.api.health import router as health_router
+from src.api.admin_router import router as admin_router
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -160,9 +161,10 @@ dashboard_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__
 if os.path.exists(dashboard_path):
     app.mount("/dashboard", StaticFiles(directory=dashboard_path, html=True), name="dashboard")
 
-# Register V1 API Router and Health endpoints
+# Register V1 API Router, Health endpoints, and Admin API
 app.include_router(v1_router)
 app.include_router(health_router)
+app.include_router(admin_router)
 
 import logging
 logger = logging.getLogger(__name__)
