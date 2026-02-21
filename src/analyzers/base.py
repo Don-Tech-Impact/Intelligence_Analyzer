@@ -61,18 +61,21 @@ class BaseAnalyzer(ABC):
         try:
             with db_manager.session_scope() as session:
                 # Deduplication: Check if recent alert exists (last 5 minutes)
-                time_threshold = datetime.utcnow() - timedelta(minutes=5)
-                existing_alert = session.query(Alert).filter(
-                    Alert.tenant_id == tenant_id,
-                    Alert.alert_type == alert_type,
-                    Alert.source_ip == source_ip,
-                    Alert.status == 'open',
-                    Alert.created_at >= time_threshold
-                ).first()
+                # Only deduplicate when we have a meaningful source_ip to match on
+                if source_ip:
+                    time_threshold = datetime.utcnow() - timedelta(minutes=5)
+                    existing_alert = session.query(Alert).filter(
+                        Alert.tenant_id == tenant_id,
+                        Alert.alert_type == alert_type,
+                        Alert.source_ip == source_ip,
+                        Alert.destination_ip == destination_ip,
+                        Alert.status == 'open',
+                        Alert.created_at >= time_threshold
+                    ).first()
 
-                if existing_alert:
-                    logger.debug(f"Duplicate alert suppressed: {alert_type} from {source_ip}")
-                    return None # Suppress duplicate alert
+                    if existing_alert:
+                        logger.debug(f"Duplicate alert suppressed: {alert_type} from {source_ip}")
+                        return None  # Suppress duplicate alert
 
                 session.expire_on_commit = False
                 alert = Alert(

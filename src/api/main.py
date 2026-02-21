@@ -29,7 +29,23 @@ limiter = Limiter(key_func=get_remote_address)
 @asynccontextmanager
 async def lifespan(app):
     """FastAPI lifespan handler — runs on startup and shutdown."""
+    import os, sys
     # --- Startup ---
+    # Safety: if DATABASE_URL points to an in-memory database (e.g. leaked
+    # from test fixtures), clear it so the YAML config's file-based path is used.
+    # Skip this guard when running under pytest — tests intentionally use :memory:.
+    _in_test = 'pytest' in sys.modules
+    if not _in_test:
+        db_url_env = os.environ.get('DATABASE_URL', '')
+        if ':memory:' in db_url_env:
+            del os.environ['DATABASE_URL']
+        
+        # Re-initialize if the engine was already created with a :memory: URL
+        if db_manager.engine is not None and ':memory:' in str(db_manager.engine.url):
+            db_manager.engine.dispose()
+            db_manager.engine = None
+            db_manager.Session = None
+    
     if db_manager.engine is None:
         db_manager.initialize()
     yield
@@ -155,6 +171,10 @@ logger = logging.getLogger(__name__)
 def get_db():
     db = db_manager.get_session()
     try:
+        # Expire all cached ORM state so this request re-reads from disk.
+        # Critical for SQLite: consumer writes from a separate process,
+        # and StaticPool reuses the same connection across requests.
+        db.expire_all()
         yield db
     finally:
         db.close()

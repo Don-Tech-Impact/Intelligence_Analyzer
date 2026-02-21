@@ -8,6 +8,7 @@ import os
 @pytest.fixture(scope="module", autouse=True)
 def setup_db():
     # Use in-memory database for tests
+    _orig_db_url = os.environ.get('DATABASE_URL')
     os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
     db_manager.initialize()
     Base.metadata.drop_all(db_manager.engine)
@@ -43,6 +44,11 @@ def setup_db():
     db_manager.close()
     if db_manager.engine:
         db_manager.engine.dispose()
+    # Restore original DATABASE_URL to prevent env pollution
+    if _orig_db_url is not None:
+        os.environ['DATABASE_URL'] = _orig_db_url
+    else:
+        os.environ.pop('DATABASE_URL', None)
 
 def test_generate_daily_report():
     generator = ReportGenerator(output_dir="test_reports")

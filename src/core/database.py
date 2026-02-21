@@ -2,7 +2,7 @@
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, scoped_session, Session
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import StaticPool, NullPool
 from contextlib import contextmanager
 from typing import Generator
 import logging
@@ -29,11 +29,16 @@ class DatabaseManager:
         
         # Create engine with appropriate settings
         if config.database_type == 'sqlite':
-            # SQLite specific settings
+            # In-memory SQLite (tests): must use StaticPool to keep the
+            # same connection alive, otherwise tables vanish.
+            # File-based SQLite (production): use NullPool so each session
+            # opens a fresh connection that sees writes from other processes
+            # (e.g., the consumer writing while the API reads).
+            is_memory = ':memory:' in database_url or database_url == 'sqlite://'
             self.engine = create_engine(
                 database_url,
                 connect_args={'check_same_thread': False},
-                poolclass=StaticPool,
+                poolclass=StaticPool if is_memory else NullPool,
                 echo=False
             )
         else:

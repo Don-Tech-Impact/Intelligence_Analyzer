@@ -15,6 +15,7 @@ def client():
 @pytest.fixture(scope="module", autouse=True)
 def test_db():
     # Use in-memory database for tests
+    _orig_db_url = os.environ.get('DATABASE_URL')
     os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
     db_manager.initialize()
     
@@ -47,6 +48,11 @@ def test_db():
     db_manager.close()
     if db_manager.engine:
         db_manager.engine.dispose()
+    # Restore original DATABASE_URL to prevent env pollution
+    if _orig_db_url is not None:
+        os.environ['DATABASE_URL'] = _orig_db_url
+    else:
+        os.environ.pop('DATABASE_URL', None)
 
 def test_health_check(client):
     response = client.get("/health")

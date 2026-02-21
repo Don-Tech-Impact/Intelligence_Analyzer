@@ -12,11 +12,17 @@ from src.models.database import Base
 
 @pytest.fixture(scope="module", autouse=True)
 def init_db():
+    _orig_db_url = os.environ.get('DATABASE_URL')
     os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
     db_manager.initialize()
     Base.metadata.create_all(db_manager.engine)
     yield
     db_manager.close()
+    # Restore original DATABASE_URL to prevent env pollution
+    if _orig_db_url is not None:
+        os.environ['DATABASE_URL'] = _orig_db_url
+    else:
+        os.environ.pop('DATABASE_URL', None)
 
 @pytest.fixture
 def sample_log():

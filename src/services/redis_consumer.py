@@ -225,18 +225,22 @@ class RedisConsumer:
     
     def _handle_dead_log(self, log_data: Dict[str, Any]) -> bool:
         """
-        Handle dead logs (store only, no analysis).
+        Handle dead logs: store in dead_letters AND extract intelligence.
         
         Repo1 dead log schema:
         {
             "tenant_id": "EBK",
-            "raw_log": "...",
+            "raw_log": "%ASA-6-302013: Built outbound TCP...",
             "error_type": "tenant_resolution_failed",
             "error_message": "Tenant configuration not found: EBK",
             "vendor": null,
             "source_info": { ... },
             "failed_at": "2026-02-19T21:22:12+00:00"
         }
+        
+        Two-step process:
+        1. Store raw payload in dead_letters (audit trail, debugging)
+        2. Attempt to normalize raw_log and push through analysis pipeline
         """
         tenant_id = (
             log_data.get('tenant_id') or 
@@ -247,6 +251,7 @@ class RedisConsumer:
         failed_at = log_data.get('failed_at')
         received_at = LogAdapter._parse_timestamp(failed_at) if failed_at else datetime.utcnow()
         
+        # 1. KEEP: Store in dead_letters table (audit trail)
         self.batch_dead.append({
             'tenant_id': tenant_id,
             'received_at': received_at,
@@ -256,6 +261,53 @@ class RedisConsumer:
             'raw_payload': log_data,
             'retry_count': 0
         })
+        
+        # 2. NEW: Try to extract intelligence from raw_log
+        raw_log = log_data.get('raw_log', '')
+        if raw_log and isinstance(raw_log, str) and len(raw_log) > 5:
+            try:
+                # Wrap as v1 schema so LogAdapter can parse the raw syslog
+                v1_wrapper = {
+                    'schema_version': 'v1',
+                    'tenant_id': tenant_id,
+                    'raw_log': raw_log,
+                    'timestamp': failed_at,
+                    'level': 'info',
+                    'metadata': {
+                        'device_type': log_data.get('vendor') or 'unknown',
+                        'source_ip': (log_data.get('source_info') or {}).get('source_ip'),
+                    }
+                }
+                normalized = self.log_adapter.normalize(v1_wrapper)
+                
+                log_dict = {
+                    'tenant_id': normalized.tenant_id,
+                    'timestamp': normalized.timestamp or datetime.utcnow(),
+                    'source_ip': normalized.source_ip,
+                    'destination_ip': normalized.destination_ip,
+                    'source_port': normalized.source_port,
+                    'destination_port': normalized.destination_port,
+                    'protocol': normalized.protocol,
+                    'action': normalized.action,
+                    'log_type': normalized.log_type or 'dead_recovered',
+                    'vendor': normalized.vendor,
+                    'device_hostname': normalized.device_hostname,
+                    'severity': 'info',  # Dead = low confidence, info-level
+                    'message': normalized.message,
+                    'raw_data': normalized.raw_data,
+                    'business_context': {
+                        **(normalized.business_context or {}),
+                        'confidence': 0.3,
+                        'source_queue': 'dead',
+                        'original_error': log_data.get('error_type')
+                    },
+                    'created_at': datetime.utcnow()
+                }
+                self.batch_clean.append(log_dict)  # Enters analysis pipeline
+                logger.debug(f"Dead log recovered for analysis: {tenant_id}")
+            except Exception as e:
+                logger.debug(f"Dead log unrecoverable (OK): {e}")
+        
         return True
 
     def _handle_ingest_log(self, log_data: Dict[str, Any]) -> bool:
@@ -399,10 +451,22 @@ class RedisConsumer:
         """
         Run intelligence analysis on a batch of logs.
         
-        Uses analyzer_manager with Redis for state.
+        Features:
+        - Confidence-weighted severity: dead-recovered logs (confidence <0.5)
+          get their alert severity downgraded to reduce false positives.
+        - Business-hours boosting: off-hours/weekend events get severity
+          upgraded since attacks during quiet periods are more suspicious.
+        - Uses analyzer_manager with Redis for state.
         """
         for log_dict in logs:
             try:
+                biz = log_dict.get('business_context') or {}
+                confidence = biz.get('confidence', 1.0)
+                
+                # Skip analysis for very low confidence logs
+                if confidence < 0.2:
+                    continue
+                
                 class LogProxy:
                     def __init__(self, d):
                         for k, v in d.items():
@@ -412,6 +476,29 @@ class RedisConsumer:
                 alerts = analyzer_manager.analyze_log(log_proxy)
                 
                 if alerts:
+                    for alert in alerts:
+                        if not alert:
+                            continue
+                        
+                        # --- Confidence-weighted severity ---
+                        # Dead-recovered logs: downgrade to avoid false positives
+                        if confidence < 0.5:
+                            if alert.severity == 'critical':
+                                alert.severity = 'medium'
+                            elif alert.severity == 'high':
+                                alert.severity = 'low'
+                        
+                        # --- Business-hours severity boost ---
+                        # Off-hours / weekend activity is more suspicious
+                        is_off_hours = not biz.get('is_business_hour', True)
+                        is_weekend = biz.get('is_weekend', False)
+                        
+                        if (is_off_hours or is_weekend) and confidence >= 0.5:
+                            if alert.severity == 'low':
+                                alert.severity = 'medium'
+                            elif alert.severity == 'medium':
+                                alert.severity = 'high'
+                    
                     self._store_alerts(alerts)
                     
             except Exception as e:

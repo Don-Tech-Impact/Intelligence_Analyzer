@@ -4,7 +4,7 @@ const API_BASE_URL = 'http://localhost:8000';
 // Global State
 let volumeChart, distributionChart;
 let topSourcesChart, topDestsChart, protocolChart, severityTrendChart;
-let currentTenant = 'default';
+let currentTenant = 'EBK';
 let currentView = 'overview';
 
 const VIEWS = {
