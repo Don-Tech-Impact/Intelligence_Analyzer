@@ -1,4 +1,4 @@
-// ===== Afric-Analyze SIEM Dashboard — Figma V3 =====
+// ===== Afric-Analyzer SIEM Dashboard — Figma V3 =====
 const API_BASE_URL = 'http://localhost:8000';
 
 // ===== Global State =====
@@ -12,7 +12,7 @@ let fetchInProgress = false;
 let previousStats = null;
 
 const VIEWS = {
-    overview: { title: 'Security Operations Center', subtitle: 'Real-time threat monitoring and response' },
+    overview: { title: 'Afric-Analyzer', subtitle: 'Real-time threat monitoring and response' },
     alerts: { title: 'Security Alerts', subtitle: 'Active and historical security findings' },
     logs: { title: 'Event Log Archive', subtitle: 'Searchable normalized event records' },
     'log-stream': { title: 'Live Traffic Stream', subtitle: 'Real-time endpoint telemetry feed' },
