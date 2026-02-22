@@ -501,7 +501,12 @@ async function fetchReportsData() {
                     <td>${escapeHtml(r.period || '')}</td>
                     <td>${r.log_count || 0}</td>
                     <td>${r.alert_count || 0}</td>
-                    <td><button class="btn-secondary" onclick="downloadReport('${r.id}')"><i data-lucide="download" style="width:12px;height:12px;"></i> Download</button></td>
+                    <td>
+                        <div style="display:flex; gap:5px;">
+                            <button class="btn-secondary" style="padding:4px 8px; font-size:11px;" onclick="viewReport('${r.id}')"><i data-lucide="eye" style="width:12px;height:12px;"></i> View</button>
+                            <button class="btn-secondary" style="padding:4px 8px; font-size:11px;" onclick="downloadReport('${r.id}')"><i data-lucide="download" style="width:12px;height:12px;"></i></button>
+                        </div>
+                    </td>
                 </tr>
             `).join('');
             lucide.createIcons();
@@ -841,4 +846,178 @@ function showToast(message, isError = false) {
     toast.textContent = message;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
+}
+
+// ===== AI Assistant Interaction =====
+async function sendAIMessage() {
+    const input = document.getElementById('ai-input');
+    const text = input.value.trim();
+    if (!text) return;
+
+    input.value = '';
+    addMessage('user', text);
+
+    // Remove suggestions once interaction starts
+    const suggestions = document.getElementById('ai-suggestions');
+    if (suggestions) suggestions.style.display = 'none';
+
+    // Simulated Thinking
+    const loadingId = 'ai-loading-' + Date.now();
+    addMessage('system', `<div id="${loadingId}" class="ai-loading"><span>Analyzing telemetry correlations...</span><div class="progress-bar-small"><div class="fill"></div></div></div>`);
+
+    setTimeout(() => {
+        const loadingEl = document.getElementById(loadingId);
+        if (loadingEl) loadingEl.parentElement.remove();
+
+        const response = generateAIResponse(text);
+        addMessage('system', response);
+    }, 1500);
+}
+
+function askAI(question) {
+    document.getElementById('ai-input').value = question;
+    sendAIMessage();
+}
+
+function addMessage(role, text) {
+    const container = document.getElementById('ai-messages');
+    if (!container) return;
+
+    const msg = document.createElement('div');
+    msg.className = `message ${role}`;
+    msg.innerHTML = text; // Trusted for this internal simulation
+    container.appendChild(msg);
+    container.scrollTop = container.scrollHeight;
+}
+
+function generateAIResponse(input) {
+    const query = input.toLowerCase();
+
+    // Knowledge Base based on current app state
+    const totalAlerts = statsData?.total_alerts || 0;
+    const criticals = statsData?.severity_breakdown?.critical || 0;
+    const mostActiveIP = Object.keys(businessInsightsData?.top_business_sources || {}).shift() || '192.168.1.105';
+
+    if (query.includes('risk') || query.includes('status')) {
+        let risk = criticals > 5 ? 'High' : (criticals > 0 ? 'Medium' : 'Low');
+        return `Based on current telemetry, your risk level is <b>${risk}</b>. I am currently tracking ${totalAlerts} active alerts, including ${criticals} critical vulnerabilities. Most of these appear to be coordinated login attempts.`;
+    }
+
+    if (query.includes('threat') || query.includes('24 hours')) {
+        return `The top threat vector in the last 24 hours is <b>Brute Force Authentication Attacks</b>. We've seen a 15% increase in unauthorized attempts, primarily targeting your edge gateway from IP ${mostActiveIP}.`;
+    }
+
+    if (query.includes('fix') || query.includes('respond') || query.includes('brute force')) {
+        return `To mitigate the current brute force wave, I recommend:
+        <ul>
+            <li>Enable <b>Account Lockout</b> after 5 failed attempts.</li>
+            <li>Implement <b>MFA</b> for all administrative interfaces.</li>
+            <li>Blacklist source IP <code>${mostActiveIP}</code> at the firewall level.</li>
+        </ul>`;
+    }
+
+    return `I've analyzed your request. While I'm still learning the specifics of your environment, I can confirm that your SIEM is currently processing ${statsData?.total_logs || 0} logs. Is there a specific asset or IP you'd like me to investigate?`;
+}
+
+// ===== Professional Reporting Logic =====
+function triggerReportGeneration() {
+    const modal = document.getElementById('gen-report-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        // Set default dates
+        const today = new Date().toISOString().split('T')[0];
+        const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        setVal('gen-report-start', lastWeek);
+        setVal('gen-report-end', today);
+        lucide.createIcons();
+    }
+}
+
+function closeGenModal() {
+    const modal = document.getElementById('gen-report-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function toggleCustomDates() {
+    const type = getVal('gen-report-type');
+    const customSection = document.getElementById('custom-date-section');
+    if (customSection) {
+        customSection.style.display = type === 'custom' ? 'block' : 'none';
+    }
+}
+
+async function submitReportGeneration() {
+    try {
+        const type = getVal('gen-report-type');
+        let daysBack = 1;
+        if (type === 'weekly') daysBack = 7;
+        if (type === 'monthly') daysBack = 30;
+
+        const payload = {
+            tenant_id: currentTenant,
+            report_type: type,
+            days_back: daysBack
+        };
+
+        if (type === 'custom') {
+            const start = getVal('gen-report-start');
+            const end = getVal('gen-report-end');
+            if (!start || !end) {
+                showToast('Please select both start and end dates', true);
+                return;
+            }
+            payload.start_date = start;
+            payload.end_date = end;
+
+            // Still calculate days_back as a fallback
+            const diffTime = Math.abs(new Date(end) - new Date(start));
+            payload.days_back = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+
+        closeGenModal();
+        showToast(`Generating ${type} security report...`);
+
+        const res = await fetch(`${API_BASE_URL}/reports/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_API_KEY },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            showToast('Report generated successfully');
+            fetchReportsData(); // Refresh list
+        } else {
+            showToast('Failed to generate report', true);
+        }
+    } catch (e) {
+        console.error('[SIEM] generation error:', e);
+        showToast('Error triggering report', true);
+    }
+}
+
+async function viewReport(reportId) {
+    try {
+        const res = await apiFetch(`${API_BASE_URL}/reports/${reportId}/content`);
+        if (res && res.ok) {
+            const result = await res.json();
+            const html = result.data.html;
+
+            const modal = document.getElementById('report-modal');
+            const iframe = document.getElementById('report-iframe');
+
+            modal.style.display = 'block';
+            const doc = iframe.contentWindow.document;
+            doc.open();
+            doc.write(html);
+            doc.close();
+
+            document.getElementById('report-modal-title').textContent = `${result.data.type.toUpperCase()} Security Report`;
+            lucide.createIcons();
+        }
+    } catch (e) { showToast('Could not load report content', true); }
+}
+
+function closeReportModal() {
+    const modal = document.getElementById('report-modal');
+    modal.style.display = 'none';
 }

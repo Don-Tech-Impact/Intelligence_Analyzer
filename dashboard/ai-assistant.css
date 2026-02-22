@@ -91,6 +91,28 @@
     border-bottom-right-radius: 2px;
 }
 
+/* Response Formatting */
+.message.system ul {
+    margin: 0.5rem 0;
+    padding-left: 1.25rem;
+}
+
+.message.system li {
+    margin-bottom: 0.25rem;
+}
+
+.message.system b {
+    color: var(--accent-blue);
+}
+
+.message.system code {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-family: inherit;
+    color: var(--accent-teal);
+}
+
 .ai-loading {
     display: flex;
     flex-direction: column;

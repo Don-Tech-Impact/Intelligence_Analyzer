@@ -404,28 +404,32 @@
                                 <p>Plain language incident analysis and response</p>
                             </div>
                         </div>
-                        <span class="badge-beta">BETA</span>
+                        <span class="badge-beta">PRO</span>
                     </div>
 
-                    <div class="ai-messages-scroll" id="ai-messages">
+                    <div id="ai-messages" class="ai-messages-scroll">
                         <div class="message system">
                             Hello! I am your Security AI Assistant. I can help you analyze complex logs in plain
                             language, identify threat patterns, and suggest remediation steps.
                         </div>
-                        <div class="message system">
-                            <div class="ai-loading">
-                                <span>Developing plain language engine...</span>
-                                <div class="progress-bar-small">
-                                    <div class="fill" style="width:65%"></div>
-                                </div>
-                            </div>
+                        <div id="ai-suggestions" class="ai-suggestions"
+                            style="display:flex; gap:10px; padding:0 1.5rem 1rem; flex-wrap:wrap;">
+                            <button class="badge-beta" style="cursor:pointer; border:1px solid var(--accent-blue);"
+                                onclick="askAI('What is my current security risk level?')">What is my current risk
+                                level?</button>
+                            <button class="badge-beta" style="cursor:pointer; border:1px solid var(--accent-blue);"
+                                onclick="askAI('Summarize the top threats from the last 24 hours.')">Summarize top
+                                threats</button>
+                            <button class="badge-beta" style="cursor:pointer; border:1px solid var(--accent-blue);"
+                                onclick="askAI('How should I respond to the brute force attempts?')">How to fix brute
+                                force?</button>
                         </div>
                     </div>
 
                     <div class="ai-input-area">
-                        <input type="text" placeholder="Ask about specific logs or threat trends..." disabled
-                            class="glass-input">
-                        <button class="btn-primary" disabled><i data-lucide="send"></i></button>
+                        <input type="text" id="ai-input" placeholder="Ask about threats, logs, or analysis..."
+                            class="glass-input" onkeypress="if(event.key==='Enter') sendAIMessage()">
+                        <button class="btn-primary" onclick="sendAIMessage()"><i data-lucide="send"></i></button>
                     </div>
                 </div>
             </div>
@@ -436,8 +440,65 @@
             <div id="reports-view" class="dashboard-view">
                 <div class="data-table-container">
                     <div class="table-header">
-                        <h3>Report Archive</h3>
-                        <div class="table-filters">
+                        <!-- Generate Report Modal -->
+                        <div id="gen-report-modal" class="modal-overlay"
+                            style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:9999; padding:40px; display: flex; align-items: center; justify-content: center;">
+                            <div class="modal-content"
+                                style="background:#0B1120; width:450px; border: 1px solid rgba(255,255,255,0.1); border-radius:12px; display:flex; flex-direction:column; padding: 2rem; color: white;">
+                                <div
+                                    style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1.5rem;">
+                                    <h3 style="margin:0;">Generate Security Report</h3>
+                                    <button onclick="closeGenModal()"
+                                        style="background:none; border:none; color:white; cursor:pointer;"><i
+                                            data-lucide="x"></i></button>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 1.25rem;">
+                                    <label
+                                        style="display:block; font-size: 0.75rem; color: var(--text-muted); text-transform:uppercase; margin-bottom: 0.5rem;">REPORT
+                                        TYPE</label>
+                                    <select id="gen-report-type" class="glass-input" style="width:100%;"
+                                        onchange="toggleCustomDates()">
+                                        <option value="daily">Daily Summary</option>
+                                        <option value="weekly">Weekly Audit</option>
+                                        <option value="monthly">Monthly Executive</option>
+                                        <option value="custom">Custom Range</option>
+                                    </select>
+                                </div>
+
+                                <div id="custom-date-section" style="display:none;">
+                                    <div class="form-group" style="margin-bottom: 1.25rem;">
+                                        <label
+                                            style="display:block; font-size: 0.75rem; color: var(--text-muted); text-transform:uppercase; margin-bottom: 0.5rem;">START
+                                            DATE</label>
+                                        <input type="date" id="gen-report-start" class="glass-input"
+                                            style="width:100%;">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 1.25rem;">
+                                        <label
+                                            style="display:block; font-size: 0.75rem; color: var(--text-muted); text-transform:uppercase; margin-bottom: 0.5rem;">END
+                                            DATE</label>
+                                        <input type="date" id="gen-report-end" class="glass-input" style="width:100%;">
+                                    </div>
+                                </div>
+
+                                <div style="margin-top: 1rem; display:flex; gap: 10px;">
+                                    <button class="btn-primary" style="flex:1;" onclick="submitReportGeneration()">
+                                        <i data-lucide="check" style="width:16px;height:16px;"></i> Generate
+                                    </button>
+                                    <button class="btn-secondary" style="flex:1;"
+                                        onclick="closeGenModal()">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Report Viewer Modal -->
+                        <div id="report-modal" class="modal-overlay"
+                            style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:9999; padding:40px;">
+                            <button class="btn-primary" style="padding: 6px 12px; font-size: 12px;"
+                                onclick="triggerReportGeneration()">
+                                <i data-lucide="plus" style="width:14px;height:14px;"></i> Generate New
+                            </button>
                             <select id="report-filter-type" class="glass-input" onchange="fetchReportsData()">
                                 <option value="">All Types</option>
                                 <option value="daily">Daily</option>

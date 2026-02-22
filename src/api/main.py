@@ -12,6 +12,7 @@ from src.models.database import NormalizedLog, Alert, ThreatIntelligence, Report
 from pydantic import BaseModel
 from src.models.schemas import AlertUpdateSchema, DashboardSummarySchema, ApiResponse
 from src.services.log_ingestion import AnalysisPipeline
+from src.services.report_generator import ReportGenerator
 
 # V1 API Router, Health endpoints, and Admin API
 from src.api.v1_router import router as v1_router
@@ -180,6 +181,13 @@ def get_db():
 # Startup logic is handled by the lifespan context manager above.
 # Authentication removed — managed by Repo 1 (Afric Analyzer).
 
+class ReportRequest(BaseModel):
+    tenant_id: str = "default"
+    report_type: str = "custom"
+    days_back: Optional[int] = 1
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
 
 @app.get("/stats")
 def get_stats(
@@ -300,6 +308,68 @@ def download_report(
         
     from fastapi.responses import FileResponse
     return FileResponse(report.file_path, filename=os.path.basename(report.file_path))
+
+@app.post("/reports/generate")
+@limiter.limit("2/minute")
+def trigger_report_generation(
+    request: Request,
+    req: ReportRequest,
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_admin_key)
+):
+    """Trigger manual report generation."""
+    try:
+        gen = ReportGenerator()
+        
+        # Determine date range
+        if req.start_date and req.end_date:
+            try:
+                start_date = datetime.fromisoformat(req.start_date.replace('Z', '+00:00'))
+                end_date = datetime.fromisoformat(req.end_date.replace('Z', '+00:00'))
+            except ValueError:
+                # Fallback to simple date parsing if ISO fails
+                start_date = datetime.strptime(req.start_date, "%Y-%m-%d")
+                end_date = datetime.strptime(req.end_date, "%Y-%m-%d")
+                # Make end_date inclusive of the full day
+                end_date = end_date.replace(hour=23, minute=59, second=59)
+        else:
+            end_date = datetime.utcnow()
+            days = req.days_back if req.days_back is not None else 1
+            start_date = end_date - timedelta(days=days)
+        
+        report = gen.generate_report(
+            start_date=start_date,
+            end_date=end_date,
+            report_type=req.report_type,
+            tenant_id=req.tenant_id
+        )
+        
+        if not report:
+            raise HTTPException(status_code=500, detail="Failed to generate report")
+            
+        return {"status": "success", "report_id": report.id, "message": "Report generated successfully"}
+    except Exception as e:
+        logger.error(f"Manual report generation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/reports/{report_id}/content")
+def get_report_content(
+    report_id: int,
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_admin_key)
+):
+    """Get the HTML content of a report for in-dashboard viewing."""
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+        
+    if not os.path.exists(report.file_path):
+        raise HTTPException(status_code=404, detail="Report file missing on server")
+        
+    with open(report.file_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+        
+    return {"status": "success", "data": {"html": content, "type": report.report_type}}
 
 @app.get("/analytics/business-insights")
 def get_business_insights(
