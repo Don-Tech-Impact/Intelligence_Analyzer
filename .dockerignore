@@ -16,7 +16,7 @@ venv
 tests
 data/
 logs/
-dashboard/
+# dashboard/
 Dockerfile
 docker-compose*
 README.md
