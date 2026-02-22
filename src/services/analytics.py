@@ -308,3 +308,47 @@ class AnalyticsService:
             }
             for r in results
         ]
+
+    @staticmethod
+    def get_business_insights(tenant_id: str, db: Session) -> Dict[str, Any]:
+        """Get insights on business activity patterns (last 7 days)."""
+        now = datetime.utcnow()
+        last_7d = now - timedelta(days=7)
+        
+        # Query logs for the last 7 days
+        logs = db.query(NormalizedLog.timestamp, NormalizedLog.vendor).filter(
+            NormalizedLog.tenant_id == tenant_id,
+            NormalizedLog.timestamp >= last_7d
+        ).all()
+        
+        business_hours = 0
+        after_hours = 0
+        weekdays = 0
+        weekends = 0
+        by_vendor = {}
+        
+        for log_ts, vendor in logs:
+            # Business hours: 09:00 - 17:00
+            hour = log_ts.hour
+            if 9 <= hour < 18:  # Extended to 18:00 for common business day
+                business_hours += 1
+            else:
+                after_hours += 1
+            
+            # Weekdays: 0 (Mon) - 4 (Fri)
+            day = log_ts.weekday()
+            if day < 5:
+                weekdays += 1
+            else:
+                weekends += 1
+                
+            vendor_name = vendor or "Unknown"
+            by_vendor[vendor_name] = by_vendor.get(vendor_name, 0) + 1
+            
+        return {
+            "business_hours": business_hours,
+            "after_hours": after_hours,
+            "weekdays": weekdays,
+            "weekends": weekends,
+            "by_vendor": by_vendor
+        }

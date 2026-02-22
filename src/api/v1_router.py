@@ -1,9 +1,10 @@
 """V1 API Router for afric-analyzer frontend."""
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
+from sqlalchemy import func, desc
 from sqlalchemy.orm import Session
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from src.core.database import db_manager
 from src.models.database import Alert, NormalizedLog
@@ -191,17 +192,8 @@ def get_business_insights(
     db: Session = Depends(get_db)
 ):
     """Get insights on business vs after-hours activity."""
-    # Simple implementation matching legacy dashboard needs
-    now = datetime.utcnow()
-    last_7d = now - timedelta(days=7)
-    
-    # This logic is usually in a service, but for Repo2 we'll keep it concise here
-    # or should I add it to AnalyticsService? Let's check AnalyticsService for weekend/business hours.
-    # Ah, I saw it in the root main.py earlier.
-    
-    # For speed, I'll return mockable success data or implement the query if simple.
-    # Actually, let's add it to AnalyticsService for cleanliness.
-    return ApiResponse(status="success", data={"business_hours": 0, "after_hours": 0})
+    data = AnalyticsService.get_business_insights(tenant_id, db)
+    return ApiResponse(status="success", data=data)
 
 
 

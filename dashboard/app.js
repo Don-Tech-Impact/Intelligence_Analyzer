@@ -1,5 +1,5 @@
-// ===== Afric-Analyzer SIEM Dashboard — Figma V3 =====
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = window.location.origin;
+const ADMIN_API_KEY = 'changeme-admin-key'; // Matches local .env default
 
 // ===== Global State =====
 const urlParams = new URLSearchParams(window.location.search);
@@ -57,7 +57,10 @@ document.addEventListener('DOMContentLoaded', () => {
 async function apiFetch(url) {
     try {
         const response = await fetch(url, {
-            headers: { 'Content-Type': 'application/json' }
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Admin-Key': ADMIN_API_KEY
+            }
         });
         if (!response.ok) return null;
         const body = await response.json();
@@ -528,7 +531,10 @@ async function saveSettings(e) {
         };
         const res = await fetch(`${API_BASE_URL}/config`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Admin-Key': ADMIN_API_KEY
+            },
             body: JSON.stringify(payload)
         });
         showToast(res.ok ? 'Settings saved successfully' : 'Failed to save settings', !res.ok);
