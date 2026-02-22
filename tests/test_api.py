@@ -9,6 +9,8 @@ from src.models.database import Base
 
 @pytest.fixture(scope="module")
 def client():
+    # Set admin key for tests
+    os.environ["ADMIN_API_KEY"] = "changeme-admin-key"
     with TestClient(app) as c:
         yield c
 
@@ -62,14 +64,16 @@ def test_health_check(client):
     assert "components" in response.json()
 
 def test_stats_endpoint(client):
-    """Test stats endpoint works without auth."""
-    response = client.get("/stats?tenant_id=test_tenant")
+    """Test stats endpoint requiring auth."""
+    headers = {"X-Admin-Key": "changeme-admin-key"}
+    response = client.get("/stats?tenant_id=test_tenant", headers=headers)
     assert response.status_code == 200
     data = response.json()["data"]
     assert "total_logs" in data
 
 def test_dashboard_summary(client):
-    response = client.get("/api/dashboard-summary?tenant_id=test_tenant")
+    headers = {"X-Admin-Key": "changeme-admin-key"}
+    response = client.get("/api/dashboard-summary?tenant_id=test_tenant", headers=headers)
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["tenant_id"] == "test_tenant"
