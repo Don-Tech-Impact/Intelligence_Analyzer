@@ -8,7 +8,7 @@ from src.core.database import db_manager
 client = TestClient(app)
 
 # Use the same admin key as defined in test environment or mock it
-ADMIN_KEY = "changeme-admin-key"
+ADMIN_KEY = os.getenv("ADMIN_API_KEY", "changeme-admin-key")
 
 @pytest.fixture(autouse=True)
 def setup_env():

@@ -9,7 +9,7 @@ from src.core.database import db_manager
 from src.models.database import Base, Tenant, Alert, NormalizedLog, Report
 
 
-ADMIN_KEY = "changeme-admin-key"
+ADMIN_KEY = os.getenv("ADMIN_API_KEY", "changeme-admin-key")
 ADMIN_HEADERS = {"X-Admin-Key": ADMIN_KEY}
 
 

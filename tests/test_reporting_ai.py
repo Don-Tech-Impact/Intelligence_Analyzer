@@ -13,7 +13,7 @@ from src.models.database import NormalizedLog, Alert, Report
 app.state.limiter.enabled = False
 
 client = TestClient(app)
-ADMIN_API_KEY = "changeme-admin-key"
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "changeme-admin-key")
 
 @pytest.fixture(scope="module")
 def setup_db():
@@ -87,7 +87,6 @@ class TestReportingAI:
         data = response.json()
         assert data["status"] == "success"
         assert "report_id" in data
-        return data["report_id"]
 
     def test_list_reports(self, sample_data):
         """Test listing reports."""
