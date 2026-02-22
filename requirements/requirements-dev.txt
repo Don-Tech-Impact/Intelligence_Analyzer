@@ -1,0 +1,12 @@
+# Development & Testing Dependencies
+pytest
+pytest-asyncio
+pytest-cov
+flake8
+black
+isort
+mypy
+httpx
+bandit
+safety
+-r requirements.txt

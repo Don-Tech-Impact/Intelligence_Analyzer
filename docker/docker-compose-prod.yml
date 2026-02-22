@@ -78,8 +78,8 @@ services:
       - SQLALCHEMY_POOL_SIZE=20
       - SQLALCHEMY_MAX_OVERFLOW=10
       - SQLALCHEMY_POOL_RECYCLE=1800
-      # Redis connection
-      - REDIS_URL=redis://redis:6379/0
+      # Redis connection (pointing to host for external Redis)
+      - REDIS_URL=${REDIS_URL:-redis://host.docker.internal:6379/0}
       # Queue names (matching Repo1 output)
       - REDIS_DEAD_QUEUE=dead_logs
       - REDIS_INGEST_QUEUE=ingest_logs
@@ -87,15 +87,15 @@ services:
       # Security
       - SECRET_KEY=${SECRET_KEY:-your-production-secret-key-change-me}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8000}
     volumes:
-      - ./reports:/app/reports
-      - ./logs:/app/logs
+      - ../reports:/app/reports
+      - ../logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/health/live" ]
@@ -113,8 +113,8 @@ services:
   # ===========================================================================
   consumer:
     build:
-      context: .
-      target: production
+      context: ..
+      dockerfile: docker/Dockerfile.production
     image: intelligence-analyzer:latest
     # Note: container_name removed to allow horizontal scaling with deploy.replicas
     environment:
@@ -123,7 +123,7 @@ services:
       - SQLALCHEMY_POOL_SIZE=10
       - SQLALCHEMY_MAX_OVERFLOW=5
       # Redis connection
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=${REDIS_URL:-redis://host.docker.internal:6379/0}
       # Queue names
       - REDIS_DEAD_QUEUE=dead_logs
       - REDIS_INGEST_QUEUE=ingest_logs
@@ -133,12 +133,12 @@ services:
       - BATCH_TIMEOUT_MS=1000
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
-      - ./logs:/app/logs
+      - ../logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     # Scale horizontally: docker-compose up -d --scale consumer=10
     deploy:
