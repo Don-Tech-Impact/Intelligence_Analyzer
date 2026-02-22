@@ -77,7 +77,7 @@ def list_logs(
     if search:
         query = query.filter(
             (NormalizedLog.message.contains(search)) | 
-            (NormalizedLog.raw_log.contains(search))
+            (NormalizedLog.raw_data.contains(search))
         )
 
     total = query.count()

@@ -162,6 +162,10 @@ class Config:
         db = self.get('redis.db', 0)
         password = self.get('redis.password')
         
+        # Wrap IPv6 address in brackets if it contains colons
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+            
         auth = f":{password}@" if password else ""
         return f"redis://{auth}{host}:{port}/{db}"
 
