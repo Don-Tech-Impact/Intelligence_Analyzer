@@ -46,6 +46,7 @@ redis:
   log_queue: log_queue
   password: ''
   port: 6379
+  queue_scan_interval: '2'
 reporting:
   email_to:
   - reports@company.com
