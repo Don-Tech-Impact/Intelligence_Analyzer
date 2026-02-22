@@ -1,0 +1,458 @@
+{
+    "info": {
+        "_postman_id": "8b9cad0e-1f20-4192-bff0-e1e043ce43ce",
+        "name": "Intelligence Analyzer (Repo 2)",
+        "description": "Professional API collection for the Intelligence Analyzer SIEM backend. Includes standard V1 endpoints for the dashboard and Admin endpoints for service-to-service communication.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Health & Metrics",
+            "item": [
+                {
+                    "name": "Full Health Check",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/health",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "health"
+                            ]
+                        },
+                        "description": "Returns health status with database and Redis component checks."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Liveness Probe",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/health/live",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "health",
+                                "live"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Metrics (JSON)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/metrics/json",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "metrics",
+                                "json"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "V1 API (Dashboard Interface)",
+            "item": [
+                {
+                    "name": "Dashboard",
+                    "item": [
+                        {
+                            "name": "Get Summary",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/dashboard/summary?tenant_id={{tenant_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "dashboard",
+                                        "summary"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "tenant_id",
+                                            "value": "{{tenant_id}}"
+                                        }
+                                    ]
+                                }
+                            },
+                            "response": []
+                        }
+                    ]
+                },
+                {
+                    "name": "Analytics",
+                    "item": [
+                        {
+                            "name": "Get Timeline",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/analytics/timeline?range=24h&bucket=hour&tenant_id={{tenant_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "analytics",
+                                        "timeline"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "range",
+                                            "value": "24h"
+                                        },
+                                        {
+                                            "key": "bucket",
+                                            "value": "hour"
+                                        },
+                                        {
+                                            "key": "tenant_id",
+                                            "value": "{{tenant_id}}"
+                                        }
+                                    ]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Get Top IPs",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/analytics/top-ips?limit=10&tenant_id={{tenant_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "analytics",
+                                        "top-ips"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "limit",
+                                            "value": "10"
+                                        },
+                                        {
+                                            "key": "tenant_id",
+                                            "value": "{{tenant_id}}"
+                                        }
+                                    ]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Business Insights",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/analytics/business-insights?tenant_id={{tenant_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "analytics",
+                                        "business-insights"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "tenant_id",
+                                            "value": "{{tenant_id}}"
+                                        }
+                                    ]
+                                }
+                            },
+                            "response": []
+                        }
+                    ]
+                },
+                {
+                    "name": "Logs",
+                    "item": [
+                        {
+                            "name": "List Logs",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/logs?page=1&limit=20&tenant_id={{tenant_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "logs"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "page",
+                                            "value": "1"
+                                        },
+                                        {
+                                            "key": "limit",
+                                            "value": "20"
+                                        },
+                                        {
+                                            "key": "tenant_id",
+                                            "value": "{{tenant_id}}"
+                                        },
+                                        {
+                                            "key": "severity",
+                                            "value": "high",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "search",
+                                            "value": "failed login",
+                                            "disabled": true
+                                        }
+                                    ]
+                                }
+                            },
+                            "response": []
+                        }
+                    ]
+                },
+                {
+                    "name": "Alerts",
+                    "item": [
+                        {
+                            "name": "List Alerts",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/alerts?page=1&limit=20&status=open&tenant_id={{tenant_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "alerts"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "page",
+                                            "value": "1"
+                                        },
+                                        {
+                                            "key": "limit",
+                                            "value": "20"
+                                        },
+                                        {
+                                            "key": "status",
+                                            "value": "open"
+                                        },
+                                        {
+                                            "key": "tenant_id",
+                                            "value": "{{tenant_id}}"
+                                        }
+                                    ]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Get Alert Detail",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/alerts/:alert_id?tenant_id={{tenant_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "alerts",
+                                        ":alert_id"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "tenant_id",
+                                            "value": "{{tenant_id}}"
+                                        }
+                                    ],
+                                    "variable": [
+                                        {
+                                            "key": "alert_id",
+                                            "value": "1"
+                                        }
+                                    ]
+                                }
+                            },
+                            "response": []
+                        }
+                    ]
+                },
+                {
+                    "name": "Assets",
+                    "item": [
+                        {
+                            "name": "List Assets",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/assets?page=1&limit=20&tenant_id={{tenant_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "assets"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "page",
+                                            "value": "1"
+                                        },
+                                        {
+                                            "key": "limit",
+                                            "value": "20"
+                                        },
+                                        {
+                                            "key": "tenant_id",
+                                            "value": "{{tenant_id}}"
+                                        }
+                                    ]
+                                }
+                            },
+                            "response": []
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Admin API (Service-to-Service)",
+            "item": [
+                {
+                    "name": "System Overview",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "X-Admin-Key",
+                                "value": "{{admin_key}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/system/overview",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "system",
+                                "overview"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Tenant Usage Stats",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "X-Admin-Key",
+                                "value": "{{admin_key}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/tenants/:tenant_id/usage",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "tenants",
+                                ":tenant_id",
+                                "usage"
+                            ],
+                            "variable": [
+                                {
+                                    "key": "tenant_id",
+                                    "value": "EBK"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        }
+    ],
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        },
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000"
+        },
+        {
+            "key": "tenant_id",
+            "value": "default"
+        },
+        {
+            "key": "admin_key",
+            "value": "changeme-admin-key"
+        }
+    ]
+}
