@@ -7,6 +7,7 @@
     <title>Afric-Analyzer | Security Operations Center</title>
     <meta name="description" content="Afric-Analyzer — Real-time threat monitoring and security intelligence">
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="ai-assistant.css">
     <script src="lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 </head>
@@ -26,8 +27,8 @@
                 <li><a href="#" class="active" onclick="switchView('overview')"><i data-lucide="layout-dashboard"></i>
                         Dashboard</a></li>
                 <li><a href="#" onclick="switchView('alerts')"><i data-lucide="shield-alert"></i> Threats</a></li>
-                <li><a href="#" onclick="switchView('logs')"><i data-lucide="alert-triangle"></i> Incidents</a></li>
-                <li><a href="#" onclick="switchView('log-stream')"><i data-lucide="bot"></i> AI Assistant <span
+                <li><a href="#" onclick="switchView('log-stream')"><i data-lucide="radio"></i> Live Stream</a></li>
+                <li><a href="#" onclick="switchView('ai-assistant')"><i data-lucide="bot"></i> AI Assistant <span
                             class="badge-pro">PRO</span></a></li>
                 <li><a href="#" onclick="switchView('analytics')"><i data-lucide="bar-chart-3"></i> Analytics</a></li>
                 <li><a href="#" onclick="switchView('compliance')"><i data-lucide="file-check"></i> Compliance</a></li>
@@ -374,7 +375,7 @@
             </div>
 
             <!-- ============================================ -->
-            <!-- LOG STREAM (AI ASSISTANT) VIEW               -->
+            <!-- LIVE STREAM (RAW TELEMETRY) VIEW             -->
             <!-- ============================================ -->
             <div id="log-stream-view" class="dashboard-view">
                 <div class="data-table-container">
@@ -386,6 +387,45 @@
                     </div>
                     <div class="stream-console" id="log-stream-console">
                         <!-- Log lines added via JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================ -->
+            <!-- AI ASSISTANT (PLAIN LANGUAGE) VIEW           -->
+            <!-- ============================================ -->
+            <div id="ai-assistant-view" class="dashboard-view">
+                <div class="ai-assistant-container">
+                    <div class="ai-chat-header">
+                        <div class="ai-bot-info">
+                            <div class="ai-bot-icon"><i data-lucide="bot"></i></div>
+                            <div>
+                                <h3>Security AI Assistant</h3>
+                                <p>Plain language incident analysis and response</p>
+                            </div>
+                        </div>
+                        <span class="badge-beta">BETA</span>
+                    </div>
+
+                    <div class="ai-messages-scroll" id="ai-messages">
+                        <div class="message system">
+                            Hello! I am your Security AI Assistant. I can help you analyze complex logs in plain
+                            language, identify threat patterns, and suggest remediation steps.
+                        </div>
+                        <div class="message system">
+                            <div class="ai-loading">
+                                <span>Developing plain language engine...</span>
+                                <div class="progress-bar-small">
+                                    <div class="fill" style="width:65%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ai-input-area">
+                        <input type="text" placeholder="Ask about specific logs or threat trends..." disabled
+                            class="glass-input">
+                        <button class="btn-primary" disabled><i data-lucide="send"></i></button>
                     </div>
                 </div>
             </div>

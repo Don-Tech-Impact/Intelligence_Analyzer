@@ -16,8 +16,8 @@ const VIEWS = {
     overview: { title: 'Afric-Analyzer', subtitle: 'Real-time threat monitoring and response' },
     alerts: { title: 'Security Alerts', subtitle: 'Active and historical security findings' },
     logs: { title: 'Event Log Archive', subtitle: 'Searchable normalized event records' },
-    'log-stream': { title: 'Live Traffic Stream', subtitle: 'Real-time endpoint telemetry feed' },
-    analytics: { title: 'Analytics', subtitle: 'Security trends and business intelligence' },
+    'log-stream': { title: 'Live Stream', subtitle: 'Real-time telemetry and raw event monitoring' },
+    'ai-assistant': { title: 'AI Assistant', subtitle: 'Intelligent log analysis and threat explanation' },
     compliance: { title: 'Compliance Dashboard', subtitle: 'Security standards and regulatory adherence' },
     reports: { title: 'Report Archive', subtitle: 'Generated security summaries and audits' },
     settings: { title: 'System Settings', subtitle: 'Analyzer thresholds and configuration' }
@@ -109,6 +109,7 @@ async function fetchData() {
         else if (currentView === 'alerts') await fetchAlertsData();
         else if (currentView === 'logs') await fetchLogsData();
         else if (currentView === 'log-stream') await fetchStreamData();
+        else if (currentView === 'ai-assistant') await renderAiAssistant();
         else if (currentView === 'analytics') await fetchAnalyticsData();
         else if (currentView === 'compliance') await fetchComplianceData();
         else if (currentView === 'reports') await fetchReportsData();
@@ -791,6 +792,14 @@ function getVal(id) {
 function formatNumber(n) {
     if (n == null || isNaN(n)) return '0';
     return Number(n).toLocaleString();
+}
+
+// ===== AI Assistant (Placeholder) =====
+async function renderAiAssistant() {
+    // Current placeholder, future LLM integration endpoint
+    const container = document.getElementById('ai-messages');
+    if (!container) return;
+    lucide.createIcons();
 }
 
 function formatTime(ts) {
