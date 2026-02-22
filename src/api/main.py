@@ -16,7 +16,7 @@ from src.services.log_ingestion import AnalysisPipeline
 # V1 API Router, Health endpoints, and Admin API
 from src.api.v1_router import router as v1_router
 from src.api.health import router as health_router
-from src.api.admin_router import router as admin_router
+from src.api.admin_router import router as admin_router, verify_admin_key
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -182,7 +182,11 @@ def get_db():
 
 
 @app.get("/stats")
-def get_stats(tenant_id: str = "default", db: Session = Depends(get_db)):
+def get_stats(
+    tenant_id: str = "default", 
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_admin_key)
+):
     """Get high-level statistics."""
     query_logs = db.query(NormalizedLog).filter(NormalizedLog.tenant_id == tenant_id)
     query_alerts = db.query(Alert).filter(Alert.tenant_id == tenant_id)
@@ -218,7 +222,8 @@ def get_alerts(
     tenant_id: str = "default",
     limit: int = 50, 
     severity: Optional[str] = None, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_admin_key)
 ):
     """Get recent alerts."""
     query = db.query(Alert).filter(Alert.tenant_id == tenant_id)
@@ -239,7 +244,8 @@ def get_logs(
     device: Optional[str] = None,
     severity: Optional[str] = None,
     search: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_admin_key)
 ):
     """Get recent logs with enhanced filtering and search."""
     query = db.query(NormalizedLog).filter(NormalizedLog.tenant_id == tenant_id)
@@ -263,7 +269,8 @@ def list_reports(
     report_type: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_admin_key)
 ):
     """List generated reports for a tenant with filtering."""
     query = db.query(Report).filter(Report.tenant_id == tenant_id)
@@ -280,7 +287,8 @@ def list_reports(
 @app.get("/reports/{report_id}/download")
 def download_report(
     report_id: int, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_admin_key)
 ):
     """Download a specific report file."""
     report = db.query(Report).filter(Report.id == report_id).first()
@@ -294,7 +302,11 @@ def download_report(
     return FileResponse(report.file_path, filename=os.path.basename(report.file_path))
 
 @app.get("/analytics/business-insights")
-def get_business_insights(tenant_id: str = "default", db: Session = Depends(get_db)):
+def get_business_insights(
+    tenant_id: str = "default", 
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_admin_key)
+):
     """Analyze logs based on business context (hours/days)."""
     # Get last 7 days of logs for more stable insights
     since = datetime.utcnow() - timedelta(days=7)
@@ -336,7 +348,11 @@ def get_business_insights(tenant_id: str = "default", db: Session = Depends(get_
     return {"status": "success", "data": insights}
 
 @app.get("/trends")
-def get_trends(tenant_id: str = "default", db: Session = Depends(get_db)):
+def get_trends(
+    tenant_id: str = "default", 
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_admin_key)
+):
     """Get data for activity charts."""
     now = datetime.utcnow()
     last_24h = now - timedelta(hours=24)
@@ -370,7 +386,12 @@ def get_trends(tenant_id: str = "default", db: Session = Depends(get_db)):
     }
 
 @app.get("/analytics/top-ips")
-def get_top_ips(tenant_id: str = "default", limit: int = 10, db: Session = Depends(get_db)):
+def get_top_ips(
+    tenant_id: str = "default", 
+    limit: int = 10, 
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_admin_key)
+):
     """Get top source and destination IPs."""
     top_sources = db.query(NormalizedLog.source_ip, func.count(NormalizedLog.id).label('count'))\
         .filter(NormalizedLog.tenant_id == tenant_id)\
@@ -389,7 +410,11 @@ def get_top_ips(tenant_id: str = "default", limit: int = 10, db: Session = Depen
     }
 
 @app.get("/analytics/protocols")
-def get_protocol_breakdown(tenant_id: str = "default", db: Session = Depends(get_db)):
+def get_protocol_breakdown(
+    tenant_id: str = "default", 
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_admin_key)
+):
     """Get protocol distribution."""
     protocols = db.query(NormalizedLog.protocol, func.count(NormalizedLog.id).label('count'))\
         .filter(NormalizedLog.tenant_id == tenant_id)\
@@ -399,7 +424,7 @@ def get_protocol_breakdown(tenant_id: str = "default", db: Session = Depends(get
 
 
 @app.get("/config")
-def get_siem_config():
+def get_siem_config(_key: str = Depends(verify_admin_key)):
     """Get current SIEM configuration."""
     from src.core.config import config as siem_config
     return {
@@ -410,7 +435,7 @@ def get_siem_config():
     }
 
 @app.post("/config")
-def update_siem_config(new_config: dict):
+def update_siem_config(new_config: dict, _key: str = Depends(verify_admin_key)):
     """Update SIEM configuration and persist to yaml."""
     from src.core.config import config as siem_config
     try:
@@ -427,7 +452,12 @@ def update_siem_config(new_config: dict):
 
 @app.get("/api/dashboard-summary")
 @limiter.limit("10/minute")
-def get_dashboard_summary(request: Request, tenant_id: str = "default", db: Session = Depends(get_db)):
+def get_dashboard_summary(
+    request: Request, 
+    tenant_id: str = "default", 
+    db: Session = Depends(get_db),
+    _key: str = Depends(verify_admin_key)
+):
     """
     Get a comprehensive summary for the dashboard in a single request.
     This reduces the number of initial API calls needed by the React frontend.
