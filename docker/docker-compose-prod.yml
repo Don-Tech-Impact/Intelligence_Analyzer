@@ -90,6 +90,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+    networks:
+      - default
+      - repo1_network
 
   # ===========================================================================
   # Redis Consumer Workers (Log Processing Pipeline)
@@ -115,6 +118,9 @@ services:
     deploy:
       replicas: ${CONSUMER_REPLICAS:-1}
     command: python -m src.services.redis_consumer
+    networks:
+      - default
+      - repo1_network
 
 # =============================================================================
 # Persistent Volumes
@@ -131,3 +137,6 @@ volumes:
 networks:
   default:
     name: siem-network
+  repo1_network:
+    external: true # name: repo1_network
+    name: afric-analyzer-redis-1
