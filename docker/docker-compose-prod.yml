@@ -65,7 +65,7 @@ services:
   # FastAPI server for dashboards, alerts, and management
   # ===========================================================================
   analyzer:
-    image: intelligence_analyzer/intelligence_analyzer_api:${IMAGE_TAG:-latest}
+    image: ${DOCKER_ORG:-africanalyzer}/${APP_NAME:-intelligence_analyzer}:${IMAGE_TAG:-latest}
     container_name: siem-analyzer
     labels:
       com.afric.version: "${IMAGE_TAG:-latest}"
@@ -99,7 +99,7 @@ services:
   # Uses Redis for real-time threat detection state
   # ===========================================================================
   consumer:
-    image: intelligence_analyzer/intelligence_analyzer_consumer:${IMAGE_TAG:-latest}
+    image: ${DOCKER_ORG:-africanalyzer}/${APP_NAME:-intelligence_analyzer}:${IMAGE_TAG:-latest}
     container_name: siem-consumer
     env_file:
       - ./config/.env.production

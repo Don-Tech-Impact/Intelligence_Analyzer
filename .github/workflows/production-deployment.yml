@@ -216,6 +216,8 @@ jobs:
             echo ">> Restarting the container"
             SHORT_SHA="${IMAGE_TAG:0:7}"
             echo "IMAGE_TAG=sha-${SHORT_SHA}" > "${APP_DIR_ENV}/.env"
+            echo "DOCKER_ORG=${DOCKER_ORG_ENV}" >> "${APP_DIR_ENV}/.env"
+            echo "APP_NAME=${APP_NAME_ENV}" >> "${APP_DIR_ENV}/.env"
             echo "DEPLOY_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${APP_DIR_ENV}/.env"
             IMAGE_TAG="sha-${SHORT_SHA}" docker compose up -d --force-recreate --remove-orphans
 

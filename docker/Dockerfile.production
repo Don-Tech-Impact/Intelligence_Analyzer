@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM python:3.11-slim-bookworm as builder
+FROM python:3.11-slim-bookworm AS builder
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -16,9 +16,10 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 # Stage 2: Runtime
 FROM python:3.11-slim-bookworm
 
-# Install runtime dependencies (curl for healthcheck)
+# Install runtime dependencies (curl for healthcheck, tini for signal handling)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    tini \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
@@ -36,7 +37,7 @@ COPY src/ ./src/
 COPY dashboard/ ./dashboard/
 
 # Create logs directory
-RUN mkdir -p /app/logs && chown -R appuser:appuser /app
+RUN mkdir -p /app/logs && chown -R appuser:appgroup /app
 
 # Environment hardening
 ENV PYTHONDONTWRITEBYTECODE=1 \
