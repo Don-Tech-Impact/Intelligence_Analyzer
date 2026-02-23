@@ -165,7 +165,7 @@ jobs:
             echo "  Image tag: ${IMAGE_TAG}"
             echo "========================================="
 
-            APP_DIR="/home/${{ secrets.PROD_USER }}/intelligence-analyzer"
+            APP_DIR="$HOME/intelligence-analyzer"
             COMPOSE_FILE="${APP_DIR}/docker/docker-compose-prod.yml"
 
             # Ensure app directory exists
