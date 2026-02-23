@@ -109,7 +109,7 @@ services:
     restart: unless-stopped
     # Scale horizontally: docker-compose up -d --scale consumer=10
     deploy:
-      replicas: ${CONSUMER_REPLICAS:1}
+      replicas: ${CONSUMER_REPLICAS:-1}
     command: python -m src.services.redis_consumer
 
 # =============================================================================
