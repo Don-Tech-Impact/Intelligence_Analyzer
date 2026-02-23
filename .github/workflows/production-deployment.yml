@@ -184,14 +184,9 @@ jobs:
             echo "  Image tag: ${IMAGE_TAG}"
             echo "========================================="
 
-            APP_DIR="$HOME/intelligence-analyzer"
-            COMPOSE_FILE="${APP_DIR}/docker/docker-compose-prod.yml"
-
-            # mkdir -p "${APP_DIR}"
-            # cd "${APP_DIR}"
-
-            # # Debug contents
-            # ls -la
+            APP_DIR="${APP_DIR_ENV:-$HOME/intelligence-analyzer}"
+            mkdir -p "${APP_DIR}"
+            cd "${APP_DIR}"
 
             echo ">> Checking disk space before deployment"
             df -h
@@ -201,10 +196,14 @@ jobs:
             git clone --depth 1 \
               https://${PAT_TOKEN}@github.com/Don-Tech-Impact/Intelligence_Analyzer.git \
               /tmp/repo_temp  
+            
+            echo ">> Updating configuration and scripts"
+            cp -r /tmp/repo_temp/config ./ || true
+            cp -r /tmp/repo_temp/scripts ./ || true
             cp /tmp/repo_temp/docker/docker-compose-prod.yml ./docker-compose.yml
             rm -rf /tmp/repo_temp
 
-            echo ">> Docker compose file updated with latest changes"
+            echo ">> Docker compose file and project structure updated"
 
             ## Step3 to pul up the new image in the server"
             ## Login to the private repo to avoid rate limiting 
