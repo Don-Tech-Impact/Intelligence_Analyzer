@@ -67,6 +67,10 @@ services:
   analyzer:
     image: intelligence_analyzer/intelligence_analyzer_api:${IMAGE_TAG:-latest}
     container_name: siem-analyzer
+    labels:
+      com.afric.version: "${IMAGE_TAG:-latest}"
+      com.afric.deployed: "${DEPLOY_TIME:-latest}"
+      com.afric.service: "ingestion-analyzer"
     ports:
       - "8000:8000"
     env_file:

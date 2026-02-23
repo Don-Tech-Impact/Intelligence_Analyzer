@@ -27,12 +27,16 @@ RUN groupadd -r appgroup && useradd -r -g appgroup -s /sbin/nologin -c "Docker i
 WORKDIR /app
 
 # Copy only installed dependencies from builder
-COPY --from=builder /install /usr/local
+COPY --from=builder /install /usr/local/lib
+COPY --from=builder /install /usr/local/bin
 
 # Copy application code
-COPY --chown=appuser:appgroup src/ ./src/
+COPY src/ ./src/
 # Dashboard is static, usually served by Nginx, but here we keep it for simplicity if backend serves it
-COPY --chown=appuser:appgroup dashboard/ ./dashboard/
+COPY dashboard/ ./dashboard/
+
+# Create logs directory
+RUN mkdir -p /app/logs && chown -R appuser:appuser /app
 
 # Environment hardening
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -48,6 +52,9 @@ EXPOSE 8000
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
+
+# Use tini as PID 1 for proper signal handling (SIGTERM -> graceful shutdown)
+ENTRYPOINT ["tini", "--"]
 
 # Performance: Use gunicorn with uvicorn workers for production
 CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
