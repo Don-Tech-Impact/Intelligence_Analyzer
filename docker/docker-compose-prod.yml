@@ -70,10 +70,10 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - ../config/.env.production
+      - ./config/.env.production
     volumes:
-      - ../reports:/app/reports
-      - ../logs:/app/logs
+      - ./reports:/app/reports
+      - ./logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,9 +98,9 @@ services:
     image: intelligence_analyzer/intelligence_analyzer_consumer:${IMAGE_TAG:-latest}
     container_name: siem-consumer
     env_file:
-      - ../config/.env.production
+      - ./config/.env.production
     volumes:
-      - ../logs:/app/logs
+      - ./logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
