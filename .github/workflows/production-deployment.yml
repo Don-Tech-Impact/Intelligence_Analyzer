@@ -193,6 +193,9 @@ jobs:
             # # Debug contents
             # ls -la
 
+            echo ">> Checking disk space before deployment"
+            df -h
+
             # Clone or pull latest code
             rm -rf /tmp/repo_temp
             git clone --depth 1 \
@@ -208,6 +211,9 @@ jobs:
             echo ">> Logging in to docker hub to pull image now"
             echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
            
+            echo ">> Freeing up disk space by removing unused images and builder cache"
+            docker system prune -f
+
             echo ">> pulling the image from the hub"
             echo ">> Pulling image: ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:sha-${IMAGE_TAG:0:7}"
             docker pull "${DOCKER_ORG_ENV}/${APP_NAME_ENV}:sha-${IMAGE_TAG:0:7}"
