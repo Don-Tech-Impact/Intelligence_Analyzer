@@ -165,12 +165,26 @@ jobs:
             echo "  Image tag: ${IMAGE_TAG}"
             echo "========================================="
 
+            echo ">> DEBUG: Current User: $(whoami)"
+            echo ">> DEBUG: ID: $(id)"
+            echo ">> DEBUG: PWD: $(pwd)"
+            echo ">> DEBUG: HOME: $HOME"
+            
             APP_DIR="$HOME/intelligence-analyzer"
-            COMPOSE_FILE="${APP_DIR}/docker/docker-compose-prod.yml"
+            echo ">> DEBUG: APP_DIR: ${APP_DIR}"
+            
+            # Check if directory exists and show permissions
+            if [ -d "${APP_DIR}" ]; then
+              echo ">> DEBUG: Directory exists. Permissions: $(ls -ld "${APP_DIR}")"
+            else
+              echo ">> DEBUG: Directory does not exist yet."
+            fi
 
-            # Ensure app directory exists
-            mkdir -p "${APP_DIR}"
-            cd "${APP_DIR}"
+            COMPOSE_FILE="${APP_DIR}/docker/docker-compose-prod.yml"
+            
+            echo ">> Ensuring directory exists..."
+            mkdir -v -p "${APP_DIR}" || { echo "!! Error creating ${APP_DIR}"; exit 1; }
+            cd "${APP_DIR}" || { echo "!! Error entering ${APP_DIR}"; exit 1; }
 
             # Clone or pull latest code
             if [ ! -d ".git" ]; then
