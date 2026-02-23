@@ -36,7 +36,7 @@ This checklist ensures that the Intelligence Analyzer (Repo 2) is production-rea
 git pull origin clean_main
 
 # 2. Build and restart services
-docker-compose up -d --build
+docker-compose -p intel up -d --build
 
 # 3. Verify health
 curl http://localhost:8000/health

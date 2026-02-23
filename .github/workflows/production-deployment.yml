@@ -225,13 +225,13 @@ jobs:
             echo "DOCKER_ORG=${DOCKER_ORG_ENV}" >> "${APP_DIR_ENV}/.env"
             echo "APP_NAME=${APP_NAME_ENV}" >> "${APP_DIR_ENV}/.env"
             echo "DEPLOY_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${APP_DIR_ENV}/.env"
-            IMAGE_TAG="sha-${SHORT_SHA}" docker compose up -d --force-recreate --remove-orphans
+            IMAGE_TAG="sha-${SHORT_SHA}" docker compose -p intel up -d --force-recreate --remove-orphans
 
 
             # ── Step 5: Verify ──
             echo ">> Waiting for containers to stabilise..."
             sleep 5
-            docker compose ps
+            docker compose -p intel ps
 
             # Clean up old dangling images to save disk space
             docker image prune -f
