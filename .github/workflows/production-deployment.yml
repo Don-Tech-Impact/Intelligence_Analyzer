@@ -120,6 +120,7 @@ jobs:
         if: success()
         with:
           image: ${{ env.DOCKER_ORG }}/${{ env.APP_NAME }}@${{ steps.build.outputs.digest }}
+          platform: linux/amd64
           format: spdx-json
           output-file: sbom.spdx.json
 
