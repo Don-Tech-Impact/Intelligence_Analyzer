@@ -8,8 +8,9 @@ on:
 
 env:
   DOCKER_ORG: africanalyzer
-  APP_NAME: repo1
-  REGISTRY: docker.io
+  APP_NAME: intelligence_analyzer
+  APP_DIR: /opt/intelligence-analyzer
+  # REGISTRY: docker.io
 
 jobs:
   # ── Job 1: Run Tests ──────────────────────────────────────────────────────
@@ -120,7 +121,7 @@ jobs:
         if: success()
         with:
           image: ${{ env.DOCKER_ORG }}/${{ env.APP_NAME }}@${{ steps.build.outputs.digest }}
-          platform: linux/amd64
+          # platform: linux/amd64
           format: spdx-json
           output-file: sbom.spdx.json
 
@@ -139,26 +140,43 @@ jobs:
     permissions:
       contents: read
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-    # environment: production 
+    environment: production 
 
     steps:
-      - name: Set Short SHA
-        id: vars
-        run: echo "short_sha=sha-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+      - name: validate secrets
+        run: |
+          MISSING=""
+          [ -z "${{ secrets.PROD_HOST }}" ] && MISSING="PROD_HOST"
+          [ -z "${{ secrets.PROD_USER }}" ] && MISSING="${MISSING} PROD_USER"
+          [ -z "${{ secrets.PROD_SSH_KEY }}" ] && MISSING="${MISSING} PROD_SSH_KEY"
+          [ -z "${{ secrets.PAT_TOKEN }}" ] && MISSING="${MISSING} PAT_TOKEN"
+
+          if [ -n "${MISSING}" ]; then
+            echo "Missing secrets: ${MISSING}"
+            exit 1
+          fi
+          echo "All secrets are set"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
-          IMAGE_TAG: ${{ steps.vars.outputs.short_sha }}
+          IMAGE_TAG:      ${{ github.sha }}
           DOCKER_ORG_ENV: ${{ env.DOCKER_ORG }}
-          APP_NAME_ENV: ${{ env.APP_NAME }}
+          APP_NAME_ENV:   ${{ env.APP_NAME }}
+          APP_DIR_ENV:    ${{ env.APP_DIR }}
+          PAT_TOKEN:      ${{ secrets.PAT_TOKEN }}
+          DOCKER_USER:    ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASS:    ${{ secrets.DOCKER_PASSWORD }}
         with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          port: 22
-          envs: IMAGE_TAG,DOCKER_ORG_ENV,APP_NAME_ENV
-          script_stop: true
+          host:         ${{ secrets.PROD_HOST }}
+          username:     ${{ secrets.PROD_USER }}
+          key:          ${{ secrets.PROD_SSH_KEY }}
+          port:         22
+          envs:         IMAGE_TAG,DOCKER_ORG_ENV,APP_NAME_ENV,APP_DIR_ENV,PAT_TOKEN,DOCKER_USER,DOCKER_PASS
+          script_stop:  true
           script: |
             set -x
             echo "========================================="
@@ -169,91 +187,66 @@ jobs:
             APP_DIR="$HOME/intelligence-analyzer"
             COMPOSE_FILE="${APP_DIR}/docker/docker-compose-prod.yml"
 
-            mkdir -p "${APP_DIR}"
-            cd "${APP_DIR}"
+            # mkdir -p "${APP_DIR}"
+            # cd "${APP_DIR}"
 
-            # Debug contents
-            ls -la
+            # # Debug contents
+            # ls -la
 
             # Clone or pull latest code
-            if [ ! -d ".git" ]; then
-              echo ">> Cloning repository..."
-              git clone https://github.com/${{ github.repository }}.git .
-            else
-              echo ">> Pulling latest changes..."
-              git fetch origin main
-              git reset --hard origin/main
-            fi
+            rm -rf /tmp/repo_temp
+            git clone --depth 1 \
+              https://${PAT_TOKEN}@github.com/Don-Tech-Impact/Intelligence_Analyzer.git \
+              /tmp/repo_temp  
+            cp /tmp/repo_temp/docker/docker-compose-prod.yml ./docker-compose.yml
+            rm -rf /tmp/repo_temp
 
-            # Create required directories
-            mkdir -p logs reports
-            chmod 755 logs reports
+            echo ">> Docker compose file updated with latest changes"
 
-            # Update image tag in compose file
-            echo ">> Setting image to ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:${IMAGE_TAG}"
-            sed -i "s|image: .*${APP_NAME_ENV}:.*|image: ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:${IMAGE_TAG}|g" "${COMPOSE_FILE}"
+            ## Step3 to pul up the new image in the server"
+            ## Login to the private repo to avoid rate limiting 
+            echo ">> Logging in to docker hub to pull image now"
+            echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
+           
+            echo ">> pulling the image from the hub"
+            echo ">> Pulling image: ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:sha-${IMAGE_TAG:0:7}"
+            docker pull "${DOCKER_ORG_ENV}/${APP_NAME_ENV}:sha-${IMAGE_TAG:0:7}"
 
-            # Login to Docker Hub
-            echo ">> Logging into Docker Hub..."
-            echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+            ## -- Step 4 Restart the container ###
+            echo ">> Restarting the container"
+            SHORT_SHA="${IMAGE_TAG:0:7}"
+            echo "IMAGE_TAG=sha-${SHORT_SHA}" > "${APP_DIR_ENV}/.env"
+            echo "DEPLOY_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${APP_DIR_ENV}/.env"
+            IMAGE_TAG="sha-${SHORT_SHA}" docker compose up -d --force-recreate --remove-orphans
 
-            # Pull new images
-            echo ">> Pulling new images..."
-            docker compose -f "${COMPOSE_FILE}" pull
 
-            # Start new containers
-            echo ">> Starting new containers..."
-            docker compose -f "${COMPOSE_FILE}" up -d
+            # ── Step 5: Verify ──
+            echo ">> Waiting for containers to stabilise..."
+            sleep 5
+            docker compose ps
 
-            # Wait for containers to be ready
-            echo ">> Waiting 15s for startup..."
-            sleep 15
-
-            # Health check
-            echo ">> Running health check..."
-            HEALTHY=false
-            for i in $(seq 1 10); do
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || echo "000")
-              if [ "$HTTP_CODE" = "200" ]; then
-                HEALTHY=true
-                echo ">> Health check passed!"
-                break
-              fi
-              echo ">> Attempt ${i}/10 - got HTTP ${HTTP_CODE}, retrying in 5s..."
-              sleep 5
-            done
-
-            if [ "$HEALTHY" = "true" ]; then
-              echo "========================================="
-              echo "  DEPLOYMENT SUCCESSFUL"
-              echo "========================================="
-              docker compose -f "${COMPOSE_FILE}" ps
-            else
-              echo "========================================="
-              echo "  DEPLOYMENT FAILED"
-              echo "========================================="
-              docker compose -f "${COMPOSE_FILE}" logs --tail=50
-              exit 1
-            fi
-
-            # Cleanup
+            # Clean up old dangling images to save disk space
             docker image prune -f
-            docker logout
 
-  # ── Job 4: Notify ─────────────────────────────────────────────────────────
-  notify:
-    name: Notify Deployment Status
-    needs: [test, build, deploy]
-    runs-on: ubuntu-latest
-    if: always()
+            echo "========================================="
+            echo "  ✅ Deploy complete"
+            echo "  Image: ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:sha-${IMAGE_TAG:0:7}"
+            echo "========================================="
 
-    steps:
-      - name: Deployment summary
-        run: |
-          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Repo:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Author:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tests:** ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Build:** ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Deploy:** ${{ needs.deploy.result }}" >> $GITHUB_STEP_SUMMARY
+  # # ── Job 4: Notify ─────────────────────────────────────────────────────────
+  # notify:
+  #   name: Notify Deployment Status
+  #   needs: [test, build, deploy]
+  #   runs-on: ubuntu-latest
+  #   if: always()
+
+  #   steps:
+  #     - name: Deployment summary
+  #       run: |
+  #         echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+  #         echo "- **Repo:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+  #         echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+  #         echo "- **Author:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+  #         echo "- **Tests:** ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
+  #         echo "- **Build:** ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
+  #         echo "- **Deploy:** ${{ needs.deploy.result }}" >> $GITHUB_STEP_SUMMARY
