@@ -8,7 +8,7 @@ on:
 
 env:
   DOCKER_ORG: africanalyzer
-  APP_NAME: intelligence-analyzer
+  APP_NAME: repo1
   REGISTRY: docker.io
 
 jobs:
