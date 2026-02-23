@@ -142,10 +142,14 @@ jobs:
     # environment: production 
 
     steps:
+      - name: Set Short SHA
+        id: vars
+        run: echo "short_sha=sha-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: ${{ steps.vars.outputs.short_sha }}
           DOCKER_ORG_ENV: ${{ env.DOCKER_ORG }}
           APP_NAME_ENV: ${{ env.APP_NAME }}
         with:
