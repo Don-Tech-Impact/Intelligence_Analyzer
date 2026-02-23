@@ -213,6 +213,9 @@ jobs:
             echo ">> Freeing up disk space by removing unused images and builder cache"
             docker system prune -f
 
+            echo ">> Ensuring port 8000 is free (stopping conflicting containers)"
+            docker ps -q --filter "publish=8000" | xargs -r docker stop || true
+
             echo ">> pulling the image from the hub"
             echo ">> Pulling image: ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:sha-${IMAGE_TAG:0:7}"
             docker pull "${DOCKER_ORG_ENV}/${APP_NAME_ENV}:sha-${IMAGE_TAG:0:7}"
