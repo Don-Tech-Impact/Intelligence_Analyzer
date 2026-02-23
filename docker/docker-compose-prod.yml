@@ -138,5 +138,5 @@ networks:
   default:
     name: siem-network
   repo1_network:
-    external: true # name: repo1_network
-    name: afric-analyzer-redis-1
+    external: true
+    name: afric-analyzer_app_network

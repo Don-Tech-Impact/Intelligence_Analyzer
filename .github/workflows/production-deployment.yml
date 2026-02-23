@@ -228,8 +228,16 @@ jobs:
             echo "APP_NAME=${APP_NAME_ENV}" >> "${APP_DIR_ENV}/.env"
 
             # ADD THIS LINE BELOW:
-            echo "REDIS_URL=redis://afric-analyzer-redis-1:6379/0" >> ".env"
-            echo "DEPLOY_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ".env"
+            echo "REDIS_URL=redis://afric-analyzer-redis-1:6379/0" >> "${APP_DIR_ENV}/.env"
+            echo "DEPLOY_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${APP_DIR_ENV}/.env"
+
+            # Check for aggressive cleanup flag (set to 'true' to activate)
+            AGGRESSIVE_CLEAN="true" 
+            if [ "$AGGRESSIVE_CLEAN" = "true" ]; then
+                echo ">> WARNING: Performing aggressive Docker cleanup (killing and removing all unused resources)"
+                docker system prune -af --volumes
+            fi
+
             IMAGE_TAG="sha-${SHORT_SHA}" docker compose -p intel up -d --force-recreate --remove-orphans
 
 
