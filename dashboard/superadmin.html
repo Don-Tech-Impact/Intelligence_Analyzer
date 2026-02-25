@@ -5,14 +5,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SuperAdmin | Afric-Analyzer</title>
+    <meta name="description" content="Afric-Analyzer SuperAdmin — Global system management and monitoring">
     <link rel="stylesheet" href="superadmin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <script src="auth.js"></script>
-    <script src="superadmin.js"></script>
 </head>
 
 <body>
+    <!-- ===== Sidebar ===== -->
     <aside class="sidebar">
         <div class="sidebar-logo">
             <div class="logo-box">
@@ -23,95 +25,573 @@
 
         <div class="nav-group">
             <div class="nav-label">Overview</div>
-            <a href="#" class="nav-item active"><i data-lucide="layout-dashboard" style="width:18px;"></i> Dashboard</a>
-            <a href="#" class="nav-item"><i data-lucide="users" style="width:18px;"></i> Tenants</a>
-            <a href="#" class="nav-item"><i data-lucide="activity" style="width:18px;"></i> Global Health</a>
+            <a href="#" class="nav-item active" data-view="dashboard"
+                onclick="SuperAdmin.switchView('dashboard', this)">
+                <i data-lucide="layout-dashboard" style="width:18px;"></i> Dashboard</a>
+            <a href="#" class="nav-item" data-view="tenants" onclick="SuperAdmin.switchView('tenants', this)">
+                <i data-lucide="users" style="width:18px;"></i> Tenants</a>
+            <a href="#" class="nav-item" data-view="health" onclick="SuperAdmin.switchView('health', this)">
+                <i data-lucide="activity" style="width:18px;"></i> Global Health</a>
         </div>
 
         <div class="nav-group">
             <div class="nav-label">Management</div>
-            <a href="#" class="nav-item"><i data-lucide="settings" style="width:18px;"></i> System Settings</a>
-            <a href="#" class="nav-item"><i data-lucide="database" style="width:18px;"></i> Backup & Logs</a>
+            <a href="#" class="nav-item" data-view="settings" onclick="SuperAdmin.switchView('settings', this)">
+                <i data-lucide="settings" style="width:18px;"></i> System Settings</a>
+            <a href="#" class="nav-item" data-view="backup" onclick="SuperAdmin.switchView('backup', this)">
+                <i data-lucide="database" style="width:18px;"></i> Backup & Logs</a>
         </div>
 
-        <div style="margin-top:auto;">
-            <a href="#" class="nav-item" onclick="Auth.logout()"><i data-lucide="log-out" style="width:18px;"></i>
-                Logout</a>
+        <div class="sidebar-footer">
+            <div class="sidebar-user">
+                <div class="user-avatar">
+                    <i data-lucide="user" style="width:16px;height:16px;"></i>
+                </div>
+                <div class="user-info">
+                    <span class="user-name" id="sidebar-username">Superadmin</span>
+                    <span class="user-role">System Administrator</span>
+                </div>
+            </div>
+            <a href="#" class="nav-item logout-item" onclick="Auth.logout()">
+                <i data-lucide="log-out" style="width:18px;"></i> Logout</a>
         </div>
     </aside>
 
+    <!-- ===== Main Content ===== -->
     <main class="main-content">
-        <header class="header">
-            <div>
-                <h1>System Overview</h1>
-                <p>Welcome back, Superadmin. Here is the global status.</p>
-            </div>
-            <div style="display:flex; gap:12px;">
-                <button class="nav-item" style="background:var(--border); border:none; padding:10px 20px;">
-                    <i data-lucide="refresh-cw" style="width:16px;"></i> Refresh
-                </button>
-            </div>
-        </header>
+        <!-- ============================================ -->
+        <!-- DASHBOARD VIEW                              -->
+        <!-- ============================================ -->
+        <section id="dashboard-view" class="view active">
+            <header class="view-header">
+                <div>
+                    <h1>System Overview</h1>
+                    <p>Welcome back, Superadmin. Here is the global status.</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-secondary" onclick="SuperAdmin.loadData()">
+                        <i data-lucide="refresh-cw" style="width:16px;"></i> Refresh
+                    </button>
+                </div>
+            </header>
 
-        <div class="grid">
-            <div class="card stat-card">
-                <div class="label">TOTAL LOGS PROCESSED</div>
-                <div class="value" id="total-logs">—</div>
-                <div class="trend up"><i data-lucide="trending-up" style="width:14px;"></i> +14.2%</div>
+            <div class="stats-grid">
+                <div class="card stat-card">
+                    <div class="stat-icon-wrap icon-blue"><i data-lucide="file-text" style="width:22px;"></i></div>
+                    <div class="stat-body">
+                        <div class="stat-label">TOTAL LOGS PROCESSED</div>
+                        <div class="stat-value" id="total-logs">—</div>
+                        <div class="stat-trend up"><i data-lucide="trending-up" style="width:14px;"></i> <span
+                                id="logs-trend">+14.2%</span></div>
+                    </div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-icon-wrap icon-red"><i data-lucide="shield-alert" style="width:22px;"></i></div>
+                    <div class="stat-body">
+                        <div class="stat-label">SECURITY ALERTS</div>
+                        <div class="stat-value" id="total-alerts">—</div>
+                        <div class="stat-trend down"><i data-lucide="trending-down" style="width:14px;"></i> <span
+                                id="alerts-trend">-3.1%</span></div>
+                    </div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-icon-wrap icon-purple"><i data-lucide="building-2" style="width:22px;"></i></div>
+                    <div class="stat-body">
+                        <div class="stat-label">ACTIVE TENANTS</div>
+                        <div class="stat-value" id="total-tenants">—</div>
+                        <div class="stat-trend up"><i data-lucide="trending-up" style="width:14px;"></i> <span
+                                id="tenants-trend">+2 NEW</span></div>
+                    </div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-icon-wrap icon-green"><i data-lucide="hard-drive" style="width:22px;"></i></div>
+                    <div class="stat-body">
+                        <div class="stat-label">SYSTEM DATABASE SIZE</div>
+                        <div class="stat-value" id="db-size">—</div>
+                        <div class="stat-trend neutral"><i data-lucide="database" style="width:14px;"></i>
+                            <span>Healthy</span></div>
+                    </div>
+                </div>
             </div>
-            <div class="card stat-card">
-                <div class="label">SECURITY ALERTS</div>
-                <div class="value" id="total-alerts" style="color:var(--error);">—</div>
-                <div class="trend down"><i data-lucide="trending-down" style="width:14px;"></i> -3.1%</div>
-            </div>
-            <div class="card stat-card">
-                <div class="label">ACTIVE TENANTS</div>
-                <div class="value" id="total-tenants">—</div>
-                <div class="trend up"><i data-lucide="trending-up" style="width:14px;"></i> +2 NEW</div>
-            </div>
-            <div class="card stat-card">
-                <div class="label">SYSTEM DATABASE SIZE</div>
-                <div class="value" id="db-size">—</div>
-                <div class="trend"><i data-lucide="database" style="width:14px;"></i> Healthy</div>
-            </div>
-        </div>
 
-        <div class="charts-grid">
-            <div class="card chart-card">
-                <h3>Global Traffic Ingestion</h3>
-                <div id="tenants-chart"></div>
+            <div class="charts-grid">
+                <div class="card chart-card">
+                    <h3>Global Traffic Ingestion</h3>
+                    <div id="tenants-chart"></div>
+                </div>
+                <div class="card chart-card">
+                    <h3>Cross-Tenant Alert Volume</h3>
+                    <div id="alerts-chart"></div>
+                </div>
             </div>
-            <div class="card chart-card">
-                <h3>Cross-Tenant Alert Volume</h3>
-                <div id="alerts-chart"></div>
-            </div>
-        </div>
 
-        <div class="card table-card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-                <h3 style="font-size:16px;">Managed Tenants</h3>
-                <div style="font-size:12px; color:var(--text-muted);">Showing all entities</div>
+            <div class="card table-card">
+                <div class="table-header-row">
+                    <h3>Managed Tenants</h3>
+                    <span class="table-subtitle">Top tenants by volume</span>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tenant Name</th>
+                            <th>Total Logs</th>
+                            <th>Active Alerts</th>
+                            <th>Status</th>
+                            <th style="text-align:right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tenant-list">
+                        <tr>
+                            <td colspan="5" class="empty-state">Loading tenant data...</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Tenant Name</th>
-                        <th>Total Logs</th>
-                        <th>Active Alerts</th>
-                        <th>Status</th>
-                        <th style="text-align:right;">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="tenant-list">
-                    <tr>
-                        <td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted);">Loading tenant
-                            data...</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- TENANTS VIEW                                -->
+        <!-- ============================================ -->
+        <section id="tenants-view" class="view">
+            <header class="view-header">
+                <div>
+                    <h1>Tenant Management</h1>
+                    <p>View and manage all registered tenants.</p>
+                </div>
+                <div class="header-actions">
+                    <div class="search-box">
+                        <i data-lucide="search" style="width:16px;"></i>
+                        <input type="text" id="tenant-search" placeholder="Search tenants..."
+                            oninput="SuperAdmin.filterTenants()">
+                    </div>
+                    <button class="btn-primary" onclick="SuperAdmin.showAddTenantModal()">
+                        <i data-lucide="plus" style="width:16px;"></i> Add Tenant
+                    </button>
+                </div>
+            </header>
+
+            <div class="tenants-overview-grid">
+                <div class="card mini-stat">
+                    <div class="mini-stat-value" id="tenants-total-count">0</div>
+                    <div class="mini-stat-label">Total Tenants</div>
+                </div>
+                <div class="card mini-stat">
+                    <div class="mini-stat-value success" id="tenants-active-count">0</div>
+                    <div class="mini-stat-label">Active</div>
+                </div>
+                <div class="card mini-stat">
+                    <div class="mini-stat-value warning" id="tenants-inactive-count">0</div>
+                    <div class="mini-stat-label">Inactive</div>
+                </div>
+                <div class="card mini-stat">
+                    <div class="mini-stat-value" id="tenants-total-logs-count">0</div>
+                    <div class="mini-stat-label">Total Logs (All)</div>
+                </div>
+            </div>
+
+            <div class="card table-card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tenant</th>
+                            <th>Logs (24h)</th>
+                            <th>Logs (Total)</th>
+                            <th>Alerts</th>
+                            <th>Storage</th>
+                            <th>Status</th>
+                            <th style="text-align:right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tenants-full-list">
+                        <tr>
+                            <td colspan="7" class="empty-state">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- GLOBAL HEALTH VIEW                          -->
+        <!-- ============================================ -->
+        <section id="health-view" class="view">
+            <header class="view-header">
+                <div>
+                    <h1>Global Health</h1>
+                    <p>Real-time service health and system diagnostics.</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-secondary" onclick="SuperAdmin.loadHealth()">
+                        <i data-lucide="refresh-cw" style="width:16px;"></i> Refresh
+                    </button>
+                </div>
+            </header>
+
+            <div class="health-grid">
+                <div class="card health-card" id="health-api">
+                    <div class="health-icon"><i data-lucide="server" style="width:28px;"></i></div>
+                    <div class="health-body">
+                        <h4>API Server</h4>
+                        <span class="health-status" id="health-api-status">Checking...</span>
+                        <div class="health-detail" id="health-api-detail">—</div>
+                    </div>
+                </div>
+                <div class="card health-card" id="health-redis">
+                    <div class="health-icon"><i data-lucide="zap" style="width:28px;"></i></div>
+                    <div class="health-body">
+                        <h4>Redis Queue</h4>
+                        <span class="health-status" id="health-redis-status">Checking...</span>
+                        <div class="health-detail" id="health-redis-detail">—</div>
+                    </div>
+                </div>
+                <div class="card health-card" id="health-db">
+                    <div class="health-icon"><i data-lucide="database" style="width:28px;"></i></div>
+                    <div class="health-body">
+                        <h4>Database</h4>
+                        <span class="health-status" id="health-db-status">Checking...</span>
+                        <div class="health-detail" id="health-db-detail">—</div>
+                    </div>
+                </div>
+                <div class="card health-card" id="health-consumer">
+                    <div class="health-icon"><i data-lucide="cpu" style="width:28px;"></i></div>
+                    <div class="health-body">
+                        <h4>Log Consumer</h4>
+                        <span class="health-status" id="health-consumer-status">Checking...</span>
+                        <div class="health-detail" id="health-consumer-detail">—</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="charts-grid" style="margin-top:32px;">
+                <div class="card chart-card">
+                    <h3>System Load (24h)</h3>
+                    <div id="system-load-chart"></div>
+                </div>
+                <div class="card chart-card">
+                    <h3>Error Rate</h3>
+                    <div id="error-rate-chart"></div>
+                </div>
+            </div>
+
+            <div class="card table-card" style="margin-top:24px;">
+                <div class="table-header-row">
+                    <h3>Recent System Events</h3>
+                    <span class="table-subtitle">Auto-refreshes every 30 seconds</span>
+                </div>
+                <div class="system-events-log" id="system-events-log">
+                    <div class="event-line info"><span class="event-time">—</span> System health check started.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- SYSTEM SETTINGS VIEW                        -->
+        <!-- ============================================ -->
+        <section id="settings-view" class="view">
+            <header class="view-header">
+                <div>
+                    <h1>System Settings</h1>
+                    <p>Configure SIEM analyzer engine parameters.</p>
+                </div>
+            </header>
+
+            <div class="settings-grid">
+                <!-- Detection Thresholds -->
+                <div class="card settings-section">
+                    <div class="settings-section-header">
+                        <i data-lucide="shield" style="width:20px;"></i>
+                        <h3>Detection Thresholds</h3>
+                    </div>
+                    <form id="detection-settings-form" onsubmit="SuperAdmin.saveDetectionSettings(event)">
+                        <div class="form-row">
+                            <label>Brute Force Threshold</label>
+                            <div class="input-group">
+                                <input type="number" id="cfg-bf-threshold" class="glass-input" value="5" min="1"
+                                    max="100">
+                                <span class="input-hint">Failed logins before alert</span>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <label>Port Scan Threshold</label>
+                            <div class="input-group">
+                                <input type="number" id="cfg-ps-threshold" class="glass-input" value="20" min="1"
+                                    max="500">
+                                <span class="input-hint">Unique ports/min from single source</span>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <label>Beaconing Interval (sec)</label>
+                            <div class="input-group">
+                                <input type="number" id="cfg-beacon-interval" class="glass-input" value="60" min="10"
+                                    max="3600">
+                                <span class="input-hint">Minimum interval for beaconing detection</span>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary"><i data-lucide="save" style="width:16px;"></i>
+                                Save Detection Config</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- System Configuration -->
+                <div class="card settings-section">
+                    <div class="settings-section-header">
+                        <i data-lucide="sliders" style="width:20px;"></i>
+                        <h3>System Configuration</h3>
+                    </div>
+                    <form id="system-settings-form" onsubmit="SuperAdmin.saveSystemSettings(event)">
+                        <div class="form-row">
+                            <label>Log Level</label>
+                            <div class="input-group">
+                                <select id="cfg-log-level" class="glass-input">
+                                    <option value="DEBUG">DEBUG</option>
+                                    <option value="INFO" selected>INFO</option>
+                                    <option value="WARNING">WARNING</option>
+                                    <option value="ERROR">ERROR</option>
+                                </select>
+                                <span class="input-hint">Engine verbosity level</span>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <label>Max Batch Size</label>
+                            <div class="input-group">
+                                <input type="number" id="cfg-batch-size" class="glass-input" value="100" min="10"
+                                    max="1000">
+                                <span class="input-hint">Logs processed per Redis pull</span>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <label>Report Schedule</label>
+                            <div class="input-group">
+                                <select id="cfg-report-schedule" class="glass-input">
+                                    <option value="daily">Daily</option>
+                                    <option value="weekly">Weekly</option>
+                                    <option value="monthly">Monthly</option>
+                                    <option value="disabled">Disabled</option>
+                                </select>
+                                <span class="input-hint">Auto report generation frequency</span>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary"><i data-lucide="save" style="width:16px;"></i>
+                                Save System Config</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Notification Settings -->
+                <div class="card settings-section full-width">
+                    <div class="settings-section-header">
+                        <i data-lucide="bell" style="width:20px;"></i>
+                        <h3>Notification & Alerting</h3>
+                    </div>
+                    <form id="notification-settings-form" onsubmit="SuperAdmin.saveNotificationSettings(event)">
+                        <div class="notification-grid">
+                            <div class="form-row">
+                                <label>Email Alerts</label>
+                                <div class="input-group">
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="cfg-email-enabled">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="input-hint">Send alert summaries via email</span>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <label>Webhook Alerts</label>
+                                <div class="input-group">
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="cfg-webhook-enabled">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="input-hint">POST alerts to external webhook</span>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <label>Webhook URL</label>
+                                <div class="input-group">
+                                    <input type="url" id="cfg-webhook-url" class="glass-input"
+                                        placeholder="https://hooks.example.com/alerts">
+                                    <span class="input-hint">Destination for webhook payloads</span>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <label>Alert Email Recipients</label>
+                                <div class="input-group">
+                                    <input type="text" id="cfg-email-recipients" class="glass-input"
+                                        placeholder="admin@company.com, security@company.com">
+                                    <span class="input-hint">Comma-separated email addresses</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary"><i data-lucide="save" style="width:16px;"></i>
+                                Save Notification Config</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- BACKUP & LOGS VIEW                          -->
+        <!-- ============================================ -->
+        <section id="backup-view" class="view">
+            <header class="view-header">
+                <div>
+                    <h1>Backup & Logs</h1>
+                    <p>Generate reports, view system logs, and manage data retention.</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-primary" onclick="SuperAdmin.showGenerateReportModal()">
+                        <i data-lucide="file-plus" style="width:16px;"></i> Generate Report
+                    </button>
+                </div>
+            </header>
+
+            <!-- Report Generation -->
+            <div class="card table-card">
+                <div class="table-header-row">
+                    <h3>Generated Reports</h3>
+                    <div class="table-filters">
+                        <select id="report-type-filter" class="glass-input" onchange="SuperAdmin.loadReports()">
+                            <option value="">All Types</option>
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Report Type</th>
+                            <th>Generated</th>
+                            <th>Period</th>
+                            <th>Logs Covered</th>
+                            <th>Alerts Found</th>
+                            <th style="text-align:right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reports-list">
+                        <tr>
+                            <td colspan="6" class="empty-state">No reports generated yet.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- System Log Viewer -->
+            <div class="card table-card" style="margin-top:24px;">
+                <div class="table-header-row">
+                    <h3>System Activity Log</h3>
+                    <div class="table-filters">
+                        <select id="log-level-filter" class="glass-input" onchange="SuperAdmin.filterSystemLogs()">
+                            <option value="">All Levels</option>
+                            <option value="error">Errors</option>
+                            <option value="warning">Warnings</option>
+                            <option value="info">Info</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="system-log-viewer" id="system-log-viewer">
+                    <div class="log-line info">
+                        <span class="log-time">—</span>
+                        <span class="log-level">INFO</span>
+                        <span class="log-msg">Waiting for system log data...</span>
+                    </div>
+                </div>
+            </div>
+        </section>
     </main>
 
+    <!-- ===== Modals ===== -->
+    <!-- Add Tenant Modal -->
+    <div id="add-tenant-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add New Tenant</h3>
+                <button class="modal-close" onclick="SuperAdmin.closeModal('add-tenant-modal')">&times;</button>
+            </div>
+            <form onsubmit="SuperAdmin.addTenant(event)">
+                <div class="form-row">
+                    <label>Tenant ID</label>
+                    <input type="text" id="new-tenant-id" class="glass-input" placeholder="e.g. acme-corp" required>
+                </div>
+                <div class="form-row">
+                    <label>Display Name</label>
+                    <input type="text" id="new-tenant-name" class="glass-input" placeholder="e.g. Acme Corporation"
+                        required>
+                </div>
+                <div class="form-row">
+                    <label>Contact Email</label>
+                    <input type="email" id="new-tenant-email" class="glass-input" placeholder="admin@acme.com">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary"
+                        onclick="SuperAdmin.closeModal('add-tenant-modal')">Cancel</button>
+                    <button type="submit" class="btn-primary"><i data-lucide="plus" style="width:16px;"></i> Create
+                        Tenant</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Generate Report Modal -->
+    <div id="gen-report-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Generate Security Report</h3>
+                <button class="modal-close" onclick="SuperAdmin.closeModal('gen-report-modal')">&times;</button>
+            </div>
+            <form onsubmit="SuperAdmin.generateReport(event)">
+                <div class="form-row">
+                    <label>Report Type</label>
+                    <select id="gen-report-type" class="glass-input">
+                        <option value="daily">Daily Summary</option>
+                        <option value="weekly">Weekly Audit</option>
+                        <option value="monthly">Monthly Executive</option>
+                        <option value="custom">Custom Range</option>
+                    </select>
+                </div>
+                <div class="form-row" id="gen-custom-dates" style="display:none;">
+                    <label>Date Range</label>
+                    <div style="display:flex; gap:12px;">
+                        <input type="date" id="gen-start-date" class="glass-input" style="flex:1;">
+                        <input type="date" id="gen-end-date" class="glass-input" style="flex:1;">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label>Tenant</label>
+                    <select id="gen-report-tenant" class="glass-input">
+                        <option value="default">Default (All)</option>
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary"
+                        onclick="SuperAdmin.closeModal('gen-report-modal')">Cancel</button>
+                    <button type="submit" class="btn-primary"><i data-lucide="file-check" style="width:16px;"></i>
+                        Generate</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tenant Detail Modal -->
+    <div id="tenant-detail-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content modal-wide">
+            <div class="modal-header">
+                <h3 id="tenant-detail-title">Tenant Details</h3>
+                <button class="modal-close" onclick="SuperAdmin.closeModal('tenant-detail-modal')">&times;</button>
+            </div>
+            <div id="tenant-detail-body">
+                <p class="empty-state">Loading tenant details...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="superadmin.js"></script>
     <script>lucide.createIcons();</script>
 </body>
 
