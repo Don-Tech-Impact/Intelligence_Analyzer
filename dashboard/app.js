@@ -59,9 +59,16 @@ async function apiFetch(url) {
         const response = await fetch(url, {
             headers: {
                 'Content-Type': 'application/json',
-                'X-Admin-Key': ADMIN_API_KEY
+                ...Auth.getAuthHeader()
             }
         });
+
+        if (response.status === 401 || response.status === 403) {
+            console.warn("Authentication failed. Redirecting to login...");
+            Auth.logout();
+            return null;
+        }
+
         if (!response.ok) return null;
         const body = await response.json();
         // Unwrap envelope if present

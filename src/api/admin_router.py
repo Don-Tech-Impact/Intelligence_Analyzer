@@ -8,6 +8,7 @@ import os
 import time
 import logging
 from datetime import datetime, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy import func, text
@@ -15,6 +16,8 @@ from sqlalchemy.orm import Session
 
 from src.core.database import db_manager
 from src.models.database import NormalizedLog, Alert, Tenant, Report, DeadLetter
+import httpx
+from src.api.auth import verify_superadmin
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +41,24 @@ def verify_admin_key(x_admin_key: str = Header(..., alias="X-Admin-Key")) -> str
         )
     return x_admin_key
 
+def verify_admin_or_superadmin(
+    x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key"),
+    jwt_payload: Optional[dict] = Depends(verify_superadmin)
+):
+    """Allow either the service API key or a verified Superadmin JWT."""
+    if x_admin_key:
+        expected = _get_admin_key()
+        if x_admin_key == expected:
+            return True
+    
+    if jwt_payload:
+        return True
+        
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Missing or invalid authentication"
+    )
+
 
 # ---------- Dependencies ----------
 
@@ -48,10 +69,9 @@ def get_db():
 
 # ---------- Endpoints ----------
 
-@router.get("/tenants/{tenant_id}/usage")
+@router.get("/tenants/{tenant_id}/usage", dependencies=[Depends(verify_admin_or_superadmin)])
 def get_tenant_usage(
     tenant_id: str,
-    _key: str = Depends(verify_admin_key),
     db: Session = Depends(get_db)
 ):
     """
@@ -149,9 +169,8 @@ def get_tenant_usage(
     }
 
 
-@router.get("/system/overview")
+@router.get("/system/overview", dependencies=[Depends(verify_admin_or_superadmin)])
 def get_system_overview(
-    _key: str = Depends(verify_admin_key),
     db: Session = Depends(get_db)
 ):
     """
@@ -235,3 +254,29 @@ def get_system_overview(
         },
         "timestamp": datetime.utcnow().isoformat()
     }
+@router.post("/proxy/login")
+async def proxy_login(payload: dict):
+    """
+    Proxy login request to Repo 1 to bypass browser CORS issues.
+    This acts as a Bridge between Repo 2 Dashboard and Repo 1 API.
+    """
+    repo1_url = "http://host.docker.internal:8080/admin/login"
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            logger.info(f"Proxying login request to {repo1_url}")
+            response = await client.post(
+                repo1_url, 
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=10.0
+            )
+            
+            # Return exactly what Repo 1 returns
+            return response.json()
+        except Exception as e:
+            logger.error(f"Proxy login failed: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Authentication server unreachable: {str(e)}"
+            )

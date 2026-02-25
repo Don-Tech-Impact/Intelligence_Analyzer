@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in | Afric-Analyzer</title>
+    <link rel="stylesheet" href="login.css">
+    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <script src="lucide.min.js"></script>
+    <script src="auth.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Left Panel: Artistic Content -->
+        <div class="left-panel">
+            <div class="hero-content">
+                <h2 class="hero-title">Hi, Welcome back</h2>
+                <p class="hero-subtitle">Optimize your security posture with intelligent analysis and real-time
+                    response.</p>
+                <div class="illustration-container">
+                    <div class="security-shield">
+                        <div class="shield-core">
+                            <i data-lucide="shield" style="width: 48px; height: 48px; color: #00A76F;"></i>
+                        </div>
+                        <div class="shield-face"></div>
+                    </div>
+                    <div class="data-card card-1">
+                        <div class="skeleton-line short"></div>
+                        <div class="skeleton-line long"></div>
+                    </div>
+                    <div class="data-card card-2">
+                        <div class="skeleton-line mid"></div>
+                        <div class="chart-mini">
+                            <div class="bar" style="height: 60%;"></div>
+                            <div class="bar" style="height: 80%;"></div>
+                            <div class="bar" style="height: 40%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Sign In Form -->
+        <div class="right-panel">
+            <header class="logo-header">
+                <a href="#" class="logo-link">
+                    <div class="logo-icon">
+                        <i data-lucide="shield-check" style="color:white; width:24px; height:24px;"></i>
+                    </div>
+                </a>
+            </header>
+
+            <div class="form-header">
+                <h1 class="form-title">Sign in to your account</h1>
+                <p class="form-subtitle">Don't have an account? <a href="#">Get started</a></p>
+            </div>
+
+            <div class="alert-info">
+                <i data-lucide="info" style="width: 18px; height: 18px;"></i>
+                <span>Use your Repo 1 credentials to access the SIEM.</span>
+            </div>
+
+            <div id="error-box" class="error-message">
+                Invalid email or password.
+            </div>
+
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="email">Email address</label>
+                    <input type="email" id="email" class="input-field" placeholder="admin@domain.com" required>
+                </div>
+
+                <div class="form-group">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <label for="password">Password</label>
+                    </div>
+                    <input type="password" id="password" class="input-field" placeholder="••••••••" required>
+                    <a href="#" class="forgot-password">Forgot password?</a>
+                </div>
+
+                <button type="submit" id="submit-btn" class="btn-signin">Sign In</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Create icons
+        lucide.createIcons();
+
+        const loginForm = document.getElementById('login-form');
+        const errorBox = document.getElementById('error-box');
+        const submitBtn = document.getElementById('submit-btn');
+
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            // UI State
+            errorBox.style.display = 'none';
+            submitBtn.innerText = 'Signing In...';
+            submitBtn.disabled = true;
+
+            try {
+                // Use the internal Repo 2 proxy to bypass browser CORS blocks
+                const login_url = '/api/admin/proxy/login';
+
+                console.log("INFO: Attempting proxy login via", login_url);
+
+                const response = await fetch(login_url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.access_token) {
+                        Auth.setToken(data.access_token);
+                        Auth.redirectToDashboard();
+                    } else {
+                        throw new Error('access_token field missing in response');
+                    }
+                } else {
+                    const error = await response.json();
+                    errorBox.innerText = error.detail || 'Access denied. Please check your credentials.';
+                    errorBox.style.display = 'block';
+                }
+            } catch (err) {
+                console.error("Login Error:", err);
+                errorBox.innerText = 'Unable to connect to authentication server. Ensure both Repo 1 and Repo 2 are running.';
+                errorBox.style.display = 'block';
+            } finally {
+                submitBtn.innerText = 'Sign In';
+                submitBtn.disabled = false;
+            }
+        });
+
+        // Debug: Show why we were kicked back to login
+        window.addEventListener('load', () => {
+            const debugError = localStorage.getItem('auth_debug_error');
+            if (debugError) {
+                const errorBox = document.getElementById('error-box');
+                errorBox.innerHTML = `<strong>Security Handshake Failed</strong><br><span style="font-size:11px;">Error: ${debugError}</span><br><div style="font-size:10px; margin-top:5px; opacity:0.8;">The token was received but could not be parsed by the browser.</div>`;
+                errorBox.style.display = 'block';
+                // Only clear it after showing it once
+                setTimeout(() => localStorage.removeItem('auth_debug_error'), 2000);
+            }
+        });
+    </script>
+</body>
+
+</html>

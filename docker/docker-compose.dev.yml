@@ -1,0 +1,60 @@
+services:
+  # Intelligence Analyzer API (Repo 2)
+  analyzer:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+      target: development
+    container_name: siem-analyzer-dev
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://siem_user:${POSTGRES_PASSWORD:-siem_secure_password_2026}@db:5432/siem_db
+      - REDIS_URL=redis://host.docker.internal:6379/0
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key}
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-changeme-admin-key}
+      - JWT_PUBLIC_KEY=${JWT_PUBLIC_KEY:-}
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ../.env:/app/.env
+      - ../src:/app/src:ro
+      - ../dashboard:/app/dashboard:ro
+      - ../config:/app/config:ro
+      - ../logs:/app/logs
+      - ../reports:/app/reports
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - siem-network
+
+  # Postgres Database
+  db:
+    image: postgres:15-alpine
+    container_name: siem-db-dev
+    environment:
+      - POSTGRES_USER=siem_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-siem_secure_password_2026}
+      - POSTGRES_DB=siem_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+      - ../scripts/init_db.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    networks:
+      - siem-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U siem_user -d siem_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+networks:
+  siem-network:
+    driver: bridge
+
+volumes:
+  postgres_data_dev:

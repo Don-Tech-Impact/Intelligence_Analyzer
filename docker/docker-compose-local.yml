@@ -67,7 +67,7 @@ services:
   analyzer:
     build:
       context: ..
-      target: production
+      target: development
     image: intelligence-analyzer:latest
     container_name: siem-analyzer
     ports:
@@ -89,6 +89,10 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
     volumes:
+      - ../.env:/app/.env
+      - ../src:/app/src:ro
+      - ../dashboard:/app/dashboard:ro
+      - ../config:/app/config:ro
       - ../reports:/app/reports
       - ../logs:/app/logs
     depends_on:

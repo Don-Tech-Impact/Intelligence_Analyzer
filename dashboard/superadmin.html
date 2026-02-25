@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SuperAdmin | Afric-Analyzer</title>
+    <link rel="stylesheet" href="superadmin.css">
+    <script src="lucide.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <script src="auth.js"></script>
+    <script src="superadmin.js"></script>
+</head>
+
+<body>
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <div class="logo-box">
+                <i data-lucide="shield-check" style="color:white;width:20px;height:20px;"></i>
+            </div>
+            <span>Afric-Analyzer</span>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-label">Overview</div>
+            <a href="#" class="nav-item active"><i data-lucide="layout-dashboard" style="width:18px;"></i> Dashboard</a>
+            <a href="#" class="nav-item"><i data-lucide="users" style="width:18px;"></i> Tenants</a>
+            <a href="#" class="nav-item"><i data-lucide="activity" style="width:18px;"></i> Global Health</a>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-label">Management</div>
+            <a href="#" class="nav-item"><i data-lucide="settings" style="width:18px;"></i> System Settings</a>
+            <a href="#" class="nav-item"><i data-lucide="database" style="width:18px;"></i> Backup & Logs</a>
+        </div>
+
+        <div style="margin-top:auto;">
+            <a href="#" class="nav-item" onclick="Auth.logout()"><i data-lucide="log-out" style="width:18px;"></i>
+                Logout</a>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="header">
+            <div>
+                <h1>System Overview</h1>
+                <p>Welcome back, Superadmin. Here is the global status.</p>
+            </div>
+            <div style="display:flex; gap:12px;">
+                <button class="nav-item" style="background:var(--border); border:none; padding:10px 20px;">
+                    <i data-lucide="refresh-cw" style="width:16px;"></i> Refresh
+                </button>
+            </div>
+        </header>
+
+        <div class="grid">
+            <div class="card stat-card">
+                <div class="label">TOTAL LOGS PROCESSED</div>
+                <div class="value" id="total-logs">—</div>
+                <div class="trend up"><i data-lucide="trending-up" style="width:14px;"></i> +14.2%</div>
+            </div>
+            <div class="card stat-card">
+                <div class="label">SECURITY ALERTS</div>
+                <div class="value" id="total-alerts" style="color:var(--error);">—</div>
+                <div class="trend down"><i data-lucide="trending-down" style="width:14px;"></i> -3.1%</div>
+            </div>
+            <div class="card stat-card">
+                <div class="label">ACTIVE TENANTS</div>
+                <div class="value" id="total-tenants">—</div>
+                <div class="trend up"><i data-lucide="trending-up" style="width:14px;"></i> +2 NEW</div>
+            </div>
+            <div class="card stat-card">
+                <div class="label">SYSTEM DATABASE SIZE</div>
+                <div class="value" id="db-size">—</div>
+                <div class="trend"><i data-lucide="database" style="width:14px;"></i> Healthy</div>
+            </div>
+        </div>
+
+        <div class="charts-grid">
+            <div class="card chart-card">
+                <h3>Global Traffic Ingestion</h3>
+                <div id="tenants-chart"></div>
+            </div>
+            <div class="card chart-card">
+                <h3>Cross-Tenant Alert Volume</h3>
+                <div id="alerts-chart"></div>
+            </div>
+        </div>
+
+        <div class="card table-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                <h3 style="font-size:16px;">Managed Tenants</h3>
+                <div style="font-size:12px; color:var(--text-muted);">Showing all entities</div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Tenant Name</th>
+                        <th>Total Logs</th>
+                        <th>Active Alerts</th>
+                        <th>Status</th>
+                        <th style="text-align:right;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="tenant-list">
+                    <tr>
+                        <td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted);">Loading tenant
+                            data...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <script>lucide.createIcons();</script>
+</body>
+
+</html>

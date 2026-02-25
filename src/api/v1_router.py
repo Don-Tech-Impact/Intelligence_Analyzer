@@ -11,9 +11,10 @@ from src.models.database import Alert, NormalizedLog
 from src.services.analytics import AnalyticsService
 from src.services.assets import AssetService
 from src.models.schemas import ApiResponse
+from src.api.auth import verify_jwt
 
-# Create V1 router
-router = APIRouter(prefix="/api/v1", tags=["V1 API"])
+# Create V1 router (protected by JWT)
+router = APIRouter(prefix="/api/v1", tags=["V1 API"], dependencies=[Depends(verify_jwt)])
 
 
 # Dependency for getting DB session

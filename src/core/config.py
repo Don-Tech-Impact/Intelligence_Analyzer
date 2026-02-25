@@ -200,6 +200,27 @@ class Config:
     def redis_dead_queue(self) -> str:
         return self.get('redis.dead_queue', 'dead_logs')
     
+    # Security & Auth configuration
+    @property
+    def secret_key(self) -> str:
+        return self.get('secret_key', 'your-production-secret-key-change-me')
+
+    @property
+    def admin_api_key(self) -> str:
+        return self.get('admin_api_key', 'changeme-admin-key')
+
+    @property
+    def jwt_public_key(self) -> Optional[str]:
+        """Public key for RS256 JWT verification (provided by Repo1)."""
+        return self.get('jwt_public_key')
+    
+    @property
+    def allowed_origins(self) -> list:
+        origins = self.get('allowed_origins', 'http://localhost:8000')
+        if isinstance(origins, str):
+            return origins.split(',')
+        return origins
+
     # Email configuration
     @property
     def email_enabled(self) -> bool:
