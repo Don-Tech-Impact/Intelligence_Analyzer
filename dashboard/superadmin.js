@@ -102,8 +102,8 @@ const SuperAdmin = {
                 type: 'area',
                 toolbar: { show: false },
                 background: 'transparent',
-                foreColor: '#94A3B8',
-                fontFamily: 'Inter, sans-serif',
+                foreColor: '#637381',
+                fontFamily: 'Public Sans, sans-serif',
                 animations: {
                     enabled: true,
                     easing: 'easeinout',
@@ -113,21 +113,21 @@ const SuperAdmin = {
             stroke: { curve: 'smooth', width: 3 },
             fill: {
                 type: 'gradient',
-                gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0, stops: [0, 90, 100] }
+                gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0.05, stops: [0, 85, 100] }
             },
             dataLabels: { enabled: false },
-            grid: { borderColor: 'rgba(255,255,255,0.05)', strokeDashArray: 3 },
+            grid: { borderColor: 'rgba(145,158,171,0.2)', strokeDashArray: 3 },
             xaxis: { axisBorder: { show: false }, axisTicks: { show: false } },
             tooltip: {
-                theme: 'dark',
-                style: { fontFamily: 'Inter, sans-serif' }
+                theme: 'light',
+                style: { fontFamily: 'Public Sans, sans-serif' }
             }
         };
 
         this.tenantsChart = new ApexCharts(document.querySelector("#tenants-chart"), {
             ...baseChartOptions,
             series: [{ name: 'Logs Ingested', data: [12, 41, 35, 51, 49, 62, 69, 91, 148] }],
-            colors: ['#3366FF'],
+            colors: ['#00A76F'],
             xaxis: { ...baseChartOptions.xaxis, categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'] }
         });
         this.tenantsChart.render();
@@ -135,7 +135,7 @@ const SuperAdmin = {
         this.alertsChart = new ApexCharts(document.querySelector("#alerts-chart"), {
             ...baseChartOptions,
             series: [{ name: 'Alerts', data: [23, 11, 22, 27, 13, 19, 37, 21, 44] }],
-            colors: ['#FF5630'],
+            colors: ['#FFAB00'],
             xaxis: { ...baseChartOptions.xaxis, categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'] }
         });
         this.alertsChart.render();
@@ -454,13 +454,13 @@ const SuperAdmin = {
         const baseOpts = {
             chart: {
                 height: 220, type: 'area', toolbar: { show: false },
-                background: 'transparent', foreColor: '#94A3B8', fontFamily: 'Inter'
+                background: 'transparent', foreColor: '#637381', fontFamily: 'Public Sans'
             },
             stroke: { curve: 'smooth', width: 2 },
-            fill: { type: 'gradient', gradient: { opacityFrom: 0.3, opacityTo: 0 } },
+            fill: { type: 'gradient', gradient: { opacityFrom: 0.2, opacityTo: 0.02 } },
             dataLabels: { enabled: false },
-            grid: { borderColor: 'rgba(255,255,255,0.05)' },
-            tooltip: { theme: 'dark' },
+            grid: { borderColor: 'rgba(145,158,171,0.2)' },
+            tooltip: { theme: 'light' },
             xaxis: { categories: hours, axisBorder: { show: false }, labels: { show: false } }
         };
 
@@ -477,6 +477,7 @@ const SuperAdmin = {
             colors: ['#FF5630']
         });
         this.errorRateChart.render();
+
     },
 
     // ============================================
