@@ -21,10 +21,31 @@ const Auth = {
     },
 
     /**
-     * Clear the JWT and redirect to login page.
+     * Clear the JWT and redirect to login page with confirmation.
      */
     logout() {
+        if (!confirm("Are you sure you want to log out? This will clear your session and redirect you to the login page.")) {
+            return;
+        }
+
+        console.log("Auth: Logging out. Clearing all authentication data...");
+
+        // Clear JWT
         localStorage.removeItem(this.TOKEN_KEY);
+
+        // Clear any other local/session storage items
+        localStorage.removeItem('auth_debug_error');
+        localStorage.removeItem('last_login_email');
+        sessionStorage.clear();
+
+        // Clear basic cookies
+        document.cookie.split(";").forEach(function (c) {
+            document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+        });
+
+        console.log("Auth: All local data cleared.");
+
+        // Redirect
         window.location.href = 'login.html';
     },
 

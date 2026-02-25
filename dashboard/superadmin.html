@@ -37,6 +37,10 @@
 
         <div class="nav-group">
             <div class="nav-label">Management</div>
+            <a href="#" class="nav-item" data-view="users" onclick="SuperAdmin.switchView('users', this)">
+                <i data-lucide="shield-check" style="width:18px;"></i> User Management</a>
+            <a href="#" class="nav-item" data-view="audit" onclick="SuperAdmin.switchView('audit', this)">
+                <i data-lucide="list-filter" style="width:18px;"></i> Audit Trail</a>
             <a href="#" class="nav-item" data-view="settings" onclick="SuperAdmin.switchView('settings', this)">
                 <i data-lucide="settings" style="width:18px;"></i> System Settings</a>
             <a href="#" class="nav-item" data-view="backup" onclick="SuperAdmin.switchView('backup', this)">
@@ -506,6 +510,85 @@
                 </div>
             </div>
         </section>
+        <!-- ============================================ -->
+        <!-- USER MANAGEMENT VIEW                        -->
+        <!-- ============================================ -->
+        <section id="users-view" class="view">
+            <header class="view-header">
+                <div>
+                    <h1>User Management</h1>
+                    <p>Manage administrative and tenant-level users globally.</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-primary" onclick="SuperAdmin.showAddUserModal()">
+                        <i data-lucide="user-plus" style="width:16px;"></i> Create User
+                    </button>
+                </div>
+            </header>
+
+            <div class="card table-card">
+                <div class="table-header-row">
+                    <h3>Global Users</h3>
+                    <div class="table-filters">
+                        <select id="user-tenant-filter" class="glass-input" onchange="SuperAdmin.loadUsers()">
+                            <option value="">All Tenants</option>
+                        </select>
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th>Tenant</th>
+                            <th>Last Login</th>
+                            <th style="text-align:right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-list">
+                        <tr>
+                            <td colspan="6" class="empty-state">Loading users...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- AUDIT TRAIL VIEW                            -->
+        <!-- ============================================ -->
+        <section id="audit-view" class="view">
+            <header class="view-header">
+                <div>
+                    <h1>Audit Trail</h1>
+                    <p>Track all administrative actions and system-level changes.</p>
+                </div>
+            </header>
+
+            <div class="card table-card">
+                <div class="table-header-row">
+                    <h3>System Logs</h3>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Action</th>
+                            <th>User</th>
+                            <th>Target</th>
+                            <th>Status</th>
+                            <th>IP Address</th>
+                        </tr>
+                    </thead>
+                    <tbody id="audit-list">
+                        <tr>
+                            <td colspan="6" class="empty-state">Loading audit logs...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
     </main>
 
     <!-- ===== Modals ===== -->
@@ -529,6 +612,33 @@
                 <div class="form-row">
                     <label>Contact Email</label>
                     <input type="email" id="new-tenant-email" class="glass-input" placeholder="admin@acme.com">
+                </div>
+                <div class="form-row">
+                    <label>Company Description</label>
+                    <textarea id="new-tenant-description" class="glass-input"
+                        placeholder="e.g. Enterprise security monitoring..." style="min-height:80px;"></textarea>
+                </div>
+                <div class="form-row" style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                    <div>
+                        <label>Business Hours Start</label>
+                        <input type="time" id="new-tenant-hours-start" class="glass-input" value="09:00">
+                    </div>
+                    <div>
+                        <label>Business Hours End</label>
+                        <input type="time" id="new-tenant-hours-end" class="glass-input" value="17:00">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label>Compliance Standards</label>
+                    <div class="checkbox-grid"
+                        style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px;">
+                        <label class="checkbox-item"><input type="checkbox" name="compliance" value="SOC2"> SOC2</label>
+                        <label class="checkbox-item"><input type="checkbox" name="compliance" value="HIPAA">
+                            HIPAA</label>
+                        <label class="checkbox-item"><input type="checkbox" name="compliance" value="PCI-DSS">
+                            PCI-DSS</label>
+                        <label class="checkbox-item"><input type="checkbox" name="compliance" value="GDPR"> GDPR</label>
+                    </div>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn-secondary"
@@ -587,9 +697,52 @@
                 <h3 id="tenant-detail-title">Tenant Details</h3>
                 <button class="modal-close" onclick="SuperAdmin.closeModal('tenant-detail-modal')">&times;</button>
             </div>
-            <div id="tenant-detail-body">
+            <div id="tenant-detail-body" class="tenant-detail-scroll">
                 <p class="empty-state">Loading tenant details...</p>
             </div>
+        </div>
+    </div>
+
+    <!-- Create User Modal -->
+    <div id="add-user-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create New User</h3>
+                <button class="modal-close" onclick="SuperAdmin.closeModal('add-user-modal')">&times;</button>
+            </div>
+            <form onsubmit="SuperAdmin.addUser(event)">
+                <div class="form-row">
+                    <label>Username</label>
+                    <input type="text" id="new-user-username" class="glass-input" required>
+                </div>
+                <div class="form-row">
+                    <label>Email</label>
+                    <input type="email" id="new-user-email" class="glass-input" required>
+                </div>
+                <div class="form-row">
+                    <label>Password</label>
+                    <input type="password" id="new-user-password" class="glass-input" required>
+                </div>
+                <div class="form-row">
+                    <label>Tenant</label>
+                    <select id="new-user-tenant" class="glass-input">
+                        <option value="">System (Global)</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Role</label>
+                    <select id="new-user-role" class="glass-input">
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                        <option value="superadmin">Superadmin</option>
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary"
+                        onclick="SuperAdmin.closeModal('add-user-modal')">Cancel</button>
+                    <button type="submit" class="btn-primary">Create User</button>
+                </div>
+            </form>
         </div>
     </div>
 

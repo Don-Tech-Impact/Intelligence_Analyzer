@@ -72,6 +72,8 @@ services:
     container_name: siem-analyzer
     ports:
       - "8000:8000"
+    env_file:
+      - ../.env
     environment:
       # Database: PostgreSQL with connection pooling
       - DATABASE_URL=postgresql://siem_user:${POSTGRES_PASSWORD:-siem_secure_password_2026}@postgres:5432/siem_db
@@ -85,7 +87,6 @@ services:
       - REDIS_INGEST_QUEUE=ingest_logs
       - REDIS_CLEAN_QUEUE=clean_logs
       # Security
-      - SECRET_KEY=${SECRET_KEY:-your-production-secret-key-change-me}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
     volumes:

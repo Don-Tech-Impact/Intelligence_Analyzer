@@ -10,10 +10,11 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
+    env_file:
+      - ../.env
     environment:
       - DATABASE_URL=postgresql://siem_user:${POSTGRES_PASSWORD:-siem_secure_password_2026}@db:5432/siem_db
       - REDIS_URL=redis://host.docker.internal:6379/0
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key}
       - ADMIN_API_KEY=${ADMIN_API_KEY:-changeme-admin-key}
       - JWT_PUBLIC_KEY=${JWT_PUBLIC_KEY:-}
       - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000

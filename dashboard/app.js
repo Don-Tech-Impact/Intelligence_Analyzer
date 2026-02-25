@@ -25,19 +25,19 @@ const VIEWS = {
 
 // ===== Chart Color Palette =====
 const COLORS = {
-    primary: '#3B82F6',
-    teal: '#2DD4BF',
+    primary: '#00A76F',
+    teal: '#00B8D9',
     indigo: '#8B5CF6',
-    cyan: '#06B6D4',
-    critical: '#EF4444',
-    high: '#F59E0B',
-    medium: '#3B82F6',
+    cyan: '#00B8D9',
+    critical: '#FF5630',
+    high: '#FFAB00',
+    medium: '#00B8D9',
     low: '#22C55E',
-    muted: '#64748B',
-    grid: '#1E293B',
-    text: '#94A3B8',
+    muted: '#919EAB',
+    grid: 'rgba(145, 158, 171, 0.2)',
+    text: '#637381',
     green: '#22C55E',
-    orange: '#F59E0B'
+    orange: '#FFAB00'
 };
 
 // ===== Initialize =====
@@ -640,11 +640,11 @@ const CHART_DEFAULTS = {
         toolbar: { show: false },
         background: 'transparent',
         foreColor: COLORS.text,
-        fontFamily: 'Inter, sans-serif',
+        fontFamily: 'Public Sans, sans-serif',
         animations: { enabled: true, speed: 400, dynamicAnimation: { speed: 300 } }
     },
     grid: { borderColor: COLORS.grid, strokeDashArray: 3 },
-    tooltip: { theme: 'dark', style: { fontSize: '12px' } }
+    tooltip: { theme: 'light', style: { fontSize: '12px' } }
 };
 
 function initCharts() {

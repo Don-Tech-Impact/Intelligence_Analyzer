@@ -6,10 +6,13 @@ services:
     build: .
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-admin}:${DB_PASSWORD:-password}@db:5432/${DB_NAME:-siem_analyzer}
       - REDIS_URL=redis://redis:6379/0
       - ADMIN_API_KEY=${ADMIN_API_KEY:-changeme-admin-key}
+      - REPO1_BASE_URL=${REPO1_BASE_URL:-http://host.docker.internal:8080}
       - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
     depends_on:
       - db

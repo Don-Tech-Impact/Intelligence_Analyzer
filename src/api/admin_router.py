@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Header, Request
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -260,7 +260,7 @@ async def proxy_login(payload: dict):
     Proxy login request to Repo 1 to bypass browser CORS issues.
     This acts as a Bridge between Repo 2 Dashboard and Repo 1 API.
     """
-    repo1_url = "http://host.docker.internal:8080/admin/login"
+    repo1_url = f"{os.getenv('REPO1_BASE_URL', 'http://host.docker.internal:8080')}/admin/login"
     
     async with httpx.AsyncClient() as client:
         try:
@@ -271,8 +271,6 @@ async def proxy_login(payload: dict):
                 headers={"Content-Type": "application/json"},
                 timeout=10.0
             )
-            
-            # Return exactly what Repo 1 returns
             return response.json()
         except Exception as e:
             logger.error(f"Proxy login failed: {str(e)}")
@@ -280,3 +278,102 @@ async def proxy_login(payload: dict):
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Authentication server unreachable: {str(e)}"
             )
+
+@router.post("/tenants/sync", dependencies=[Depends(verify_admin_key)])
+async def sync_tenant(payload: dict, db: Session = Depends(get_db)):
+    """
+    Webhook endpoint for Repo 1 to synchronize tenant data.
+    Handles tenant.created, tenant.updated, tenant.deleted.
+    """
+    event = payload.get("event")
+    tenant_data = payload.get("tenant", {})
+    tenant_id = tenant_data.get("tenant_id")
+    
+    if not event or not tenant_id:
+        raise HTTPException(status_code=400, detail="Invalid webhook payload")
+    
+    logger.info(f"Received sync event '{event}' for tenant '{tenant_id}'")
+    
+    # Check if tenant exists
+    tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+    
+    if event == "tenant.deleted":
+        if tenant:
+            tenant.is_active = False
+            db.commit()
+            return {"status": "success", "message": f"Tenant {tenant_id} deactivated"}
+        return {"status": "ignored", "message": "Tenant not found"}
+    
+    # For created/updated
+    if not tenant:
+        tenant = Tenant(
+            tenant_id=tenant_id,
+            name=tenant_data.get("name", tenant_id),
+            is_active=tenant_data.get("status") == "active"
+        )
+        db.add(tenant)
+    else:
+        tenant.name = tenant_data.get("name", tenant.name)
+        tenant.is_active = tenant_data.get("status") == "active"
+    
+    db.commit()
+    return {"status": "success", "message": f"Tenant {tenant_id} {event.split('.')[1]}d"}
+
+@router.api_route("/proxy/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_repo1(
+    path: str, 
+    request: Request,
+    jwt_payload: dict = Depends(verify_superadmin), 
+    x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key")
+):
+    """
+    Generic proxy for Repo 1 admin endpoints (Tenants, Users, etc.)
+    Forward calls to Repo 1 while maintaining Superadmin protection.
+    """
+    repo1_base = os.getenv('REPO1_BASE_URL', 'http://host.docker.internal:8080')
+    target_url = f"{repo1_base}/{path}"
+    
+    # Forward original auth header or use current token
+    headers = {"Content-Type": "application/json"}
+    auth_header = request.headers.get("Authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+    
+    if x_admin_key:
+        headers["X-Admin-Key"] = x_admin_key
+        
+    async with httpx.AsyncClient() as client:
+        try:
+            logger.info(f"Proxying {request.method} {path} to {target_url}")
+            
+            # Get body if applicable
+            body = None
+            if request.method in ["POST", "PUT"]:
+                try:
+                    body = await request.json()
+                except:
+                    body = None
+
+            response = await client.request(
+                method=request.method,
+                url=target_url,
+                json=body,
+                headers=headers,
+                timeout=10.0
+            )
+            
+            # Return Repo 1 response
+            try:
+                content = response.json()
+            except:
+                content = response.text
+                
+            return content
+            
+        except Exception as e:
+            logger.error(f"Proxy request to {path} failed: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Repo 1 unreachable: {str(e)}"
+            )
+

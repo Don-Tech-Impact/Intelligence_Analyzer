@@ -78,6 +78,12 @@ const SuperAdmin = {
             case 'tenants':
                 this.loadTenantsView();
                 break;
+            case 'users':
+                this.loadUsers();
+                break;
+            case 'audit':
+                this.loadAuditLogs();
+                break;
             case 'health':
                 this.loadHealth();
                 break;
@@ -158,10 +164,64 @@ const SuperAdmin = {
                 const result = await response.json();
                 this.cachedOverview = result.data;
                 this.updateDashboardUI(result.data);
+
+                // Also fetch the REAL tenant list if possible
+                this.loadRealTenants();
             }
         } catch (e) {
             console.error("Failed to load admin overview", e);
         }
+    },
+
+    async loadRealTenants() {
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/proxy/admin/tenants`, {
+                headers: Auth.getAuthHeader()
+            });
+            if (res.ok) {
+                const data = await res.json();
+                // Repo 1 returns { tenants: [...] }
+                const tenants = data.tenants || [];
+                this.renderRealTenants(tenants);
+            }
+        } catch (e) {
+            console.warn("Failed to fetch real tenants from Repo 1", e);
+        }
+    },
+
+    renderRealTenants(tenants) {
+        const tbody = document.getElementById('tenant-list');
+        if (!tbody || !tenants) return;
+
+        if (tenants.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No tenants found in Repo 1.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = tenants.map(t => `
+            <tr>
+                <td>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <div style="width:34px;height:34px;background:var(--primary-light);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--primary);font-weight:700;font-size:14px;">
+                            ${(t.name || 'T').charAt(0).toUpperCase()}
+                        </div>
+                        <div style="display:flex;flex-direction:column;">
+                            <span style="font-weight:600;">${t.name}</span>
+                            <span style="font-size:11px;color:var(--text-muted);">${t.tenant_id}</span>
+                        </div>
+                    </div>
+                </td>
+                <td>${t.total_logs || '—'}</td>
+                <td>${t.active_alerts || '—'}</td>
+                <td><span class="badge badge-${t.status === 'active' ? 'active' : 'inactive'}">${t.status || 'Unknown'}</span></td>
+                <td style="text-align:right;">
+                    <button class="btn-secondary btn-sm" onclick="SuperAdmin.viewTenantDetail('${t.tenant_id}')">
+                        <i data-lucide="eye" style="width:14px;"></i> Details
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+        lucide.createIcons();
     },
 
     updateDashboardUI(data) {
@@ -210,91 +270,87 @@ const SuperAdmin = {
     // TENANTS VIEW
     // ============================================
     async loadTenantsView() {
-        // Use cached data or fetch fresh
-        if (!this.cachedOverview) {
-            await this.loadData();
+        // Update stats
+        document.getElementById('tenants-total-count').textContent = '...';
+        document.getElementById('tenants-active-count').textContent = '...';
+
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/proxy/admin/tenants`, {
+                headers: Auth.getAuthHeader()
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const tenants = data.tenants || [];
+
+                // Update stats
+                document.getElementById('tenants-total-count').textContent = tenants.length;
+                document.getElementById('tenants-active-count').textContent = tenants.filter(t => t.status === 'active').length;
+                document.getElementById('tenants-inactive-count').textContent = tenants.filter(t => t.status !== 'active').length;
+
+                const tbody = document.getElementById('tenants-full-list');
+                if (tbody) {
+                    if (tenants.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No tenants registered yet.</td></tr>';
+                        return;
+                    }
+                    tbody.innerHTML = tenants.map(t => `
+                        <tr>
+                            <td>
+                                <div style="display:flex;align-items:center;gap:12px;">
+                                    <div style="width:34px;height:34px;background:var(--primary-light);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--primary);font-weight:700;font-size:14px;">
+                                        ${(t.name || 'T').charAt(0).toUpperCase()}
+                                    </div>
+                                    <div style="display:flex;flex-direction:column;">
+                                        <span style="font-weight:600;">${t.name}</span>
+                                        <span style="font-size:11px;color:var(--text-muted);">${t.tenant_id}</span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td><span class="badge badge-${t.status === 'active' ? 'active' : 'inactive'}">${t.status}</span></td>
+                            <td style="text-align:right;">
+                                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                                    <button class="btn-secondary btn-sm" onclick="SuperAdmin.viewTenantDetail('${t.tenant_id}')">
+                                        <i data-lucide="eye" style="width:14px;"></i> View
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('');
+                    lucide.createIcons();
+                }
+            }
+        } catch (e) {
+            console.error("Failed to load real tenants view", e);
+            const tbody = document.getElementById('tenants-full-list');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="empty-state" style="color:var(--error);">Failed to connect to Repo 1 API.</td></tr>';
         }
-
-        const data = this.cachedOverview;
-        if (!data) return;
-
-        const tenants = data.top_tenants_by_volume || [];
-        const totalLogs = data.logs?.total || 0;
-        const totalTenants = data.tenants?.total || 0;
-        const activeTenants = data.tenants?.active || totalTenants;
-        const inactiveTenants = data.tenants?.inactive || 0;
-
-        // Mini stats
-        document.getElementById('tenants-total-count').textContent = totalTenants;
-        document.getElementById('tenants-active-count').textContent = activeTenants;
-        document.getElementById('tenants-inactive-count').textContent = inactiveTenants;
-        document.getElementById('tenants-total-logs-count').textContent = this.formatNumber(totalLogs);
-
-        // Full tenant table
-        const tbody = document.getElementById('tenants-full-list');
-        if (tenants.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No tenants registered yet.</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = tenants.map(t => {
-            const storageMB = ((t.estimated_storage || 0) / (1024 * 1024)).toFixed(1);
-            return `
-                <tr>
-                    <td>
-                        <div style="display:flex;align-items:center;gap:12px;">
-                            <div style="width:34px;height:34px;background:var(--primary-light);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--primary);font-weight:700;font-size:14px;">
-                                ${(t.tenant_id || 'T').charAt(0).toUpperCase()}
-                            </div>
-                            <span style="font-weight:600;">${t.tenant_id}</span>
-                        </div>
-                    </td>
-                    <td>${this.formatNumber(t.log_count_24h || 0)}</td>
-                    <td>${this.formatNumber(t.log_count || 0)}</td>
-                    <td>${t.alert_count || '—'}</td>
-                    <td>${storageMB} MB</td>
-                    <td><span class="badge badge-active">Active</span></td>
-                    <td style="text-align:right;">
-                        <div style="display:flex;gap:8px;justify-content:flex-end;">
-                            <button class="btn-secondary btn-sm" onclick="SuperAdmin.viewTenantDetail('${t.tenant_id}')">
-                                <i data-lucide="eye" style="width:14px;"></i> View
-                            </button>
-                            <button class="btn-secondary btn-sm" onclick="window.location.href='index.html?tenant=${t.tenant_id}'">
-                                <i data-lucide="layout-dashboard" style="width:14px;"></i> Dash
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-
-        lucide.createIcons();
-    },
-
-    filterTenants() {
-        const query = (document.getElementById('tenant-search')?.value || '').toLowerCase();
-        const rows = document.querySelectorAll('#tenants-full-list tr');
-        rows.forEach(row => {
-            if (row.querySelector('.empty-state')) return;
-            const text = row.textContent.toLowerCase();
-            row.style.display = text.includes(query) ? '' : 'none';
-        });
     },
 
     async viewTenantDetail(tenantId) {
         document.getElementById('tenant-detail-modal').style.display = 'flex';
         document.getElementById('tenant-detail-title').textContent = `Tenant: ${tenantId}`;
-        document.getElementById('tenant-detail-body').innerHTML = '<p class="empty-state">Loading tenant details...</p>';
+        const body = document.getElementById('tenant-detail-body');
+        body.innerHTML = '<p class="empty-state">Loading tenant details...</p>';
 
         try {
-            const response = await fetch(`${this.API_BASE}/api/admin/tenant/${tenantId}/usage`, {
+            const response = await fetch(`${this.API_BASE}/api/admin/tenants/${tenantId}/usage`, {
                 headers: Auth.getAuthHeader()
             });
 
             if (response.ok) {
-                const result = await response.json();
-                const d = result.data || result;
-                document.getElementById('tenant-detail-body').innerHTML = `
+                const wrap = await response.json();
+                const d = wrap.data || wrap;
+                const config = d.config || {};
+                body.innerHTML = `
+                    <div class="tenant-detail-section">
+                        <h4>Company Overview</h4>
+                        <p style="color:var(--text-secondary); margin-bottom:16px;">${d.description || 'No description provided.'}</p>
+                    </div>
+
                     <div class="tenant-detail-grid">
                         <div class="tenant-detail-stat">
                             <div class="td-value">${this.formatNumber(d.logs?.total || 0)}</div>
@@ -321,7 +377,8 @@ const SuperAdmin = {
                             <div class="td-label">Total Alerts</div>
                         </div>
                     </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
                         <div class="tenant-detail-stat">
                             <div class="td-value">${d.reports || 0}</div>
                             <div class="td-label">Reports Generated</div>
@@ -331,7 +388,27 @@ const SuperAdmin = {
                             <div class="td-label">Storage Used</div>
                         </div>
                     </div>
-                    <div style="margin-top:20px;display:flex;gap:12px;justify-content:flex-end;">
+
+                    <div class="tenant-detail-section" style="margin-top:24px; padding-top:16px; border-top:1px dashed var(--grey-200);">
+                        <h4>Configuration Details</h4>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:12px;">
+                            <div>
+                                <span class="nav-label" style="padding:0; margin-bottom:4px; display:block;">Business Hours</span>
+                                <p style="font-weight:600;">${config.business_hours?.start || '09:00'} - ${config.business_hours?.end || '17:00'}</p>
+                            </div>
+                            <div>
+                                <span class="nav-label" style="padding:0; margin-bottom:4px; display:block;">Compliance</span>
+                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                    ${(config.compliance || []).map(c => `<span class="badge badge-active">${c}</span>`).join('') || '<span style="color:var(--text-disabled);">None specified</span>'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:24px;display:flex;gap:12px;justify-content:flex-end;">
+                        <button class="btn-secondary" onclick="SuperAdmin.loadTenantUsers('${tenantId}')">
+                             <i data-lucide="users" style="width:16px;"></i> View Users
+                        </button>
                         <button class="btn-primary" onclick="window.location.href='index.html?tenant=${tenantId}'">
                             <i data-lucide="layout-dashboard" style="width:16px;"></i> Open Dashboard
                         </button>
@@ -339,22 +416,112 @@ const SuperAdmin = {
                 `;
                 lucide.createIcons();
             } else {
-                document.getElementById('tenant-detail-body').innerHTML = '<p class="empty-state" style="color:var(--error);">Failed to load tenant data.</p>';
+                body.innerHTML = '<p class="empty-state" style="color:var(--error);">Failed to load tenant data.</p>';
             }
         } catch (e) {
-            document.getElementById('tenant-detail-body').innerHTML = `<p class="empty-state" style="color:var(--error);">Error: ${e.message}</p>`;
+            body.innerHTML = `<p class="empty-state" style="color:var(--error);">Error: ${e.message}</p>`;
         }
     },
 
-    showAddTenantModal() {
-        document.getElementById('add-tenant-modal').style.display = 'flex';
+    async loadTenantUsers(tenantId) {
+        this.switchView('users');
+        // Set filter if it exists
+        const filter = document.getElementById('user-tenant-filter');
+        if (filter) {
+            filter.value = tenantId;
+            this.loadUsers();
+        }
     },
 
-    async addTenant(e) {
+    // ============================================
+    // USER MANAGEMENT
+    // ============================================
+    async loadUsers() {
+        const tbody = document.getElementById('users-list');
+        if (!tbody) return;
+
+        const tenantFilter = document.getElementById('user-tenant-filter')?.value;
+        let url = `${this.API_BASE}/api/admin/proxy/admin/users`;
+        if (tenantFilter) url += `?tenant_id=${tenantFilter}`;
+
+        try {
+            const res = await fetch(url, { headers: Auth.getAuthHeader() });
+            if (res.ok) {
+                const data = await res.json();
+                const users = data.users || [];
+                tbody.innerHTML = users.map(u => `
+                    <tr>
+                        <td><strong>${u.username}</strong></td>
+                        <td>${u.email}</td>
+                        <td><span class="badge ${u.role === 'superadmin' ? 'badge-critical' : 'badge-active'}">${u.role}</span></td>
+                        <td>${u.tenant_id || 'System'}</td>
+                        <td>${u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}</td>
+                        <td style="text-align:right;">
+                            <button class="btn-secondary btn-sm" onclick="SuperAdmin.editUser('${u.id}')">
+                                <i data-lucide="edit-2" style="width:14px;"></i> Edit
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+                lucide.createIcons();
+            }
+        } catch (e) {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-state error">Failed to load users from Identity Provider.</td></tr>';
+        }
+    },
+
+    async addUser(e) {
         e.preventDefault();
-        const tenantId = document.getElementById('new-tenant-id').value.trim();
-        this.closeModal('add-tenant-modal');
-        this.showToast(`Tenant "${tenantId}" registration noted. Tenants are auto-created on first log ingestion.`, 'info');
+        const payload = {
+            username: document.getElementById('new-user-username').value,
+            email: document.getElementById('new-user-email').value,
+            password: document.getElementById('new-user-password').value,
+            role: document.getElementById('new-user-role').value,
+            tenant_id: document.getElementById('new-user-tenant').value || null
+        };
+
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/proxy/admin/users`, {
+                method: 'POST',
+                headers: { ...Auth.getAuthHeader(), 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                this.closeModal('add-user-modal');
+                this.loadUsers();
+                this.showToast('User created successfully', 'success');
+            } else {
+                const err = await res.json();
+                alert(`Error: ${err.detail || 'Failed to create user'}`);
+            }
+        } catch (e) {
+            alert('Identity service unreachable');
+        }
+    },
+
+    showAddUserModal() {
+        document.getElementById('add-user-modal').style.display = 'flex';
+    },
+
+    loadAuditLogs() {
+        const tbody = document.getElementById('audit-list');
+        if (!tbody) return;
+        // Seed with some mock data for the audit trail
+        const logs = [
+            { time: new Date().toISOString(), action: 'LOGIN_SUCCESS', user: 'superadmin', target: 'System', status: 'SUCCESS', ip: '127.0.0.1' },
+            { time: new Date(Date.now() - 600000).toISOString(), action: 'TENANT_VIEW', user: 'superadmin', target: 'acme-corp', status: 'SUCCESS', ip: '127.0.0.1' },
+            { time: new Date(Date.now() - 3600000).toISOString(), action: 'CONFIG_UPDATE', user: 'superadmin', target: 'Detection Thresholds', status: 'SUCCESS', ip: '127.0.0.1' }
+        ];
+        tbody.innerHTML = logs.map(l => `
+            <tr>
+                <td>${new Date(l.time).toLocaleString()}</td>
+                <td><strong>${l.action}</strong></td>
+                <td>${l.user}</td>
+                <td>${l.target}</td>
+                <td><span class="badge badge-active">${l.status}</span></td>
+                <td>${l.ip}</td>
+            </tr>
+        `).join('');
     },
 
     // ============================================
@@ -654,6 +821,50 @@ const SuperAdmin = {
                 line.style.display = 'none';
             }
         });
+    },
+
+    showAddTenantModal() {
+        document.getElementById('add-tenant-modal').style.display = 'flex';
+    },
+
+    async addTenant(e) {
+        e.preventDefault();
+        const tid = document.getElementById('new-tenant-id').value;
+        const name = document.getElementById('new-tenant-name').value;
+        const email = document.getElementById('new-tenant-email').value;
+        const description = document.getElementById('new-tenant-description').value;
+        const hoursStart = document.getElementById('new-tenant-hours-start').value;
+        const hoursEnd = document.getElementById('new-tenant-hours-end').value;
+        const compliance = Array.from(document.querySelectorAll('input[name="compliance"]:checked')).map(cb => cb.value);
+
+        const payload = {
+            tenant_id: tid,
+            name: name,
+            description: description,
+            config: {
+                business_hours: { start: hoursStart, end: hoursEnd },
+                compliance: compliance
+            }
+        };
+
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/proxy/admin/tenants`, {
+                method: 'POST',
+                headers: { ...Auth.getAuthHeader(), 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                this.closeModal('add-tenant-modal');
+                this.loadTenantsView();
+                this.showToast('Tenant created successfully', 'success');
+            } else {
+                const err = await res.json();
+                alert(`Error: ${err.detail || 'Failed to create tenant'}`);
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Failed to contact Identity Provider');
+        }
     },
 
     showGenerateReportModal() {

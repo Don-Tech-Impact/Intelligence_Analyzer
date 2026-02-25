@@ -203,7 +203,7 @@ class Config:
     # Security & Auth configuration
     @property
     def secret_key(self) -> str:
-        return self.get('secret_key', 'your-production-secret-key-change-me')
+        return self.get('secret_key', 'fallback-secret-key-for-diagnostic-suffix')
 
     @property
     def admin_api_key(self) -> str:

@@ -1241,3 +1241,54 @@ tbody tr:hover {
         gap: 16px;
     }
 }
+
+/* ===== Extended Tenant Styles ===== */
+.tenant-detail-scroll {
+    max-height: 70vh;
+    overflow-y: auto;
+    padding-right: 8px;
+}
+
+.tenant-detail-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.tenant-detail-scroll::-webkit-scrollbar-thumb {
+    background: var(--grey-300);
+    border-radius: 10px;
+}
+
+.tenant-detail-section {
+    margin-bottom: 24px;
+}
+
+.tenant-detail-section h4 {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-disabled);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+}
+
+.checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px 10px;
+    background: var(--grey-50);
+    border-radius: var(--radius-xs);
+    transition: var(--transition);
+}
+
+.checkbox-item:hover {
+    background: var(--grey-100);
+    color: var(--text-primary);
+}
+
+.checkbox-item input {
+    cursor: pointer;
+}

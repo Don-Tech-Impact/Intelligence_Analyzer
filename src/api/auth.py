@@ -40,6 +40,8 @@ async def verify_jwt(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
 
     public_key = get_public_key() # We keep this for backward compatibility if needed, but primary is now HS256
     secret_key = config.secret_key
+    if secret_key:
+        secret_key = secret_key.strip().strip('"').strip("'")
     
     if not secret_key:
         msg = "SECRET_KEY not configured. For local testing, add the Repo 1 secret to your .env file."
@@ -49,7 +51,20 @@ async def verify_jwt(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
             detail=msg
         )
 
+    # Debug: Confirm which key we are using
+    key_len = len(secret_key)
+    is_default_admin = (secret_key == "changeme-admin-key")
+    logger.info(f"Using SECRET_KEY length {key_len} ending in: ...{secret_key[-4:]} (Default Admin Key: {is_default_admin})")
+
     try:
+        # Debugging: check algorithm in header
+        header = jwt.get_unverified_header(token)
+        logger.info(f"JWT Header: {header}")
+        
+        # Log if we are using the fallback default from config.py
+        if secret_key == "fallback-secret-key-for-diagnostic-suffix":
+            logger.warning("CRITICAL: SECRET_KEY is using the HARDCODED FALLBACK. .env is NOT being loaded correctly!")
+
         # Verify the token using HS256 and the shared secret
         payload = jwt.decode(
             token, 
@@ -58,11 +73,25 @@ async def verify_jwt(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
             options={"verify_aud": False}
         )
         return payload
-    except JWTError as e:
-        logger.warning(f"JWT Verification failed: {str(e)}")
+    except jwt.ExpiredSignatureError:
+        logger.warning("JWT Verification failed: Token expired")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
+            detail="Token expired. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except JWTError as e:
+        header = jwt.get_unverified_header(token)
+        unverified_payload = jwt.get_unverified_claims(token)
+        key_suffix = secret_key[-4:] if secret_key else "NONE"
+        is_default_admin = (secret_key == "changeme-admin-key")
+        is_fallback = (secret_key == "fallback-secret-key-for-diagnostic-suffix")
+        logger.warning(f"JWT Verification failed: {str(e)}")
+        logger.warning(f"Algorithm in header: {header.get('alg')}")
+        logger.warning(f"Using SECRET_KEY suffix: {key_suffix} (Len: {len(secret_key if secret_key else '')}, DefaultAdmin: {is_default_admin}, Fallback: {is_fallback})")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Signature verification failed. 1. Check that Repo 1 and Repo 2 have the EXACT same SECRET_KEY in their .env files. 2. Current Repo 2 Suffix: {key_suffix} (Len: {len(secret_key if secret_key else '')}). 3. Unverified Payload: {unverified_payload}",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
