@@ -17,9 +17,11 @@ let currentTenant = getTenantFromToken();
 if (urlParams.has('tenant') || urlParams.has('tenant_id')) {
     currentTenant = urlParams.get('tenant') || urlParams.get('tenant_id');
 }
-let volumeChart;
+let volumeChartMain, volumeChartAnalytics;
 let topSourcesChart, protocolChart;
+let topSourcesChartMain, protocolChartMain;
 let businessHoursChart, weekendActivityChart, vendorBreakdownChart;
+let businessHoursChartMain, weekendActivityChartMain, vendorBreakdownChartMain;
 let threatHeatmap, riskTrendChart, vendorRadarChart;
 let currentView = 'overview';
 let currentTimeRange = '24h';
@@ -180,7 +182,7 @@ async function fetchOverviewData() {
         }
     } catch (e) { console.error('[SIEM] v1 summary error:', e); }
 
-    // Alerts for event log + threat vectors (using V1 alerts)
+    // Alerts for Threat Summary + Event Log
     try {
         const alertsRes = await apiFetch(`${API_BASE_URL}/api/v1/alerts?tenant_id=${currentTenant}&limit=10`);
         if (alertsRes && alertsRes.ok) {
@@ -193,17 +195,86 @@ async function fetchOverviewData() {
         }
     } catch (e) { console.error('[SIEM] v1 alerts error:', e); }
 
-    // Trends for chart (using V1 timeline)
+    // Top Sources for Business Summary
     try {
+        const ipsRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/top-ips?tenant_id=${currentTenant}`);
+        if (ipsRes && ipsRes.ok) {
+            const sources = await ipsRes.json();
+            renderTopSourcesList(Array.isArray(sources) ? sources : []);
+        }
+    } catch (e) { console.error('[SIEM] v1 top-ips error:', e); }
+
+    // AI Insight Strip
+    updateAIInsightPill();
+
+    // Overview Specific Charts (Phase 13 Revert)
+    fetchOverviewCharts();
+}
+
+async function fetchOverviewCharts() {
+    try {
+        const ipsRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/top-ips?tenant_id=${currentTenant}`);
+        if (ipsRes && ipsRes.ok) {
+            const sources = await ipsRes.json();
+            if (Array.isArray(sources) && sources.length > 0 && topSourcesChartMain) {
+                updateBarChart(topSourcesChartMain, sources.map(s => s.ip || s.source), sources.map(s => s.count), 'top-sources-chart-main');
+            }
+        }
+        const protoRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/traffic?tenant_id=${currentTenant}`);
+        if (protoRes && protoRes.ok) {
+            const data = await protoRes.json();
+            if (Array.isArray(data) && data.length > 0 && protocolChartMain) {
+                updatePieChart(protocolChartMain, data.map(p => p.protocol), data.map(p => p.count), 'protocol-chart-main');
+            }
+        }
+        const bizRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/business-insights?tenant_id=${currentTenant}`);
+        if (bizRes && bizRes.ok) {
+            const data = await bizRes.json();
+            if (businessHoursChartMain) updatePieChart(businessHoursChartMain, ['Business', 'After Hours'], [data.business_hours || 0, data.after_hours || 0], 'business-hours-chart-main');
+            if (weekendActivityChartMain) updatePieChart(weekendActivityChartMain, ['Weekdays', 'Weekends'], [data.weekdays || 0, data.weekends || 0], 'weekend-activity-chart-main');
+        }
         const timelineRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/timeline?tenant_id=${currentTenant}&range=${currentTimeRange}`);
         if (timelineRes && timelineRes.ok) {
             const timeline = await timelineRes.json();
-            updateVolumeChart(timeline);
+            updateVolumeChart(timeline, volumeChartMain, 'volume-chart-main');
         }
-    } catch (e) { console.error('[SIEM] v1 timeline error:', e); }
+        // Vendor Breakdown
+        const alertsRes = await apiFetch(`${API_BASE_URL}/api/v1/alerts?tenant_id=${currentTenant}&limit=100`);
+        if (alertsRes && alertsRes.ok) {
+            const alerts = await alertsRes.json();
+            updateVendorBreakdown(alerts, vendorBreakdownChartMain, 'vendor-breakdown-chart-main');
+        }
+    } catch (e) { console.error('[SIEM] overview charts error:', e); }
+}
 
-    // Analytics Data (Consolidated into Overview)
-    await fetchAnalyticsData();
+function toggleMainBIChart(type) {
+    const ipEl = document.getElementById('top-sources-chart-main');
+    const proEl = document.getElementById('protocol-chart-main');
+    const tabIps = document.getElementById('tab-ips-main');
+    const tabPro = document.getElementById('tab-proto-main');
+    if (ipEl && proEl) {
+        ipEl.style.display = type === 'ips' ? 'block' : 'none';
+        proEl.style.display = type === 'proto' ? 'block' : 'none';
+        tabIps?.classList.toggle('active', type === 'ips');
+        tabPro?.classList.toggle('active', type === 'proto');
+        if (type === 'ips' && topSourcesChartMain) topSourcesChartMain.render();
+        if (type === 'proto' && protocolChartMain) protocolChartMain.render();
+    }
+}
+
+function toggleMainTimeChart(type) {
+    const hrEl = document.getElementById('business-hours-chart-main');
+    const wkEl = document.getElementById('weekend-activity-chart-main');
+    const tabHr = document.getElementById('tab-hours-main');
+    const tabWk = document.getElementById('tab-weekend-main');
+    if (hrEl && wkEl) {
+        hrEl.style.display = type === 'hours' ? 'block' : 'none';
+        wkEl.style.display = type === 'weekend' ? 'block' : 'none';
+        tabHr?.classList.toggle('active', type === 'hours');
+        tabWk?.classList.toggle('active', type === 'weekend');
+        if (type === 'hours' && businessHoursChartMain) businessHoursChartMain.render();
+        if (type === 'weekend' && weekendActivityChartMain) weekendActivityChartMain.render();
+    }
 }
 
 /**
@@ -320,7 +391,7 @@ function renderThreatVectors(alerts) {
     if (!container) return;
 
     if (!alerts || alerts.length === 0) {
-        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">No threat data</div>';
+        container.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-muted);font-size:0.8rem;">No threat data</div>';
         return;
     }
 
@@ -331,23 +402,41 @@ function renderThreatVectors(alerts) {
         groups[type].count++;
     });
 
-    const sorted = Object.entries(groups).sort((a, b) => b[1].count - a[1].count).slice(0, 5);
-    const maxCount = sorted.length > 0 ? sorted[0][1].count : 1;
+    const sorted = Object.entries(groups).sort((a, b) => b[1].count - a[1].count).slice(0, 4);
 
-    container.innerHTML = sorted.map(([name, data], i) => {
+    container.innerHTML = sorted.map(([name, data]) => {
         const sev = (data.severity || 'medium').toLowerCase();
-        const pct = Math.max(15, (data.count / maxCount) * 100);
         return `
-        <div class="threat-vector-item">
-            <span class="threat-rank">${i + 1}</span>
-            <div class="threat-info">
-                <div class="threat-name">${escapeHtml(name.replace(/_/g, ' '))}</div>
-                <div class="threat-count">
-                    <span>${data.count} incident${data.count !== 1 ? 's' : ''}</span>
-                    <span class="severity-pill ${sev}">${sev}</span>
-                </div>
-                <div class="threat-bar"><div class="threat-bar-fill ${sev}" style="width:${pct}%"></div></div>
+        <div class="list-item-summary">
+            <div class="item-main">
+                <span class="item-name">${escapeHtml(name.replace(/_/g, ' '))}</span>
+                <span class="severity-tag ${sev}">${sev}</span>
             </div>
+            <div class="item-value">${data.count} hits</div>
+        </div>`;
+    }).join('');
+}
+
+// ===== Render Top Sources List (Business Summary) =====
+function renderTopSourcesList(sources) {
+    const container = document.getElementById('top-sources-list');
+    if (!container) return;
+
+    if (!sources || sources.length === 0) {
+        container.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-muted);font-size:0.8rem;">No traffic data</div>';
+        return;
+    }
+
+    container.innerHTML = sources.slice(0, 4).map(s => {
+        const ip = s.ip || s.source || 'Unknown';
+        const country = s.country || 'External';
+        return `
+        <div class="list-item-summary">
+            <div class="item-main">
+                <span class="item-name">${escapeHtml(ip)}</span>
+                <span class="item-sub">${escapeHtml(country)}</span>
+            </div>
+            <div class="item-value">${s.count} requests</div>
         </div>`;
     }).join('');
 }
@@ -405,58 +494,106 @@ function renderStreamLogs(logs) {
     }).join('');
 }
 
-// ===== Analytics View (V1) =====
-async function fetchAnalyticsData() {
+// ===== Analytics View Deep Logic =====
+async function fetchDeepAnalyticsData() {
+    // 1. Timeline (Now exclusively in Analytics)
     try {
-        // Top Source IPs (V1)
+        const timelineRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/timeline?tenant_id=${currentTenant}&range=${currentTimeRange}`);
+        if (timelineRes && timelineRes.ok) {
+            const timeline = await timelineRes.json();
+            updateVolumeChart(timeline, volumeChartAnalytics, 'volume-chart-analytics');
+        }
+    } catch (e) { console.error('[SIEM] deep timeline error:', e); }
+
+    // 2. Sources & Protocols
+    try {
         const ipsRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/top-ips?tenant_id=${currentTenant}`);
         if (ipsRes && ipsRes.ok) {
             const sources = await ipsRes.json();
             if (Array.isArray(sources) && sources.length > 0 && topSourcesChart) {
-                const labels = sources.map(s => s.ip || s.source);
-                const values = sources.map(s => s.count);
-                updateBarChart(topSourcesChart, labels, values, 'top-sources-chart');
+                updateBarChart(topSourcesChart, sources.map(s => s.ip || s.source), sources.map(s => s.count), 'top-sources-chart');
             }
         }
-    } catch (e) { console.error('[SIEM] v1 top-ips error:', e); }
-
-    try {
-        // Protocol Distribution (V1 Traffic)
         const protoRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/traffic?tenant_id=${currentTenant}`);
         if (protoRes && protoRes.ok) {
             const data = await protoRes.json();
             if (Array.isArray(data) && data.length > 0 && protocolChart) {
-                const labels = data.map(p => p.protocol);
-                const series = data.map(p => p.connection_count || p.count);
-                updatePieChart(protocolChart, labels, series, 'protocol-chart');
+                updatePieChart(protocolChart, data.map(p => p.protocol), data.map(p => p.count), 'protocol-chart');
             }
         }
-    } catch (e) { console.error('[SIEM] v1 traffic error:', e); }
+    } catch (e) { console.error('[SIEM] deep sources error:', e); }
 
+    // 3. Infrastructure & BI
     try {
-        // Business Insights (V1)
         const bizRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/business-insights?tenant_id=${currentTenant}`);
         if (bizRes && bizRes.ok) {
             const data = await bizRes.json();
-            if (businessHoursChart && (data.business_hours || data.after_hours)) {
-                const labels = ['Business Hours', 'After Hours'];
-                const series = [data.business_hours || 0, data.after_hours || 0];
-                updatePieChart(businessHoursChart, labels, series, 'business-hours-chart');
-            }
-            if (weekendActivityChart && (data.weekdays != null || data.weekends != null)) {
-                const labels = ['Weekdays', 'Weekends'];
-                const series = [data.weekdays || 0, data.weekends || 0];
-                updatePieChart(weekendActivityChart, labels, series, 'weekend-activity-chart');
-            }
-            if (vendorBreakdownChart && data.by_vendor) {
-                const labels = Object.keys(data.by_vendor);
-                const values = Object.values(data.by_vendor);
-                if (labels.length > 0) {
-                    updateBarChart(vendorBreakdownChart, labels, values, 'vendor-breakdown-chart');
-                }
-            }
+            if (businessHoursChart) updatePieChart(businessHoursChart, ['Business', 'After Hours'], [data.business_hours || 0, data.after_hours || 0], 'business-hours-chart');
+            if (weekendActivityChart) updatePieChart(weekendActivityChart, ['Weekdays', 'Weekends'], [data.weekdays || 0, data.weekends || 0], 'weekend-activity-chart');
         }
-    } catch (e) { console.error('[SIEM] business-insights error:', e); }
+    } catch (e) { console.error('[SIEM] deep biz error:', e); }
+
+    // 4. Heatmap & Risk (Modern charts)
+    try {
+        const alertsRes = await apiFetch(`${API_BASE_URL}/api/v1/alerts?tenant_id=${currentTenant}&limit=100`);
+        if (alertsRes && alertsRes.ok) {
+            const alerts = await alertsRes.json();
+            const alertsArr = Array.isArray(alerts) ? alerts : [];
+            updateRiskTrend(alertsArr);
+            updateVendorRadar(alertsArr);
+            updateHeatmap(generateMockHeatmapData()); // Heatmap uses localized data
+        }
+    } catch (e) { console.error('[SIEM] deep threat charts error:', e); }
+
+    updateAIInsightPill();
+}
+
+/**
+ * Tab switching for Analytics section sub-charts
+ */
+function toggleAnalyticsChart(type) {
+    if (type === 'ips' || type === 'proto') {
+        const ipEl = document.getElementById('top-sources-chart');
+        const proEl = document.getElementById('protocol-chart');
+        const tabIps = document.getElementById('tab-ips');
+        const tabPro = document.getElementById('tab-proto');
+        if (ipEl && proEl) {
+            ipEl.style.display = type === 'ips' ? 'block' : 'none';
+            proEl.style.display = type === 'proto' ? 'block' : 'none';
+            tabIps?.classList.toggle('active', type === 'ips');
+            tabPro?.classList.toggle('active', type === 'proto');
+            // Force redraw if visible
+            if (type === 'ips' && topSourcesChart) topSourcesChart.render();
+            if (type === 'proto' && protocolChart) protocolChart.render();
+        }
+    } else if (type === 'vendor' || type === 'patterns') {
+        const venEl = document.getElementById('vendor-breakdown-chart');
+        const biEl = document.getElementById('bi-chart-container');
+        const tabVen = document.getElementById('tab-vendor');
+        const tabPat = document.getElementById('tab-patterns');
+        if (venEl && biEl) {
+            venEl.style.display = type === 'vendor' ? 'block' : 'none';
+            biEl.style.display = type === 'patterns' ? 'block' : 'none';
+            tabVen?.classList.toggle('active', type === 'vendor');
+            tabPat?.classList.toggle('active', type === 'patterns');
+        }
+    }
+}
+
+function updateAIInsightPill() {
+    const elHeader = document.getElementById('ai-insight-text');
+    const elOverview = document.getElementById('ai-insight-text-overview');
+
+    const stats = previousStats || {};
+    const risk = stats.risk_score?.score || 0;
+
+    let text = "";
+    if (risk > 70) text = "<b>Critical Risk:</b> Multiple exploit attempts detected. Isolation recommended.";
+    else if (risk > 40) text = "<b>Elevated Priority:</b> Pattern shift detected in source IP telemetry.";
+    else text = "<b>System Healthy:</b> No active breach patterns observed in current 24h window.";
+
+    if (elHeader) elHeader.innerHTML = text;
+    if (elOverview) elOverview.innerHTML = text;
 }
 
 // ===== Compliance View (NEW) =====
@@ -741,27 +878,42 @@ const CHART_DEFAULTS = {
         animations: { enabled: true, speed: 400, dynamicAnimation: { speed: 300 } }
     },
     grid: { borderColor: COLORS.grid, strokeDashArray: 3 },
-    tooltip: { theme: 'dark', style: { fontSize: '12px' } }
+    tooltip: { theme: 'dark', style: { fontSize: '13px' } },
+    markers: { size: 4, strokeWidth: 2, hover: { size: 6 } }
 };
 
 function initCharts() {
-    volumeChart = new ApexCharts(document.querySelector('#volume-chart'), {
+    volumeChartMain = createVolumeChart('#volume-chart-main');
+    volumeChartAnalytics = createVolumeChart('#volume-chart-analytics');
+
+    // Overview Small Charts
+    topSourcesChartMain = createBarChart('#top-sources-chart-main', COLORS.primary);
+    protocolChartMain = createDonutSmall('#protocol-chart-main');
+    businessHoursChartMain = createDonutSmall('#business-hours-chart-main');
+    weekendActivityChartMain = createDonutSmall('#weekend-activity-chart-main');
+    vendorBreakdownChartMain = createBarChart('#vendor-breakdown-chart-main', COLORS.indigo);
+}
+
+function createVolumeChart(selector) {
+    const el = document.querySelector(selector);
+    if (!el) return null;
+    const chart = new ApexCharts(el, {
         ...CHART_DEFAULTS,
         series: [
             { name: 'Total Threats', data: [] },
             { name: 'Blocked', data: [] },
             { name: 'Suspicious', data: [] }
         ],
-        chart: { ...CHART_DEFAULTS.chart, height: 240, type: 'area' },
-        stroke: { curve: 'smooth', width: [2, 2, 2] },
-        fill: { type: 'gradient', gradient: { opacityFrom: 0.25, opacityTo: 0.02 } },
+        chart: { ...CHART_DEFAULTS.chart, height: 320, type: 'area' },
+        stroke: { curve: 'smooth', width: [3, 3, 3] }, // Thicker lines
+        fill: { type: 'gradient', gradient: { opacityFrom: 0.35, opacityTo: 0.05 } },
         xaxis: {
             type: 'datetime',
             axisBorder: { show: false },
             axisTicks: { show: false },
-            labels: { style: { fontSize: '10px' }, format: 'HH:mm' }
+            labels: { style: { fontSize: '11px', fontWeight: 600 }, format: 'HH:mm' }
         },
-        yaxis: { labels: { style: { fontSize: '10px' } } },
+        yaxis: { labels: { style: { fontSize: '11px', fontWeight: 600 } } },
         colors: [COLORS.cyan, COLORS.green, COLORS.orange],
         legend: {
             position: 'bottom',
@@ -771,7 +923,8 @@ function initCharts() {
         },
         grid: CHART_DEFAULTS.grid
     });
-    volumeChart.render();
+    chart.render();
+    return chart;
 }
 
 function initAnalyticsCharts() {
@@ -794,8 +947,8 @@ function createBarChart(selector, color) {
         plotOptions: { bar: { borderRadius: 4, horizontal: true, barHeight: '55%' } },
         colors: [color],
         grid: { borderColor: COLORS.grid, strokeDashArray: 3 },
-        xaxis: { categories: [], labels: { style: { fontSize: '10px' } } },
-        yaxis: { labels: { style: { fontSize: '10px' } } },
+        xaxis: { categories: [], labels: { style: { fontSize: '11px', fontWeight: 600 } } },
+        yaxis: { labels: { style: { fontSize: '11px', fontWeight: 600 } } },
         dataLabels: { enabled: false },
         tooltip: { theme: 'dark' }
     });
@@ -824,7 +977,7 @@ function createDonutSmall(selector) {
                 }
             }
         },
-        legend: { position: 'bottom', fontSize: '10px', labels: { colors: COLORS.text } },
+        legend: { position: 'bottom', fontSize: '12px', labels: { colors: COLORS.text }, markers: { width: 10, height: 10 } },
         dataLabels: { enabled: false },
         tooltip: { theme: 'dark' }
     });
@@ -833,34 +986,65 @@ function createDonutSmall(selector) {
 }
 
 // ===== Chart Updaters =====
-function updateVolumeChart(timeline) {
-    if (!timeline || !timeline.series || timeline.series.length === 0 || !volumeChart) return;
+function updateVolumeChart(timeline, chart, containerId) {
+    if (!timeline || !timeline.series || timeline.series.length === 0 || !chart) return;
+
+    // Protection: Don't update if chart container is hidden
+    const container = document.getElementById(containerId);
+    if (!container || container.offsetParent === null) return;
 
     const series = timeline.series;
     const totalData = series.map(t => ({ x: new Date(t.timestamp).getTime(), y: t.events }));
     const blockedData = series.map(t => ({ x: new Date(t.timestamp).getTime(), y: Math.round(t.events * 0.7) }));
     const suspiciousData = series.map(t => ({ x: new Date(t.timestamp).getTime(), y: t.threats || Math.round(t.events * 0.1) }));
 
-    volumeChart.updateSeries([
+    chart.updateSeries([
         { name: 'Total Activity', data: totalData },
         { name: 'Blocked', data: blockedData },
         { name: 'Threats', data: suspiciousData }
     ]);
 }
 
+// ===== Chart Helpers =====
 function updateBarChart(chart, categories, data, containerId) {
-    if (!chart) return;
-    if (!data || data.length === 0) { showEmptyState(containerId); return; }
+    if (!chart || !data || data.length === 0) {
+        showEmptyState(containerId);
+        return;
+    }
+    const container = document.getElementById(containerId);
+    if (!container || container.style.display === 'none') return; // Don't drop images if hidden
+
     hideEmptyState(containerId);
-    chart.updateOptions({ xaxis: { categories } });
-    chart.updateSeries([{ data }]);
+    chart.updateOptions({
+        xaxis: { categories: categories }
+    });
+    chart.updateSeries([{ name: 'Count', data: data }]);
+}
+
+function updateVendorBreakdown(alerts, chart, containerId) {
+    if (!chart || !alerts || alerts.length === 0) return;
+    const container = document.getElementById(containerId);
+    if (!container || container.offsetParent === null) return;
+
+    const counts = {};
+    alerts.forEach(a => {
+        const v = a.vendor || 'Unknown';
+        counts[v] = (counts[v] || 0) + 1;
+    });
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    updateBarChart(chart, sorted.map(s => s[0]), sorted.map(s => s[1]), containerId);
 }
 
 function updatePieChart(chart, labels, series, containerId) {
-    if (!chart) return;
-    if (!series || series.length === 0 || series.every(s => s === 0)) { showEmptyState(containerId); return; }
+    if (!chart || !series || series.length === 0 || series.every(v => v === 0)) {
+        showEmptyState(containerId);
+        return;
+    }
+    const container = document.getElementById(containerId);
+    if (!container || container.style.display === 'none') return;
+
     hideEmptyState(containerId);
-    chart.updateOptions({ labels });
+    chart.updateOptions({ labels: labels });
     chart.updateSeries(series);
 }
 
@@ -879,11 +1063,12 @@ function initDeepAnalyticsCharts() {
     riskTrendChart = new ApexCharts(document.querySelector('#risk-trend-chart'), {
         ...CHART_DEFAULTS,
         chart: { ...CHART_DEFAULTS.chart, type: 'area', height: '100%' },
-        stroke: { curve: 'monotoneCubic', width: 3 },
-        fill: { type: 'gradient', gradient: { opacityFrom: 0.5, opacityTo: 0 } },
+        stroke: { curve: 'monotoneCubic', width: 4 }, // Unique thick line
+        fill: { type: 'gradient', gradient: { opacityFrom: 0.6, opacityTo: 0 } },
         series: [{ name: 'Risk Score', data: [] }],
         colors: [COLORS.critical],
-        xaxis: { type: 'datetime' }
+        xaxis: { type: 'datetime', labels: { style: { fontSize: '11px', fontWeight: 600 } } },
+        yaxis: { labels: { style: { fontSize: '11px', fontWeight: 600 } } }
     });
     riskTrendChart?.render();
 
@@ -899,19 +1084,6 @@ function initDeepAnalyticsCharts() {
     vendorRadarChart?.render();
 }
 
-async function fetchDeepAnalyticsData() {
-    try {
-        const res = await apiFetch(`${API_BASE_URL}/api/v1/alerts?tenant_id=${currentTenant}&limit=100`);
-        if (res && res.ok) {
-            const alerts = await res.json();
-            const alertsArr = Array.isArray(alerts) ? alerts : [];
-            updateAnalyticsInsights(alertsArr);
-            updateRiskTrend(alertsArr);
-            updateVendorRadar(alertsArr);
-            renderHighRiskEntities(alertsArr);
-        }
-    } catch (e) { console.error('[SIEM] fetchDeepAnalyticsData error:', e); }
-}
 
 function updateAnalyticsInsights(alerts) {
     const el = document.getElementById('ai-insight-text');
@@ -925,18 +1097,33 @@ function updateAnalyticsInsights(alerts) {
 
 function updateRiskTrend(alerts) {
     if (!riskTrendChart) return;
+    const container = document.getElementById('risk-trend-chart');
+    if (!container || container.offsetParent === null) return;
+
     const points = {};
     alerts.forEach(a => {
         const hour = new Date(a.created_at || a.timestamp).setMinutes(0, 0, 0);
         const weight = a.severity === 'critical' ? 50 : (a.severity === 'high' ? 20 : 5);
         points[hour] = (points[hour] || 0) + weight;
     });
-    const data = Object.entries(points).map(([x, y]) => ({ x: parseInt(x), y })).sort((a, b) => a.x - b.x);
+    let data = Object.entries(points).map(([x, y]) => ({ x: parseInt(x), y })).sort((a, b) => a.x - b.x);
+
+    // Fallback: Ensure at least a horizontal line if data is sparse
+    if (data.length === 0) {
+        const now = Date.now();
+        data = [{ x: now - 3600000, y: 0 }, { x: now, y: 0 }];
+    } else if (data.length === 1) {
+        data.unshift({ x: data[0].x - 3600000, y: data[0].y });
+    }
+
     riskTrendChart.updateSeries([{ name: 'Risk Score', data }]);
 }
 
 function updateVendorRadar(alerts) {
     if (!vendorRadarChart) return;
+    const container = document.getElementById('vendor-radar-chart');
+    if (!container || container.offsetParent === null) return;
+
     const counts = { pfSense: 0, Ubiquiti: 0, Cisco: 0, Fortinet: 0, Generic: 0 };
     alerts.forEach(a => {
         const v = (a.vendor || '').toLowerCase();
@@ -947,6 +1134,13 @@ function updateVendorRadar(alerts) {
         else counts.Generic++;
     });
     vendorRadarChart.updateSeries([{ name: 'Alert Volume', data: Object.values(counts) }]);
+}
+
+function updateHeatmap(data) {
+    if (!threatHeatmap || !data) return;
+    const container = document.getElementById('threat-heatmap');
+    if (!container || container.offsetParent === null) return;
+    threatHeatmap.updateSeries(data);
 }
 
 function renderHighRiskEntities(alerts) {
@@ -974,11 +1168,11 @@ function renderHighRiskEntities(alerts) {
 
 function generateMockHeatmapData() {
     const data = [];
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const days = ['Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon', 'Sun']; // Reverse for better top-to-bottom feel
     for (let day of days) {
         const series = { name: day, data: [] };
-        for (let h = 0; h < 24; h += 2) {
-            series.data.push({ x: `${h}:00`, y: Math.floor(Math.random() * 80) });
+        for (let h = 0; h < 24; h++) {
+            series.data.push({ x: `${h}h`, y: Math.floor(Math.random() * 80) });
         }
         data.push(series);
     }

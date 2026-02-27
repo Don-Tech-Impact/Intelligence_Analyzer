@@ -90,6 +90,11 @@
             </header>
 
             <div id="overview-view" class="dashboard-view active">
+                <!-- AI Insight Strip (Relocated to Top) -->
+                <div class="insights-pill" id="overview-insights-pill">
+                    <i data-lucide="sparkles"></i>
+                    <span id="ai-insight-text-overview">Analyzing signals...</span>
+                </div>
 
                 <!-- Stats Row -->
                 <div class="stats-grid">
@@ -142,14 +147,14 @@
                     </div>
                 </div>
 
-                <!-- Main Activity Grid -->
+                <!-- Main Intelligence Row -->
                 <div class="dashboard-grid-main">
                     <!-- Threat Activity Timeline -->
                     <div class="chart-container grid-span-2">
                         <div class="chart-header">
                             <div class="chart-header-left">
                                 <h3>Threat Activity Timeline</h3>
-                                <p>Real-time incident detection</p>
+                                <p>Incident density and volume trends</p>
                             </div>
                             <div class="chart-tabs">
                                 <button class="active" onclick="setChartRange('24h')">24h</button>
@@ -157,29 +162,29 @@
                                 <button onclick="setChartRange('30d')">30d</button>
                             </div>
                         </div>
-                        <div id="volume-chart"></div>
+                        <div id="volume-chart-main"></div>
                     </div>
 
-                    <!-- Top Threat Vectors -->
+                    <!-- Lateral Threat Intelligence -->
                     <div class="chart-container">
-                        <div class="threat-vectors-header">
-                            <div>
-                                <h3>Top Threat Vectors</h3>
-                                <p>Common attack patterns</p>
+                        <div class="chart-header">
+                            <div class="chart-header-left">
+                                <h3>Threat Vectors</h3>
+                                <p>Top attack patterns</p>
                             </div>
-                            <i data-lucide="alert-triangle" class="alert-icon"></i>
+                            <i data-lucide="shield-alert" class="icon-orange"></i>
                         </div>
-                        <div id="threat-vectors-list">
+                        <div id="threat-vectors-list" class="concise-list">
                             <!-- Populated by JS -->
                         </div>
                     </div>
 
-                    <!-- Security Event Log (Concise) -->
+                    <!-- Lateral Event Log -->
                     <div class="event-log-container">
                         <div class="event-log-header">
-                            <div>
-                                <h3>Security Event Log</h3>
-                                <p>Recent activity</p>
+                            <div class="header-left">
+                                <h3>Recent Events</h3>
+                                <p>Live security findings</p>
                             </div>
                             <a href="#" class="view-all" onclick="switchView('logs')">View All</a>
                         </div>
@@ -190,47 +195,54 @@
                 </div>
 
                 <!-- Secondary Intelligence Row -->
-                <h2 class="section-title">Business Intelligence</h2>
                 <div class="dashboard-grid-secondary">
-                    <!-- Top Source IPs -->
-                    <div class="chart-container">
+                    <!-- Source IPs / Protocols -->
+                    <div class="chart-container grid-span-2">
                         <div class="chart-header">
-                            <h3>Top Source IPs</h3>
+                            <div class="chart-header-left">
+                                <h3>Global Traffic Patterns</h3>
+                                <p>Anomalous source origins</p>
+                            </div>
+                            <div class="bi-tabs">
+                                <button id="tab-ips-main" class="active" onclick="toggleMainBIChart('ips')">Source
+                                    IPs</button>
+                                <button id="tab-proto-main" onclick="toggleMainBIChart('proto')">Protocols</button>
+                            </div>
                         </div>
-                        <div id="top-sources-chart"></div>
-                    </div>
-
-                    <!-- Protocol Distribution -->
-                    <div class="chart-container">
-                        <div class="chart-header">
-                            <h3>Protocol Distribution</h3>
-                        </div>
-                        <div id="protocol-chart"></div>
+                        <div id="top-sources-chart-main"></div>
+                        <div id="protocol-chart-main" style="display:none;"></div>
                     </div>
 
                     <!-- Business Intelligence -->
                     <div class="chart-container">
                         <div class="chart-header">
-                            <h3>Activity Patterns</h3>
+                            <div class="chart-header-left">
+                                <h3>Pattern Analysis</h3>
+                                <p>Operational timeframe distribution</p>
+                            </div>
+                            <div class="bi-tabs">
+                                <button id="tab-hours-main" class="active"
+                                    onclick="toggleMainTimeChart('hours')">Hours</button>
+                                <button id="tab-weekend-main" onclick="toggleMainTimeChart('weekend')">Weekend</button>
+                            </div>
                         </div>
-                        <div class="bi-tabs">
-                            <button id="tab-hours" class="active" onclick="toggleBIChart('hours')">Hours</button>
-                            <button id="tab-weekend" onclick="toggleBIChart('weekend')">Weekend</button>
-                        </div>
-                        <div id="bi-chart-container">
-                            <div id="business-hours-chart"></div>
-                            <div id="weekend-activity-chart" style="display:none;"></div>
-                        </div>
+                        <div id="business-hours-chart-main"></div>
+                        <div id="weekend-activity-chart-main" style="display:none;"></div>
                     </div>
 
-                    <!-- Endpoint Breakdown -->
+                    <!-- Infrastructure Health -->
                     <div class="chart-container">
                         <div class="chart-header">
-                            <h3>Endpoint Breakdown</h3>
+                            <div class="chart-header-left">
+                                <h3>Vendor Coverage</h3>
+                                <p>Security logic distribution</p>
+                            </div>
+                            <i data-lucide="database" class="icon-indigo"></i>
                         </div>
-                        <div id="vendor-breakdown-chart"></div>
+                        <div id="vendor-breakdown-chart-main"></div>
                     </div>
                 </div>
+
             </div>
 
             <!-- ============================================ -->
@@ -238,15 +250,59 @@
             <!-- ============================================ -->
             <div id="analytics-view" class="dashboard-view">
                 <div class="analytics-header">
-                    <h2 class="section-title">Deep Pattern Analysis</h2>
-                    <div class="insights-pill">
-                        <i data-lucide="sparkles"></i>
-                        <span id="ai-insight-text">Analyzing traffic patterns...</span>
-                    </div>
+                    <h2 class="section-title">Security & Traffic Analytics</h2>
                 </div>
 
                 <div class="analytics-grid">
-                    <!-- Threat Landscape (Heatmap) -->
+                    <!-- Threat Activity Timeline (Moved from Overview) -->
+                    <div class="chart-container grid-span-4">
+                        <div class="chart-header">
+                            <div class="chart-header-left">
+                                <h3>Threat Activity Timeline</h3>
+                                <p>Incident density and volume trends</p>
+                            </div>
+                            <div class="chart-tabs">
+                                <button class="active" onclick="setChartRange('24h')">24h</button>
+                                <button onclick="setChartRange('7d')">7d</button>
+                                <button onclick="setChartRange('30d')">30d</button>
+                            </div>
+                        </div>
+                        <div id="volume-chart-analytics"></div>
+                    </div>
+
+                    <div class="chart-container grid-span-2">
+                        <div class="chart-header">
+                            <h3>Source & Protocol Intelligence</h3>
+                        </div>
+                        <div class="bi-tabs">
+                            <button id="tab-ips" class="active" onclick="toggleAnalyticsChart('ips')">Source
+                                IPs</button>
+                            <button id="tab-proto" onclick="toggleAnalyticsChart('proto')">Protocols</button>
+                        </div>
+                        <div id="sources-chart-container">
+                            <div id="top-sources-chart"></div>
+                            <div id="protocol-chart" style="display:none;"></div>
+                        </div>
+                    </div>
+
+                    <div class="chart-container grid-span-2">
+                        <div class="chart-header">
+                            <h3>Infrastructure Breakdown</h3>
+                        </div>
+                        <div class="bi-tabs">
+                            <button id="tab-vendor" class="active"
+                                onclick="toggleAnalyticsChart('vendor')">Vendors</button>
+                            <button id="tab-patterns" onclick="toggleAnalyticsChart('patterns')">Patterns</button>
+                        </div>
+                        <div id="infra-chart-container">
+                            <div id="vendor-breakdown-chart"></div>
+                            <div id="bi-chart-container" style="display:none;">
+                                <div id="business-hours-chart"></div>
+                                <div id="weekend-activity-chart" style="display:none;"></div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="chart-container grid-span-2">
                         <div class="chart-header">
                             <h3>Threat Landscape Heatmap</h3>
@@ -255,7 +311,6 @@
                         <div id="threat-heatmap"></div>
                     </div>
 
-                    <!-- Risk Trend (Area) -->
                     <div class="chart-container grid-span-2">
                         <div class="chart-header">
                             <h3>Compound Risk Trend</h3>

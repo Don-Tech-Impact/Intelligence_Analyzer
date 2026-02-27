@@ -308,6 +308,18 @@ header {
     margin-bottom: 1.5rem;
 }
 
+.header-title {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.header-insight-row {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
 .header-title h1 {
     font-size: 1.75rem;
     font-weight: 800;
@@ -322,9 +334,9 @@ header {
 
 .header-title p {
     color: var(--text-muted);
-    font-size: 0.875rem;
-    margin-top: 4px;
+    font-size: 0.8125rem;
     font-weight: 500;
+    margin: 0;
 }
 
 .header-right {
@@ -1069,23 +1081,77 @@ header {
     margin-bottom: 1.5rem;
 }
 
-.insights-pill {
-    background: rgba(139, 92, 246, 0.1);
-    border: 1px solid rgba(139, 92, 246, 0.2);
-    padding: 8px 16px;
-    border-radius: 100px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: #A78BFA;
-    font-size: 0.8125rem;
-    font-weight: 600;
+/* Relocated Insights Pill for Header */
+#main-insights-pill {
+    padding: 4px 12px;
+    height: 28px;
+    font-size: 0.75rem;
+    background: rgba(139, 92, 246, 0.08);
+    border: 1px solid rgba(139, 92, 246, 0.15);
 }
 
-.insights-pill i {
-    width: 16px;
-    height: 16px;
-    animation: shine 3s infinite;
+#main-insights-pill i {
+    width: 14px;
+    height: 14px;
+}
+
+/* Intelligence Summary Grid (Overview) */
+.intelligence-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+    margin-bottom: 2rem;
+}
+
+.sidebar-user .user-info {
+    flex: 1;
+    min-width: 0;
+    margin-left: 8px;
+}
+
+.sidebar-user .name {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sidebar-user .email {
+    display: block;
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.view-all-link:hover {
+    color: var(--primary-hover);
+    text-decoration: underline;
+}
+
+/* Icon Colors */
+.icon-orange {
+    color: #f97316 !important;
+}
+
+.icon-blue {
+    color: #3b82f6 !important;
+}
+
+.icon-purple {
+    color: #8b5cf6 !important;
+}
+
+.icon-green {
+    color: #10b981 !important;
+}
+
+.icon-teal {
+    color: #14b8a6 !important;
 }
 
 @keyframes shine {
@@ -1102,6 +1168,117 @@ header {
     }
 }
 
+/* Dashboard Grid System (Restored High-Density) */
+.dashboard-grid-main {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.dashboard-grid-main #volume-chart {
+    min-height: 400px;
+}
+
+.dashboard-grid-secondary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+@media (max-width: 1400px) {
+    .dashboard-grid-main {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboard-grid-secondary {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Intelligence Summary Grid (Overview fallback) */
+.intelligence-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+    margin-bottom: 2rem;
+}
+
+/* Concise Summary Lists */
+.list-item-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.875rem 1.25rem;
+    border-bottom: 1px solid var(--border-muted);
+    transition: background 0.2s;
+}
+
+.list-item-summary:last-child {
+    border-bottom: none;
+}
+
+.list-item-summary:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.item-main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.item-name {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.item-sub {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+}
+
+.item-value {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--primary);
+    background: var(--primary-light);
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.severity-tag {
+    font-size: 0.625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-left: 8px;
+}
+
+.severity-tag.critical {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+}
+
+.severity-tag.high {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+}
+
+.severity-tag.medium {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+}
+
+.severity-tag.low {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+}
+
 .analytics-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -1115,6 +1292,30 @@ header {
 
 .grid-span-4 {
     grid-column: span 4;
+}
+
+/* Specific Height Constraints to prevent distortion */
+#threat-heatmap {
+    height: 350px !important;
+    min-height: 350px;
+}
+
+#risk-trend-chart {
+    height: 300px !important;
+    min-height: 300px;
+}
+
+#volume-chart-analytics {
+    min-height: 320px;
+}
+
+/* Tab Container Styles for Analytics */
+#sources-chart-container,
+#infra-chart-container {
+    width: 100%;
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
 }
 
 /* ========================================== */
@@ -1159,6 +1360,7 @@ header {
     align-items: center;
     gap: 10px;
     flex-shrink: 0;
+    z-index: 100;
 }
 
 .filter-group {
@@ -1203,8 +1405,7 @@ header {
 /* LIVE STREAM VIEW FIXES                     */
 /* ========================================== */
 #log-stream-view .data-table-container {
-    height: calc(100vh - 180px);
-    /* Fill screen */
+    height: calc(100vh - 200px);
 }
 
 .stream-console {
@@ -1218,6 +1419,8 @@ header {
     line-height: 1.6;
     overflow-y: auto;
     border: 1px solid rgba(255, 255, 255, 0.03);
+    max-height: 100%;
+    /* Ensure it respects parent height */
 }
 
 .stream-line {
@@ -1358,10 +1561,13 @@ tr.severity-low td:first-child {
 /* ========================================== */
 /* ANALYTICS                                  */
 /* ========================================== */
+/* ========================================== */
+/* ANALYTICS GRID REFINEMENT                  */
+/* ========================================== */
 .analytics-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.25rem;
     margin-bottom: 1.5rem;
 }
 
@@ -1710,18 +1916,17 @@ tr.severity-low td:first-child {
 /* CONCISE DASHBOARD LAYOUT                  */
 /* ========================================== */
 
-.dashboard-grid-main {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1rem;
-    margin-bottom: 1rem;
+/* Responsive Intelligence Grid */
+@media (max-width: 1200px) {
+    .intelligence-summary-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
-.dashboard-grid-secondary {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1rem;
-    margin-bottom: 1rem;
+@media (max-width: 768px) {
+    .intelligence-summary-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .grid-span-2 {
@@ -1920,4 +2125,45 @@ tr.severity-low td:first-child {
 .profile-actions {
     display: flex;
     gap: 1rem;
+}
+/* AI Insights Pill - Premium Top Placement */
+.insights-pill {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 0.625rem 1.25rem;
+    border-radius: 100px;
+    margin-bottom: 1.5rem;
+    width: fit-content;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    animation: slideDownFade 0.6s ease-out;
+}
+
+.insights-pill i {
+    color: var(--primary);
+    width: 18px;
+    height: 18px;
+    filter: drop-shadow(0 0 8px var(--primary));
+}
+
+.insights-pill span {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+}
+
+@keyframes slideDownFade {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Emboldened Chart Labels */
+.apexcharts-xaxis-label, .apexcharts-yaxis-label, .apexcharts-legend-text {
+    font-weight: 600 !important;
+    fill: var(--text-primary) !important;
+    color: var(--text-primary) !important;
 }
