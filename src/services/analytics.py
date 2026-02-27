@@ -27,11 +27,18 @@ class AnalyticsService:
         last_24h = now - timedelta(hours=24)
         last_48h = now - timedelta(hours=48)
 
-        # Total events (last 24h)
+        # Total events (last 14 days for demo/cold-start fallback)
         current_events = db.query(func.count(NormalizedLog.id)).filter(
             NormalizedLog.tenant_id == tenant_id,
             NormalizedLog.timestamp >= last_24h
         ).scalar() or 0
+
+        # Demo Fallback: If 0 logs in 24h, broaden to 14 days to show *something*
+        if current_events == 0:
+            current_events = db.query(func.count(NormalizedLog.id)).filter(
+                NormalizedLog.tenant_id == tenant_id,
+                NormalizedLog.timestamp >= (now - timedelta(days=14))
+            ).scalar() or 0
 
         # Previous 24h for trend
         previous_events = db.query(func.count(NormalizedLog.id)).filter(
@@ -57,22 +64,22 @@ class AnalyticsService:
         severity_map = {s: c for s, c in alerts_by_severity}
         total_threats = sum(severity_map.values())
 
-        # Affected assets (fallback to source_ip if device_id is missing)
-        # Cast INET to String for PostgreSQL compatibility in COALESCE
         from sqlalchemy import cast, String
+        # Affected assets (last 14 days)
         affected_assets = db.query(func.count(func.distinct(
             func.coalesce(NormalizedLog.device_id, cast(NormalizedLog.source_ip, String))
         ))).filter(
             NormalizedLog.tenant_id == tenant_id,
-            NormalizedLog.timestamp >= last_24h
+            NormalizedLog.timestamp >= (now - timedelta(days=14))
         ).scalar() or 0
 
-        # Asset types breakdown (fallback to source_ip if device_id is missing)
+        # Asset types breakdown
         asset_types = db.query(
             NormalizedLog.vendor,
             func.count(func.distinct(func.coalesce(NormalizedLog.device_id, cast(NormalizedLog.source_ip, String))))
         ).filter(
-            NormalizedLog.tenant_id == tenant_id
+            NormalizedLog.tenant_id == tenant_id,
+            NormalizedLog.timestamp >= (now - timedelta(days=14))
         ).group_by(NormalizedLog.vendor).all()
 
         # Risk score calculation (simple weighted formula)

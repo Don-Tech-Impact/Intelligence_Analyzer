@@ -1,14 +1,15 @@
-const API_BASE_URL = window.location.origin;
-const ADMIN_API_KEY = 'changeme-admin-key'; // Matches local .env default
+const API_BASE_URL = (window.location.origin === 'null' || window.location.protocol === 'file:')
+    ? 'http://localhost:8000'
+    : window.location.origin;
+const ADMIN_API_KEY = 'changeme-admin-key';
 
 // ===== Global State =====
 const urlParams = new URLSearchParams(window.location.search);
 
-// 🔍 Security: Prefer tenant_id from JWT payload (set by Repo 1)
+// 🔍 Security: Prefer tenant_id from JWT payload
 function getTenantFromToken() {
     const payload = Auth.getPayload();
-    if (!payload) return 'default';
-    // Repo 1 typically puts tenant_id in the payload, sub is a common fallback
+    if (!payload) return 'default'; // Using 'default' as it has the latest 24h alerts
     return payload.tenant_id || payload.sub || 'default';
 }
 
