@@ -1059,43 +1059,188 @@ header {
     border: 1px solid rgba(255, 86, 48, 0.2);
 }
 
-.table-header h3 {
-    font-size: 0.9375rem;
+/* ========================================== */
+/* ANALYTICS & INSIGHTS                       */
+/* ========================================== */
+.analytics-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.insights-pill {
+    background: rgba(139, 92, 246, 0.1);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    padding: 8px 16px;
+    border-radius: 100px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #A78BFA;
+    font-size: 0.8125rem;
     font-weight: 600;
+}
+
+.insights-pill i {
+    width: 16px;
+    height: 16px;
+    animation: shine 3s infinite;
+}
+
+@keyframes shine {
+
+    0%,
+    100% {
+        opacity: 0.5;
+        filter: brightness(1);
+    }
+
+    50% {
+        opacity: 1;
+        filter: brightness(1.5);
+    }
+}
+
+.analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.grid-span-2 {
+    grid-column: span 2;
+}
+
+.grid-span-4 {
+    grid-column: span 4;
+}
+
+/* ========================================== */
+/* TABLE HEADERS & FILTERS (FIX OVERLAP)      */
+/* ========================================== */
+.data-table-container {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    margin-bottom: 2rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 1.5rem;
+    gap: 2rem;
+    flex-wrap: wrap;
+    /* Prevent overlap on small screens */
+    border-bottom: 1px solid var(--border-default);
+}
+
+.table-header .header-left h3 {
+    font-size: 1.125rem;
+    font-weight: 700;
     color: var(--text-primary);
+    margin: 0;
+}
+
+.table-header .header-left p {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 4px;
 }
 
 .table-filters {
     display: flex;
-    gap: 0.5rem;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.filter-group {
+    position: relative;
+    display: flex;
     align-items: center;
 }
 
-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-th {
-    padding: 0.625rem 1.25rem;
-    text-align: left;
+.filter-icon {
+    position: absolute;
+    left: 12px;
+    width: 14px;
+    height: 14px;
     color: var(--text-muted);
-    font-weight: 600;
-    font-size: 0.6875rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    border-bottom: 1px solid var(--border-default);
-    background: var(--bg-elevated);
-    position: sticky;
-    top: 0;
-    z-index: 1;
+    pointer-events: none;
 }
 
-td {
-    padding: 0.5rem 1.25rem;
-    border-bottom: 1px solid var(--border-muted);
-    font-size: 0.8125rem;
-    color: var(--text-secondary);
+.filter-group select {
+    padding-left: 34px !important;
+}
+
+.search-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-input-wrapper i {
+    position: absolute;
+    left: 14px;
+    width: 16px;
+    height: 16px;
+    color: var(--text-muted);
+}
+
+.search-input-wrapper input {
+    padding-left: 2.5rem !important;
+    width: 240px;
+}
+
+/* ========================================== */
+/* LIVE STREAM VIEW FIXES                     */
+/* ========================================== */
+#log-stream-view .data-table-container {
+    height: calc(100vh - 180px);
+    /* Fill screen */
+}
+
+.stream-console {
+    flex: 1;
+    background: #020617;
+    margin: 1.25rem;
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.stream-line {
+    display: flex;
+    gap: 12px;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.stream-ts {
+    color: #64748B;
+    min-width: 80px;
+}
+
+.stream-vendor {
+    color: var(--accent-blue);
+    font-weight: 600;
+    min-width: 70px;
+}
+
+.stream-msg {
+    color: #CBD5E1;
+    word-break: break-all;
 }
 
 tr:hover td {

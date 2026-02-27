@@ -234,20 +234,78 @@
             </div>
 
             <!-- ============================================ -->
+            <!-- ANALYTICS VIEW                               -->
+            <!-- ============================================ -->
+            <div id="analytics-view" class="dashboard-view">
+                <div class="analytics-header">
+                    <h2 class="section-title">Deep Pattern Analysis</h2>
+                    <div class="insights-pill">
+                        <i data-lucide="sparkles"></i>
+                        <span id="ai-insight-text">Analyzing traffic patterns...</span>
+                    </div>
+                </div>
+
+                <div class="analytics-grid">
+                    <!-- Threat Landscape (Heatmap) -->
+                    <div class="chart-container grid-span-2">
+                        <div class="chart-header">
+                            <h3>Threat Landscape Heatmap</h3>
+                            <p>Activity density by hour and day</p>
+                        </div>
+                        <div id="threat-heatmap"></div>
+                    </div>
+
+                    <!-- Risk Trend (Area) -->
+                    <div class="chart-container grid-span-2">
+                        <div class="chart-header">
+                            <h3>Compound Risk Trend</h3>
+                            <p>Aggregated risk score over time</p>
+                        </div>
+                        <div id="risk-trend-chart"></div>
+                    </div>
+
+                    <!-- Vendor Comparison (Radar) -->
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3>Security Coverage</h3>
+                            <p>Logic distribution by vendor</p>
+                        </div>
+                        <div id="vendor-radar-chart"></div>
+                    </div>
+
+                    <!-- Top Attack IPs (Modern List) -->
+                    <div class="chart-container grid-span-1">
+                        <div class="chart-header">
+                            <h3>High-Risk Entities</h3>
+                        </div>
+                        <div id="high-risk-entities-list" class="concise-list">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================ -->
             <!-- ALERTS (THREATS) VIEW                        -->
             <!-- ============================================ -->
             <div id="alerts-view" class="dashboard-view">
                 <div class="data-table-container">
                     <div class="table-header">
-                        <h3>Security Alerts</h3>
+                        <div class="header-left">
+                            <h3>Security Alerts</h3>
+                            <p>Active and historical security findings</p>
+                        </div>
                         <div class="table-filters">
-                            <select id="filter-severity" class="glass-input" onchange="fetchData()">
-                                <option value="">All Severities</option>
-                                <option value="critical">Critical</option>
-                                <option value="high">High</option>
-                                <option value="medium">Medium</option>
-                                <option value="low">Low</option>
-                            </select>
+                            <div class="filter-group">
+                                <i data-lucide="shield-alert" class="filter-icon"></i>
+                                <select id="filter-severity" class="glass-input" onchange="fetchData()">
+                                    <option value="">All Severities</option>
+                                    <option value="critical">Critical</option>
+                                    <option value="high">High</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="low">Low</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                     <table>
@@ -261,9 +319,7 @@
                                 <th>Status</th>
                             </tr>
                         </thead>
-                        <tbody id="full-alerts-body">
-                            <!-- Populated by JS -->
-                        </tbody>
+                        <tbody id="full-alerts-body"></tbody>
                     </table>
                 </div>
             </div>
@@ -323,14 +379,21 @@
             <div id="logs-view" class="dashboard-view">
                 <div class="data-table-container">
                     <div class="table-header">
-                        <h3>Event Log Archive</h3>
+                        <div class="header-left">
+                            <h3>Event Log Archive</h3>
+                            <p>Full searchable history for tenant: <span class="tenant-tag"
+                                    id="logs-tenant">default</span></p>
+                        </div>
                         <div class="table-filters">
-                            <select id="log-filter-vendor" class="glass-input" onchange="fetchLogsData()">
-                                <option value="">All Vendors</option>
-                                <option value="pfsense">pfSense</option>
-                                <option value="ubiquiti_edge">Ubiquiti</option>
-                                <option value="cisco_meraki">Cisco</option>
-                            </select>
+                            <div class="filter-group">
+                                <i data-lucide="filter" class="filter-icon"></i>
+                                <select id="log-filter-vendor" class="glass-input" onchange="fetchLogsData()">
+                                    <option value="">All Vendors</option>
+                                    <option value="pfsense">pfSense</option>
+                                    <option value="ubiquiti_edge">Ubiquiti</option>
+                                    <option value="cisco_meraki">Cisco</option>
+                                </select>
+                            </div>
                             <select id="log-filter-severity" class="glass-input" onchange="fetchLogsData()">
                                 <option value="">All Severities</option>
                                 <option value="critical">Critical</option>
@@ -338,8 +401,11 @@
                                 <option value="medium">Medium</option>
                                 <option value="low">Low</option>
                             </select>
-                            <input type="text" id="log-search" placeholder="Search..." class="glass-input"
-                                oninput="fetchLogsData()" style="width:160px;">
+                            <div class="search-input-wrapper">
+                                <i data-lucide="search"></i>
+                                <input type="text" id="log-search" placeholder="Filter logs..." class="glass-input"
+                                    oninput="fetchLogsData()">
+                            </div>
                         </div>
                     </div>
                     <table class="mono-table">
