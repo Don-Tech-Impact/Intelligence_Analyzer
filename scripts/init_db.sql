@@ -125,7 +125,8 @@ CREATE TABLE IF NOT EXISTS alerts (
     status          VARCHAR(32) DEFAULT 'open',
     notified        BOOLEAN DEFAULT FALSE,
     created_at      TIMESTAMPTZ DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ DEFAULT NOW()
+    updated_at      TIMESTAMPTZ DEFAULT NOW(),
+    resolved_at     TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_alerts_tenant_status 
@@ -223,8 +224,14 @@ CREATE TABLE IF NOT EXISTS reports (
     report_type     VARCHAR(32) NOT NULL,
     start_date      TIMESTAMPTZ NOT NULL,
     end_date        TIMESTAMPTZ NOT NULL,
+    total_logs      INTEGER,
+    total_alerts    INTEGER,
+    alerts_by_severity JSONB,
+    top_source_ips  JSONB,
+    top_alert_types JSONB,
     file_path       VARCHAR(256),
     summary         JSONB,
+    format          VARCHAR(20),
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 

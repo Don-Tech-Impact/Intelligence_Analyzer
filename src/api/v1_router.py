@@ -7,11 +7,13 @@ from typing import Optional
 from datetime import datetime, timedelta
 
 from src.core.database import db_manager
-from src.models.database import Alert, NormalizedLog
+from src.models.database import Alert, NormalizedLog, Report
 from src.services.analytics import AnalyticsService
 from src.services.assets import AssetService
+from src.services.report_generator import ReportGenerator
 from src.models.schemas import ApiResponse
 from src.api.auth import verify_jwt
+from src.core.config import config as siem_config
 
 # Create V1 router (protected by JWT)
 router = APIRouter(prefix="/api/v1", tags=["V1 API"], dependencies=[Depends(verify_jwt)])
@@ -23,8 +25,32 @@ def get_db():
         yield session
 
 
-# Tenant ID is passed as a query parameter (auth handled by Repo 1)
-def get_tenant_id(tenant_id: str = Query("default")) -> str:
+# Secure dependency to get tenant ID from JWT or Query
+def get_tenant_id(
+    tenant_id: str = Query("default"),
+    payload: dict = Depends(verify_jwt)
+) -> str:
+    """
+    Returns the tenant_id scoped to the current user.
+    - If user is a regular tenant user: ALWAYS use their token's tenant_id.
+    - If user is a superadmin: Use query parameter (allows oversight).
+    """
+    # Check if superadmin
+    role = payload.get("role", "").lower()
+    is_admin = payload.get("is_admin", False)
+    admin_obj = payload.get("admin", {})
+    if isinstance(admin_obj, dict):
+        role = role or admin_obj.get("role", "").lower()
+        is_admin = is_admin or admin_obj.get("is_admin", False)
+        
+    is_super = role == "superadmin" or is_admin is True
+    
+    # If not superadmin, strictly enforce token-based scoping
+    if not is_super:
+        token_tenant = payload.get("tenant_id") or payload.get("sub")
+        if token_tenant:
+            return token_tenant
+            
     return tenant_id
 
 
@@ -423,3 +449,143 @@ def get_asset_detail(
             detail="Asset not found"
         )
     return ApiResponse(status="success", data=data)
+
+# ============================================
+# Report Endpoints
+# ============================================
+
+@router.get("/reports")
+def list_reports(
+    report_type: Optional[str] = None,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """List reports for the current tenant."""
+    query = db.query(Report).filter(Report.tenant_id == tenant_id)
+    if report_type:
+        query = query.filter(Report.report_type == report_type)
+    
+    reports = query.order_by(desc(Report.created_at)).all()
+    # Manual serialization since Report might not have to_dict
+    data = []
+    for r in reports:
+        data.append({
+            "id": r.id,
+            "report_type": r.report_type,
+            "start_date": r.start_date.isoformat() if r.start_date else None,
+            "end_date": r.end_date.isoformat() if r.end_date else None,
+            "total_logs": r.total_logs,
+            "total_alerts": r.total_alerts,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "format": r.format
+        })
+    return ApiResponse(status="success", data=data)
+
+
+@router.get("/reports/{report_id}/download")
+def download_report(
+    report_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """Download a specific report file."""
+    report = db.query(Report).filter(
+        Report.id == report_id,
+        Report.tenant_id == tenant_id
+    ).first()
+    
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    import os
+    if not os.path.exists(report.file_path):
+        raise HTTPException(status_code=404, detail="Report file missing on server")
+        
+    from fastapi.responses import FileResponse
+    return FileResponse(report.file_path, filename=os.path.basename(report.file_path))
+
+
+@router.get("/reports/{report_id}/content")
+def get_report_content(
+    report_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """Get the HTML content of a report for in-dashboard viewing."""
+    report = db.query(Report).filter(
+        Report.id == report_id,
+        Report.tenant_id == tenant_id
+    ).first()
+    
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+        
+    import os
+    if not os.path.exists(report.file_path):
+        raise HTTPException(status_code=404, detail="Report file missing on server")
+        
+    with open(report.file_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+        
+    return ApiResponse(status="success", data={"html": content, "type": report.report_type})
+
+
+@router.post("/reports/generate")
+def generate_report(
+    report_type: str = "daily",
+    days_back: int = 1,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """Trigger manual report generation for tenant."""
+    try:
+        gen = ReportGenerator()
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=days_back)
+        
+        report = gen.generate_report(
+            start_date=start_date,
+            end_date=end_date,
+            report_type=report_type,
+            tenant_id=tenant_id
+        )
+        
+        if not report:
+            raise HTTPException(status_code=500, detail="Failed to generate report")
+            
+        return ApiResponse(status="success", data={"report_id": report.id})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
+# Configuration Endpoints
+# ============================================
+
+@router.get("/config")
+def get_config(tenant_id: str = Depends(get_tenant_id)):
+    """Get tenant-safe configuration thresholds."""
+    return ApiResponse(status="success", data={
+        "brute_force_threshold": siem_config.brute_force_threshold,
+        "port_scan_threshold": siem_config.port_scan_threshold,
+        "log_level": siem_config.log_level,
+        "tenant_id": tenant_id
+    })
+
+
+@router.post("/config")
+def update_config(new_config: dict, tenant_id: str = Depends(get_tenant_id)):
+    """Update SIEM configuration thresholds."""
+    try:
+        # For now, we update global config as in main.py, 
+        # but scoped to tenant in future iterations with DB persistence.
+        if "brute_force_threshold" in new_config:
+            siem_config.set("detection.brute_force.threshold", int(new_config["brute_force_threshold"]))
+        if "port_scan_threshold" in new_config:
+            siem_config.set("detection.port_scan.threshold", int(new_config["port_scan_threshold"]))
+        if "log_level" in new_config:
+            siem_config.set("logging.level", new_config["log_level"])
+        
+        return ApiResponse(status="success", message="Configuration updated successfully")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update config: {str(e)}")

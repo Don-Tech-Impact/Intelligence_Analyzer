@@ -8,6 +8,19 @@ from datetime import datetime
 from src.api.main import app
 from src.core.database import db_manager
 from src.models.database import Base, Tenant, Alert, NormalizedLog
+from src.api.auth import verify_jwt
+
+# ---------------------------------------------------------------------------
+# Mock JWT — V1 router requires verify_jwt on every endpoint.
+# Override it so tests don't need a live Repo 1 token.
+# ---------------------------------------------------------------------------
+MOCK_JWT_PAYLOAD = {
+    "sub": "test-admin-uuid",
+    "email": "test@example.com",
+    "role": "superadmin",
+    "iss": "repo1-admin-api",
+}
+app.dependency_overrides[verify_jwt] = lambda: MOCK_JWT_PAYLOAD
 
 client = TestClient(app)
 

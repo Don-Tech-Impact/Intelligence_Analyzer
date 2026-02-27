@@ -69,8 +69,9 @@
 
             <form id="login-form">
                 <div class="form-group">
-                    <label for="email">Email address</label>
-                    <input type="email" id="email" class="input-field" placeholder="admin@domain.com" required>
+                    <label for="email">Email or Username</label>
+                    <input type="text" id="email" class="input-field" placeholder="admin@domain.com or username"
+                        required>
                 </div>
 
                 <div class="form-group">
@@ -97,7 +98,7 @@
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const email = document.getElementById('email').value;
+            const identifier = document.getElementById('email').value;
             const password = document.getElementById('password').value;
 
             // UI State
@@ -106,15 +107,17 @@
             submitBtn.disabled = true;
 
             try {
-                // Use the internal Repo 2 proxy to bypass browser CORS blocks
+                // Unified Login Proxy: Routes to Repo 1 /admin/login or /tenant/login automatically
+                const isEmail = identifier.includes('@');
                 const login_url = '/api/admin/proxy/login';
+                const payload = isEmail ? { email: identifier, password } : { username: identifier, password };
 
-                console.log("INFO: Attempting proxy login via", login_url);
+                console.log("INFO: Attempting smart login via proxy", `(${isEmail ? 'SuperAdmin/Email' : 'Tenant/Username'})`);
 
                 const response = await fetch(login_url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
+                    body: JSON.stringify(payload)
                 });
 
                 if (response.ok) {
@@ -123,16 +126,18 @@
                         Auth.setToken(data.access_token);
                         Auth.redirectToDashboard();
                     } else {
-                        throw new Error('access_token field missing in response');
+                        console.error("Auth Error: Response OK but no token found.", data);
+                        errorBox.innerHTML = `<strong>Handshake Failed</strong><br>Successfully connected to Repo 1, but no access token was returned. Check Repo 1 logs.`;
+                        errorBox.style.display = 'block';
                     }
                 } else {
                     const error = await response.json();
-                    errorBox.innerText = error.detail || 'Access denied. Please check your credentials.';
+                    errorBox.innerHTML = `<strong>Authentication Failed</strong><br>${error.detail || 'Access denied. Please check your credentials.'}`;
                     errorBox.style.display = 'block';
                 }
             } catch (err) {
                 console.error("Login Error:", err);
-                errorBox.innerText = 'Unable to connect to authentication server. Ensure both Repo 1 and Repo 2 are running.';
+                errorBox.innerHTML = `<strong>Connectivity Error</strong><br>Unable to reach the authentication proxy. Verify Repo 2 (Analyzer) is running on port 8000 ans naccess to Repo 1.`;
                 errorBox.style.display = 'block';
             } finally {
                 submitBtn.innerText = 'Sign In';

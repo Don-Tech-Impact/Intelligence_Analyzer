@@ -3,7 +3,20 @@ const ADMIN_API_KEY = 'changeme-admin-key'; // Matches local .env default
 
 // ===== Global State =====
 const urlParams = new URLSearchParams(window.location.search);
-let currentTenant = urlParams.get('tenant') || urlParams.get('tenant_id') || 'default';
+
+// 🔍 Security: Prefer tenant_id from JWT payload (set by Repo 1)
+function getTenantFromToken() {
+    const payload = Auth.getPayload();
+    if (!payload) return 'default';
+    // Repo 1 typically puts tenant_id in the payload, sub is a common fallback
+    return payload.tenant_id || payload.sub || 'default';
+}
+
+let currentTenant = getTenantFromToken();
+// Allow Override for SuperAdmins via URL (if needed for viewing other tenants)
+if (urlParams.has('tenant') || urlParams.has('tenant_id')) {
+    currentTenant = urlParams.get('tenant') || urlParams.get('tenant_id');
+}
 let volumeChart;
 let topSourcesChart, protocolChart;
 let businessHoursChart, weekendActivityChart, vendorBreakdownChart;
@@ -20,28 +33,30 @@ const VIEWS = {
     'ai-assistant': { title: 'AI Assistant', subtitle: 'Intelligent log analysis and threat explanation' },
     compliance: { title: 'Compliance Dashboard', subtitle: 'Security standards and regulatory adherence' },
     reports: { title: 'Report Archive', subtitle: 'Generated security summaries and audits' },
+    profile: { title: 'User Profile', subtitle: 'Account details and security settings' },
     settings: { title: 'System Settings', subtitle: 'Analyzer thresholds and configuration' }
 };
 
 // ===== Chart Color Palette =====
 const COLORS = {
     primary: '#00A76F',
-    teal: '#00B8D9',
-    indigo: '#8B5CF6',
-    cyan: '#00B8D9',
+    teal: '#64FFDA',
+    indigo: '#818CF8',
+    cyan: '#06B6D4',
     critical: '#FF5630',
     high: '#FFAB00',
     medium: '#00B8D9',
     low: '#22C55E',
-    muted: '#919EAB',
-    grid: 'rgba(145, 158, 171, 0.2)',
-    text: '#637381',
+    muted: '#64748B',
+    grid: 'rgba(148, 163, 184, 0.1)',
+    text: '#94A3B8',
     green: '#22C55E',
-    orange: '#FFAB00'
+    orange: '#F59E0B'
 };
 
 // ===== Initialize =====
 document.addEventListener('DOMContentLoaded', () => {
+    try { updateUserInfo(); } catch (e) { console.warn('[SIEM] updateUserInfo failed:', e); }
     try { initCharts(); } catch (e) { console.error('[SIEM] initCharts failed:', e); }
     try { initAnalyticsCharts(); } catch (e) { console.error('[SIEM] initAnalyticsCharts failed:', e); }
     try { initBusinessCharts(); } catch (e) { console.error('[SIEM] initBusinessCharts failed:', e); }
@@ -52,6 +67,32 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(checkApiStatus, 30000);
     lucide.createIcons();
 });
+
+/**
+ * Dynamically update the sidebar with info from the JWT
+ */
+function updateUserInfo() {
+    const payload = Auth.getPayload();
+    if (!payload) return;
+
+    const nameEl = document.querySelector('.sidebar-user .name');
+    const emailEl = document.querySelector('.sidebar-user .email');
+    const logoSpan = document.querySelector('.logo span');
+
+    if (nameEl) {
+        const username = payload.username || (payload.admin && payload.admin.username) || 'User';
+        nameEl.textContent = username.charAt(0).toUpperCase() + username.slice(1);
+    }
+    if (emailEl) {
+        const email = payload.email || (payload.admin && payload.admin.email) || '';
+        emailEl.textContent = email;
+    }
+
+    // Keep logo clean as per reference standard
+    if (logoSpan) {
+        logoSpan.textContent = 'Afric-Analyzer';
+    }
+}
 
 // ===== API Helper =====
 async function apiFetch(url) {
@@ -117,7 +158,6 @@ async function fetchData() {
         else if (currentView === 'logs') await fetchLogsData();
         else if (currentView === 'log-stream') await fetchStreamData();
         else if (currentView === 'ai-assistant') await renderAiAssistant();
-        else if (currentView === 'analytics') await fetchAnalyticsData();
         else if (currentView === 'compliance') await fetchComplianceData();
         else if (currentView === 'reports') await fetchReportsData();
         else if (currentView === 'settings') await fetchSettingsData();
@@ -157,6 +197,33 @@ async function fetchOverviewData() {
             updateVolumeChart(timeline);
         }
     } catch (e) { console.error('[SIEM] v1 timeline error:', e); }
+
+    // Analytics Data (Consolidated into Overview)
+    await fetchAnalyticsData();
+}
+
+/**
+ * Tab switching for Business Intelligence section
+ */
+function toggleBIChart(tab) {
+    const hoursEl = document.getElementById('business-hours-chart');
+    const weekendEl = document.getElementById('weekend-activity-chart');
+    const tabHours = document.getElementById('tab-hours');
+    const tabWeekend = document.getElementById('tab-weekend');
+
+    if (!hoursEl || !weekendEl) return;
+
+    if (tab === 'hours') {
+        hoursEl.style.display = 'block';
+        weekendEl.style.display = 'none';
+        tabHours?.classList.add('active');
+        tabWeekend?.classList.remove('active');
+    } else {
+        hoursEl.style.display = 'none';
+        weekendEl.style.display = 'block';
+        tabHours?.classList.remove('active');
+        tabWeekend?.classList.add('active');
+    }
 }
 
 // ===== Update Stats (V1 Support) =====
@@ -398,20 +465,20 @@ async function fetchComplianceData() {
     let alertsData = [];
 
     try {
-        const statsRes = await apiFetch(`${API_BASE_URL}/stats?tenant_id=${currentTenant}`);
+        const statsRes = await apiFetch(`${API_BASE_URL}/api/v1/dashboard/summary?tenant_id=${currentTenant}`);
         if (statsRes && statsRes.ok) statsData = await statsRes.json();
     } catch (e) { /* silent */ }
 
     try {
-        const alertsRes = await apiFetch(`${API_BASE_URL}/alerts?tenant_id=${currentTenant}&limit=50`);
+        const alertsRes = await apiFetch(`${API_BASE_URL}/api/v1/alerts?tenant_id=${currentTenant}&limit=50`);
         if (alertsRes && alertsRes.ok) {
             const raw = await alertsRes.json();
             alertsData = Array.isArray(raw) ? raw : [];
         }
     } catch (e) { /* silent */ }
 
-    const totalLogs = statsData?.total_logs || 0;
-    const totalAlerts = statsData?.total_alerts || 0;
+    const totalLogs = statsData?.total_events?.count || 0;
+    const totalAlerts = statsData?.active_threats?.count || 0;
     const resolvedCount = alertsData.filter(a => a.status === 'resolved').length;
     const totalAlertCount = alertsData.length || 1;
 
@@ -486,10 +553,14 @@ async function fetchReportsData() {
         const startDate = document.getElementById('report-filter-start')?.value || '';
         const endDate = document.getElementById('report-filter-end')?.value || '';
 
-        let url = `${API_BASE_URL}/reports?tenant_id=${currentTenant}`;
-        if (typeFilter) url += `&report_type=${typeFilter}`;
-        if (startDate) url += `&start_date=${startDate}`;
-        if (endDate) url += `&end_date=${endDate}`;
+        let url = `${API_BASE_URL}/api/v1/reports`;
+        const params = new URLSearchParams();
+        if (typeFilter) params.append('report_type', typeFilter);
+        if (startDate) params.append('start_date', startDate);
+        if (endDate) params.append('end_date', endDate);
+
+        const queryString = params.toString();
+        if (queryString) url += `?${queryString}`;
 
         const res = await apiFetch(url);
         if (res && res.ok) {
@@ -524,7 +595,7 @@ async function fetchReportsData() {
 // ===== Settings (fixed: uses /config endpoint) =====
 async function fetchSettingsData() {
     try {
-        const res = await apiFetch(`${API_BASE_URL}/config`);
+        const res = await apiFetch(`${API_BASE_URL}/api/v1/config`);
         if (res && res.ok) {
             const settings = await res.json();
             setVal('bf-threshold', settings.brute_force_threshold || 10);
@@ -542,15 +613,11 @@ async function saveSettings(e) {
             port_scan_threshold: parseInt(getVal('ps-threshold')) || 50,
             log_level: getVal('log-level') || 'INFO'
         };
-        const res = await fetch(`${API_BASE_URL}/config`, {
+        const res = await apiFetch(`${API_BASE_URL}/api/v1/config`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Admin-Key': ADMIN_API_KEY
-            },
             body: JSON.stringify(payload)
         });
-        showToast(res.ok ? 'Settings saved successfully' : 'Failed to save settings', !res.ok);
+        showToast(res ? 'Settings saved successfully' : 'Failed to save settings', !res);
     } catch (e) {
         showToast('Error saving settings', true);
     }
@@ -599,6 +666,31 @@ function populateLogsTable(tbodyId, logs) {
     `).join('');
 }
 
+// ===== Profile View =====
+function renderProfile() {
+    const payload = Auth.getPayload();
+    if (!payload) return;
+
+    const name = payload.username || (payload.admin && payload.admin.username) || 'User';
+    const email = payload.email || (payload.admin && payload.admin.email) || 'Not provided';
+    const role = (payload.role || (payload.admin && payload.admin.role) || 'Analyst').toUpperCase();
+    const type = payload.user_type === 'tenant_user' ? 'Tenant User' : 'System User';
+    const permissions = payload.is_admin ? 'Full Administrative Access' : 'Standard SOC Access';
+
+    setElText('profile-name', name.charAt(0).toUpperCase() + name.slice(1));
+    setElText('profile-email', email);
+    setElText('profile-role', role);
+    setElText('profile-tenant', currentTenant);
+    setElText('profile-type', type);
+    setElText('profile-permissions', permissions);
+    lucide.createIcons();
+}
+
+function setElText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+}
+
 // ===== View Switching =====
 function switchView(view) {
     currentView = view;
@@ -617,6 +709,7 @@ function switchView(view) {
         }
     });
 
+    if (view === 'profile') renderProfile();
     fetchData();
 }
 
@@ -644,7 +737,7 @@ const CHART_DEFAULTS = {
         animations: { enabled: true, speed: 400, dynamicAnimation: { speed: 300 } }
     },
     grid: { borderColor: COLORS.grid, strokeDashArray: 3 },
-    tooltip: { theme: 'light', style: { fontSize: '12px' } }
+    tooltip: { theme: 'dark', style: { fontSize: '12px' } }
 };
 
 function initCharts() {
@@ -655,7 +748,7 @@ function initCharts() {
             { name: 'Blocked', data: [] },
             { name: 'Suspicious', data: [] }
         ],
-        chart: { ...CHART_DEFAULTS.chart, height: 300, type: 'area' },
+        chart: { ...CHART_DEFAULTS.chart, height: 240, type: 'area' },
         stroke: { curve: 'smooth', width: [2, 2, 2] },
         fill: { type: 'gradient', gradient: { opacityFrom: 0.25, opacityTo: 0.02 } },
         xaxis: {
@@ -693,7 +786,7 @@ function createBarChart(selector, color) {
     if (!el) return null;
     const chart = new ApexCharts(el, {
         series: [{ data: [] }],
-        chart: { type: 'bar', height: 280, toolbar: { show: false }, foreColor: COLORS.text, fontFamily: 'Inter', background: 'transparent' },
+        chart: { type: 'bar', height: 210, toolbar: { show: false }, foreColor: COLORS.text, fontFamily: 'Inter', background: 'transparent' },
         plotOptions: { bar: { borderRadius: 4, horizontal: true, barHeight: '55%' } },
         colors: [color],
         grid: { borderColor: COLORS.grid, strokeDashArray: 3 },
@@ -711,7 +804,7 @@ function createDonutSmall(selector) {
     if (!el) return null;
     const chart = new ApexCharts(el, {
         series: [],
-        chart: { type: 'donut', height: 260, foreColor: COLORS.text, fontFamily: 'Inter', background: 'transparent' },
+        chart: { type: 'donut', height: 180, foreColor: COLORS.text, fontFamily: 'Inter', background: 'transparent' },
         labels: [],
         colors: [COLORS.teal, COLORS.primary, COLORS.indigo, COLORS.high, COLORS.low],
         stroke: { show: false },

@@ -9,6 +9,24 @@ import json
 from src.api.main import app
 from src.core.database import db_manager
 from src.models.database import NormalizedLog, Alert
+from src.api.auth import verify_jwt
+
+# ---------------------------------------------------------------------------
+# Mock JWT so tests don't need a live Repo 1 to issue tokens.
+# The V1 router declares `dependencies=[Depends(verify_jwt)]` at router level.
+# We override verify_jwt in the FastAPI dependency system — no requests leave
+# the process, no real tokens are needed.
+# ---------------------------------------------------------------------------
+MOCK_JWT_PAYLOAD = {
+    "sub": "test-admin-uuid",
+    "email": "test@example.com",
+    "role": "superadmin",
+    "iat": 9999999999,
+    "exp": 9999999999,
+    "iss": "repo1-admin-api",
+}
+
+app.dependency_overrides[verify_jwt] = lambda: MOCK_JWT_PAYLOAD
 
 # Disable rate limiting for tests
 app.state.limiter.enabled = False

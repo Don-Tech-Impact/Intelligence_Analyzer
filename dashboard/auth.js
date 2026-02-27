@@ -132,13 +132,18 @@ const Auth = {
         // Extremely flexible role detection for Repo 1 tokens
         const role = (payload.role || '').toLowerCase();
         const isAdmin = payload.is_admin || (payload.admin && payload.admin.is_admin) || false;
+        const userType = payload.user_type || (payload.admin && payload.admin.user_type) || '';
         const username = (payload.username || (payload.admin && payload.admin.username) || '').toLowerCase();
         const email = (payload.email || (payload.admin && payload.admin.email) || '').toLowerCase();
 
-        console.log(`Auth: User "${username || email}" detected. Role: ${role}, Admin: ${isAdmin}`);
+        console.log(`Auth: User "${username || email}" detected. Role: ${role}, Type: ${userType}, Admin: ${isAdmin}`);
 
-        if (role === 'superadmin' || isAdmin || username === 'superadmin' || email.includes('admin@')) {
-            console.log("Auth: Redirecting to superadmin.panel");
+        // Tenant users always go to the standard dashboard, even if they have "admin" role
+        if (userType === 'tenant_user') {
+            console.log("Auth: Redirecting to standard.dashboard (Tenant View)");
+            window.location.href = 'index.html';
+        } else if (role === 'superadmin' || isAdmin || username === 'superadmin') {
+            console.log("Auth: Redirecting to superadmin.panel (Global View)");
             window.location.href = 'superadmin.html';
         } else {
             console.log("Auth: Redirecting to standard.dashboard");

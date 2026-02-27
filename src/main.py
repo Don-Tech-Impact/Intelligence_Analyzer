@@ -20,6 +20,24 @@ from src.analyzers.payload_analysis import PayloadAnalysisAnalyzer
 from src.api.main import app as api_app
 import uvicorn
 
+# Webhook registration helper — registers Repo 2's URL with Repo 1 on startup
+# so Repo 1 knows where to send tenant lifecycle events (created/updated/deleted).
+# Import is deferred inside the function so it's safe if the module is not present.
+def _register_webhook_with_repo1() -> None:
+    """Best-effort startup registration of Repo 2 webhook URL with Repo 1."""
+    try:
+        import sys, os
+        # Add repo2-rovo to path so it can be imported despite the hyphen in folder name
+        _repo2_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "repo2-rovo")
+        if _repo2_dir not in sys.path:
+            sys.path.insert(0, _repo2_dir)
+        from startup_webhook_register import register_webhook_on_startup
+        register_webhook_on_startup(retries=3, retry_delay=3.0)
+    except ImportError:
+        logger.info("startup_webhook_register not found — skipping webhook auto-registration")
+    except Exception as exc:
+        logger.warning(f"Webhook auto-registration skipped: {exc}")
+
 logger = get_logger(__name__)
 
 
@@ -64,7 +82,13 @@ class SIEMAnalyzer:
         """Start the SIEM Analyzer."""
         logger.info("Starting SIEM Analyzer")
         self.running = True
-        
+
+        # Register Repo 2's webhook URL with Repo 1 so tenant lifecycle events
+        # (created / updated / deleted) are delivered to this service.
+        # This is non-blocking and best-effort — failure does not stop startup.
+        logger.info("Registering webhook URL with Repo 1...")
+        _register_webhook_with_repo1()
+
         # Start scheduler
         self.scheduler.start()
         

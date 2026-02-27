@@ -36,7 +36,7 @@ class LogAdapter:
     """
 
     @staticmethod
-    def normalize(raw_log: Dict[str, Any]) -> NormalizedLogSchema:
+    def normalize(raw_log: Dict[str, Any], tenant_id_fallback: Optional[str] = None) -> NormalizedLogSchema:
         """
         Convert any supported log format to NormalizedLogSchema.
         
@@ -49,11 +49,16 @@ class LogAdapter:
         
         Args:
             raw_log: Raw log dictionary from Redis queue
+            tenant_id_fallback: Optional tenant_id to use if not found in raw_log
             
         Returns:
             NormalizedLogSchema instance with flattened fields
         """
         try:
+            # Inject fallback if needed BEFORE normalization
+            if tenant_id_fallback and not raw_log.get('tenant_id'):
+                raw_log['tenant_id'] = tenant_id_fallback
+
             schema_version = raw_log.get('schema_version', '')
             
             # =================================================================

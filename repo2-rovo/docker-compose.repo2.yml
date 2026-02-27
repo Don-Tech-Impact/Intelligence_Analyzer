@@ -1,0 +1,82 @@
+# Docker Compose overlay — joins Repo 1's network for local development
+#
+# PROBLEM SOLVED:
+#   docker-compose-local.yml does NOT join repo1_network, so HTTP proxy
+#   calls from Repo 2 → Repo 1 fail with "Connection refused" in Docker.
+#   docker-compose-prod.yml correctly joins repo1_network but local dev doesn't.
+#
+# USAGE:
+#   Apply as an overlay on top of the local dev compose file:
+#
+#     docker compose \
+#       -f docker/docker-compose-local.yml \
+#       -f repo2-rovo/docker-compose.repo2.yml \
+#       up -d
+#
+# WHAT THIS DOES:
+#   1. Adds repo1_network as an external network (must already exist — Repo 1 creates it)
+#   2. Connects the siem_api and siem_consumer services to repo1_network
+#   3. Sets REPO1_BASE_URL to use the Repo 1 container name (repo1_api)
+#      so DNS resolution works inside Docker
+#   4. Sets both canonical and alias env var names for reliability
+#
+# PREREQUISITE:
+#   Repo 1 must already be running so its Docker network exists:
+#     cd /path/to/repo1 && docker compose -f docker/docker-compose.yml up -d
+#
+# VERIFY NETWORK EXISTS:
+#     docker network ls | grep repo1
+
+version: "3.8"
+
+services:
+  siem_api:
+    environment:
+      # Repo 1 connection — use container name for Docker DNS resolution
+      REPO1_BASE_URL: http://repo1_api:8080
+      REPO1_URL: http://repo1_api:8080          # alias — Repo 2 code reads both
+
+      # Shared secrets — MUST match Repo 1's values exactly
+      # Override these in your .env file; do NOT commit real secrets
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-dotenv}
+      ADMIN_KEY: ${ADMIN_KEY:-change-me-in-dotenv}
+      ADMIN_API_KEY: ${ADMIN_KEY:-change-me-in-dotenv}  # alias
+
+      # Webhook registration — Repo 2 registers this URL with Repo 1 on startup
+      REPO2_WEBHOOK_URL: ${REPO2_WEBHOOK_URL:-http://siem_api:8000/api/admin/tenants/sync}
+
+      # Redis — shared with Repo 1
+      REDIS_URL: ${REDIS_URL:-redis://repo1_redis:6379/0}
+
+    networks:
+      - default
+      - repo1_network
+
+  siem_consumer:
+    environment:
+      # Consumer also needs Repo 1 connection for any admin calls
+      REPO1_BASE_URL: http://repo1_api:8080
+      REPO1_URL: http://repo1_api:8080
+
+      # Shared secrets
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-dotenv}
+      ADMIN_KEY: ${ADMIN_KEY:-change-me-in-dotenv}
+      ADMIN_API_KEY: ${ADMIN_KEY:-change-me-in-dotenv}
+
+      # Redis — shared with Repo 1 (consumer reads logs:{tenant}:clean queue)
+      REDIS_URL: ${REDIS_URL:-redis://repo1_redis:6379/0}
+
+      # Consumer tuning
+      BATCH_SIZE: ${BATCH_SIZE:-100}
+      BATCH_TIMEOUT_MS: ${BATCH_TIMEOUT_MS:-1000}
+
+    networks:
+      - default
+      - repo1_network
+
+networks:
+  default: {}
+
+  repo1_network:
+    external: true
+    name: repo1_network   # Must match the network name Repo 1 creates

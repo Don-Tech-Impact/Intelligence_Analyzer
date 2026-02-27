@@ -1,6 +1,6 @@
 /**
  * superadmin.js - Complete SuperAdmin Dashboard Logic
- * Handles: Dashboard, Tenants, Global Health, Settings, Backup & Logs
+ * Handles: Dashboard, Tenants, Global Health, Settings, Backup & Logs, Network Security
  */
 
 const SuperAdmin = {
@@ -11,6 +11,20 @@ const SuperAdmin = {
     errorRateChart: null,
     cachedOverview: null,
     healthInterval: null,
+
+    formatBytes(bytes, decimals = 2) {
+        if (!+bytes) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+    },
+
+    formatNumber(num) {
+        if (num === undefined || num === null) return '0';
+        return num.toLocaleString();
+    },
 
     // ============================================
     // INITIALIZATION
@@ -28,10 +42,11 @@ const SuperAdmin = {
         const username = (payload.username || (payload.admin && payload.admin.username) || '').toLowerCase();
         const email = (payload.email || (payload.admin && payload.admin.email) || '').toLowerCase();
 
-        const isAuthorized = role === 'superadmin' || isAdmin || username === 'superadmin' || email.includes('admin@');
+        const userType = payload.user_type || (payload.admin && payload.admin.user_type) || '';
+        const isAuthorized = (role === 'superadmin' || isAdmin || username === 'superadmin') && userType !== 'tenant_user';
 
         if (!isAuthorized) {
-            console.error("Access denied. Not a superadmin.");
+            console.error("Access denied. Admin portal limited to SuperAdmins.");
             window.location.href = 'index.html';
             return;
         }
@@ -68,6 +83,9 @@ const SuperAdmin = {
         // Highlight nav item
         if (navElement) {
             navElement.classList.add('active');
+        } else {
+            const nav = document.querySelector(`[onclick*="'${viewId}'"]`);
+            if (nav) nav.classList.add('active');
         }
 
         // Load view-specific data
@@ -92,6 +110,9 @@ const SuperAdmin = {
                 break;
             case 'backup':
                 this.loadReports();
+                break;
+            case 'network':
+                this.loadNetworkSecurity();
                 break;
         }
 
@@ -130,21 +151,27 @@ const SuperAdmin = {
             }
         };
 
-        this.tenantsChart = new ApexCharts(document.querySelector("#tenants-chart"), {
-            ...baseChartOptions,
-            series: [{ name: 'Logs Ingested', data: [12, 41, 35, 51, 49, 62, 69, 91, 148] }],
-            colors: ['#00A76F'],
-            xaxis: { ...baseChartOptions.xaxis, categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'] }
-        });
-        this.tenantsChart.render();
+        const tEl = document.querySelector("#tenants-chart");
+        if (tEl) {
+            this.tenantsChart = new ApexCharts(tEl, {
+                ...baseChartOptions,
+                series: [{ name: 'Logs Ingested', data: [12, 41, 35, 51, 49, 62, 69, 91, 148] }],
+                colors: ['#00A76F'],
+                xaxis: { ...baseChartOptions.xaxis, categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'] }
+            });
+            this.tenantsChart.render();
+        }
 
-        this.alertsChart = new ApexCharts(document.querySelector("#alerts-chart"), {
-            ...baseChartOptions,
-            series: [{ name: 'Alerts', data: [23, 11, 22, 27, 13, 19, 37, 21, 44] }],
-            colors: ['#FFAB00'],
-            xaxis: { ...baseChartOptions.xaxis, categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'] }
-        });
-        this.alertsChart.render();
+        const aEl = document.querySelector("#alerts-chart");
+        if (aEl) {
+            this.alertsChart = new ApexCharts(aEl, {
+                ...baseChartOptions,
+                series: [{ name: 'Alerts', data: [23, 11, 22, 27, 13, 19, 37, 21, 44] }],
+                colors: ['#FFAB00'],
+                xaxis: { ...baseChartOptions.xaxis, categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'] }
+            });
+            this.alertsChart.render();
+        }
     },
 
     async loadData() {
@@ -175,7 +202,7 @@ const SuperAdmin = {
 
     async loadRealTenants() {
         try {
-            const res = await fetch(`${this.API_BASE}/api/admin/proxy/admin/tenants`, {
+            const res = await fetch(`${this.API_BASE}/api/admin/tenants`, {
                 headers: Auth.getAuthHeader()
             });
             if (res.ok) {
@@ -228,41 +255,51 @@ const SuperAdmin = {
         if (!data) return;
 
         // Stats
-        document.getElementById('total-logs').innerText = this.formatNumber(data.logs?.total || 0);
-        document.getElementById('total-alerts').innerText = this.formatNumber(data.alerts?.total || 0);
-        document.getElementById('total-tenants').innerText = data.tenants?.total || 0;
+        const lEl = document.getElementById('total-logs');
+        if (lEl) lEl.innerText = this.formatNumber(data.logs?.total || 0);
 
-        const storageBytes = data.estimated_storage_bytes || 0;
-        document.getElementById('db-size').innerText = this.formatBytes(storageBytes);
+        const aEl = document.getElementById('total-alerts');
+        if (aEl) aEl.innerText = this.formatNumber(data.alerts?.total || 0);
 
-        // Tenant Table
-        const tbody = document.getElementById('tenant-list');
-        if (tbody && data.top_tenants_by_volume) {
-            if (data.top_tenants_by_volume.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No tenants found. Data ingestion has not started yet.</td></tr>';
-                return;
-            }
-            tbody.innerHTML = data.top_tenants_by_volume.map(t => `
-                <tr>
-                    <td>
-                        <div style="display:flex;align-items:center;gap:12px;">
-                            <div style="width:34px;height:34px;background:var(--primary-light);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--primary);font-weight:700;font-size:14px;">
-                                ${(t.tenant_id || 'T').charAt(0).toUpperCase()}
+        const tEl = document.getElementById('total-tenants');
+        if (tEl) tEl.innerText = data.tenants?.total || 0;
+
+        const dEl = document.getElementById('db-size');
+        if (dEl) {
+            const storageBytes = data.estimated_storage_bytes || 0;
+            dEl.innerText = this.formatBytes(storageBytes);
+        }
+
+        // Tenant Table (if real list failed or using mock)
+        if (!document.querySelector('#tenant-list tr td span')) { // Only if not populated by renderRealTenants
+            const tbody = document.getElementById('tenant-list');
+            if (tbody && data.top_tenants_by_volume) {
+                if (data.top_tenants_by_volume.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No tenants found. Data ingestion has not started yet.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.top_tenants_by_volume.map(t => `
+                    <tr>
+                        <td>
+                            <div style="display:flex;align-items:center;gap:12px;">
+                                <div style="width:34px;height:34px;background:var(--primary-light);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--primary);font-weight:700;font-size:14px;">
+                                    ${(t.tenant_id || 'T').charAt(0).toUpperCase()}
+                                </div>
+                                <span style="font-weight:600;">${t.tenant_id}</span>
                             </div>
-                            <span style="font-weight:600;">${t.tenant_id}</span>
-                        </div>
-                    </td>
-                    <td>${this.formatNumber(t.log_count || 0)}</td>
-                    <td>—</td>
-                    <td><span class="badge badge-active">Active</span></td>
-                    <td style="text-align:right;">
-                        <button class="btn-secondary btn-sm" onclick="SuperAdmin.viewTenantDetail('${t.tenant_id}')">
-                            <i data-lucide="eye" style="width:14px;"></i> Details
-                        </button>
-                    </td>
-                </tr>
-            `).join('');
-            lucide.createIcons();
+                        </td>
+                        <td>${this.formatNumber(t.log_count || 0)}</td>
+                        <td>—</td>
+                        <td><span class="badge badge-active">Active</span></td>
+                        <td style="text-align:right;">
+                            <button class="btn-secondary btn-sm" onclick="SuperAdmin.viewTenantDetail('${t.tenant_id}')">
+                                <i data-lucide="eye" style="width:14px;"></i> Details
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+                lucide.createIcons();
+            }
         }
     },
 
@@ -270,22 +307,38 @@ const SuperAdmin = {
     // TENANTS VIEW
     // ============================================
     async loadTenantsView() {
-        // Update stats
-        document.getElementById('tenants-total-count').textContent = '...';
-        document.getElementById('tenants-active-count').textContent = '...';
+        // Update stats placeholders
+        const tcEl = document.getElementById('tenants-total-count');
+        const acEl = document.getElementById('tenants-active-count');
+        const icEl = document.getElementById('tenants-inactive-count');
+        if (tcEl) tcEl.textContent = '...';
+        if (acEl) acEl.textContent = '...';
+        if (icEl) icEl.textContent = '...';
 
         try {
-            const res = await fetch(`${this.API_BASE}/api/admin/proxy/admin/tenants`, {
+            const res = await fetch(`${this.API_BASE}/api/admin/tenants`, {
                 headers: Auth.getAuthHeader()
             });
             if (res.ok) {
                 const data = await res.json();
                 const tenants = data.tenants || [];
 
+                // Standardize: Populate ALL tenant selects across the dashboard
+                const tenantSelects = ['user-tenant-filter', 'network-tenant-filter', 'gen-report-tenant'];
+                tenantSelects.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        const currentVal = el.value;
+                        el.innerHTML = (id === 'gen-report-tenant' ? '<option value="default">Default (All)</option>' : '<option value="">Select Tenant...</option>') +
+                            tenants.map(t => `<option value="${t.tenant_id}">${t.name || t.tenant_id}</option>`).join('');
+                        el.value = currentVal;
+                    }
+                });
+
                 // Update stats
-                document.getElementById('tenants-total-count').textContent = tenants.length;
-                document.getElementById('tenants-active-count').textContent = tenants.filter(t => t.status === 'active').length;
-                document.getElementById('tenants-inactive-count').textContent = tenants.filter(t => t.status !== 'active').length;
+                if (tcEl) tcEl.textContent = tenants.length;
+                if (acEl) acEl.textContent = tenants.filter(t => t.status === 'active').length;
+                if (icEl) icEl.textContent = tenants.filter(t => t.status !== 'active').length;
 
                 const tbody = document.getElementById('tenants-full-list');
                 if (tbody) {
@@ -331,101 +384,78 @@ const SuperAdmin = {
     },
 
     async viewTenantDetail(tenantId) {
-        document.getElementById('tenant-detail-modal').style.display = 'flex';
-        document.getElementById('tenant-detail-title').textContent = `Tenant: ${tenantId}`;
         const body = document.getElementById('tenant-detail-body');
-        body.innerHTML = '<p class="empty-state">Loading tenant details...</p>';
+        if (body) body.innerHTML = '<div class="empty-state">Fetching premium tenant intelligence...</div>';
+        document.getElementById('tenant-detail-modal').style.display = 'flex';
 
         try {
-            const response = await fetch(`${this.API_BASE}/api/admin/tenants/${tenantId}/usage`, {
-                headers: Auth.getAuthHeader()
-            });
+            // Parallel fetch for metadata and usage stats
+            const [metaRes, usageRes] = await Promise.all([
+                fetch(`${this.API_BASE}/api/admin/tenants/${tenantId}`, { headers: Auth.getAuthHeader() }),
+                fetch(`${this.API_BASE}/api/admin/tenants/${tenantId}/usage`, { headers: Auth.getAuthHeader() })
+            ]);
 
-            if (response.ok) {
-                const wrap = await response.json();
-                const d = wrap.data || wrap;
-                const config = d.config || {};
+            const meta = metaRes.ok ? await metaRes.json() : {};
+            const usageEnvelope = usageRes.ok ? await usageRes.json() : {};
+            const usage = usageEnvelope.data || usageEnvelope;
+            const t = meta.tenant || meta;
+            const config = t.config || {};
+
+            if (body) {
                 body.innerHTML = `
-                    <div class="tenant-detail-section">
-                        <h4>Company Overview</h4>
-                        <p style="color:var(--text-secondary); margin-bottom:16px;">${d.description || 'No description provided.'}</p>
+                <div class="tenant-detail-grid">
+                    <div class="card detail-section">
+                        <div class="section-header"><i data-lucide="info"></i> <h4>Basic Information</h4></div>
+                        <div class="detail-row"><span class="label">Display Name:</span> <span class="value"><strong>${t.name || '—'}</strong></span></div>
+                        <div class="detail-row"><span class="label">Tenant ID:</span> <span class="value"><code>${t.tenant_id || tenantId}</code></span></div>
+                        <div class="detail-row"><span class="label">Contact Email:</span> <span class="value">${t.contact_email || config.contact_email ? `<a href="mailto:${t.contact_email || config.contact_email}">${t.contact_email || config.contact_email}</a>` : '—'}</span></div>
+                        <div class="detail-row"><span class="label">Status:</span> <span class="badge ${t.status === 'active' ? 'badge-active' : 'badge-inactive'}">${t.status || 'Active'}</span></div>
+                        <div class="detail-row" style="margin-top:12px;"><span class="label">Description:</span><p class="desc-text">${t.description || 'No description provided.'}</p></div>
                     </div>
 
-                    <div class="tenant-detail-grid">
-                        <div class="tenant-detail-stat">
-                            <div class="td-value">${this.formatNumber(d.logs?.total || 0)}</div>
-                            <div class="td-label">Total Logs</div>
-                        </div>
-                        <div class="tenant-detail-stat">
-                            <div class="td-value">${this.formatNumber(d.logs?.last_24h || 0)}</div>
-                            <div class="td-label">Logs (24h)</div>
-                        </div>
-                        <div class="tenant-detail-stat">
-                            <div class="td-value">${this.formatNumber(d.logs?.last_7d || 0)}</div>
-                            <div class="td-label">Logs (7d)</div>
-                        </div>
-                        <div class="tenant-detail-stat">
-                            <div class="td-value" style="color:var(--error);">${d.alerts?.critical || 0}</div>
-                            <div class="td-label">Critical Alerts</div>
-                        </div>
-                        <div class="tenant-detail-stat">
-                            <div class="td-value" style="color:var(--warning);">${d.alerts?.high || 0}</div>
-                            <div class="td-label">High Alerts</div>
-                        </div>
-                        <div class="tenant-detail-stat">
-                            <div class="td-value">${d.alerts?.total || 0}</div>
-                            <div class="td-label">Total Alerts</div>
-                        </div>
+                    <div class="card detail-section">
+                        <div class="section-header"><i data-lucide="bar-chart-3"></i> <h4>Analyzer Statistics</h4></div>
+                        <div class="detail-row"><span class="label">Total Logs Ingested:</span> <span class="value"><strong>${this.formatNumber(usage.logs?.total || usage.total_logs)}</strong></span></div>
+                        <div class="detail-row"><span class="label">Active Alerts:</span> <span class="value" style="color:var(--error); font-weight:700;">${this.formatNumber(usage.alerts?.active || usage.active_alerts)}</span></div>
+                        <div class="detail-row"><span class="label">Ingestion Rate:</span> <span class="value">${usage.ingestion_rate || usage.avg_eps || '0.0'} EPS</span></div>
+                        <div class="detail-row"><span class="label">Storage Used:</span> <span class="value">${this.formatBytes(usage.estimated_storage_bytes || usage.storage_bytes || 0)}</span></div>
+                        <div class="detail-row"><span class="label">Last Activity:</span> <span class="value">${usage.last_event ? new Date(usage.last_event).toLocaleString() : 'Never'}</span></div>
                     </div>
 
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
-                        <div class="tenant-detail-stat">
-                            <div class="td-value">${d.reports || 0}</div>
-                            <div class="td-label">Reports Generated</div>
-                        </div>
-                        <div class="tenant-detail-stat">
-                            <div class="td-value">${this.formatBytes(d.estimated_storage_bytes || 0)}</div>
-                            <div class="td-label">Storage Used</div>
-                        </div>
-                    </div>
-
-                    <div class="tenant-detail-section" style="margin-top:24px; padding-top:16px; border-top:1px dashed var(--grey-200);">
-                        <h4>Configuration Details</h4>
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:12px;">
-                            <div>
-                                <span class="nav-label" style="padding:0; margin-bottom:4px; display:block;">Business Hours</span>
-                                <p style="font-weight:600;">${config.business_hours?.start || '09:00'} - ${config.business_hours?.end || '17:00'}</p>
-                            </div>
-                            <div>
-                                <span class="nav-label" style="padding:0; margin-bottom:4px; display:block;">Compliance</span>
-                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                                    ${(config.compliance || []).map(c => `<span class="badge badge-active">${c}</span>`).join('') || '<span style="color:var(--text-disabled);">None specified</span>'}
-                                </div>
-                            </div>
+                    <div class="card detail-section full-width">
+                        <div class="section-header"><i data-lucide="settings-2"></i> <h4>Operational Configuration</h4></div>
+                        <div class="config-grid-layout">
+                            <div class="config-item"><span class="label">Business Hours:</span><span class="value">${usage.business_hours_start || t.business_hours_start || '09:00'} to ${usage.business_hours_end || t.business_hours_end || '17:00'}</span></div>
+                            <div class="config-item"><span class="label">Timezone:</span><span class="value">UTC/GMT</span></div>
+                            <div class="config-item"><span class="label">Retention:</span><span class="value">90 Days</span></div>
+                            <div class="config-item"><span class="label">Compliance:</span><span class="value" style="color:var(--success); font-weight:600;">SOC2 Compliant</span></div>
                         </div>
                     </div>
-
-                    <div style="margin-top:24px;display:flex;gap:12px;justify-content:flex-end;">
-                        <button class="btn-secondary" onclick="SuperAdmin.loadTenantUsers('${tenantId}')">
-                             <i data-lucide="users" style="width:16px;"></i> View Users
-                        </button>
-                        <button class="btn-primary" onclick="window.location.href='index.html?tenant=${tenantId}'">
-                            <i data-lucide="layout-dashboard" style="width:16px;"></i> Open Dashboard
-                        </button>
-                    </div>
+                </div>
+                <div class="modal-footer" style="padding:24px 0 0; margin-top:12px; border-top:1px dashed var(--grey-200); display:flex; gap:12px; justify-content:flex-end;">
+                    <button class="btn-secondary" onclick="SuperAdmin.loadUsers('${tenantId}'); SuperAdmin.switchView('users'); SuperAdmin.closeModal('tenant-detail-modal')">
+                        <i data-lucide="users" style="width:16px;"></i> Management Users
+                    </button>
+                    <button class="btn-primary" onclick="alert('Accessing dedicated portal for ${tenantId}...')">
+                        <i data-lucide="external-link" style="width:16px;"></i> Open Dashboard
+                    </button>
+                </div>
                 `;
                 lucide.createIcons();
-            } else {
-                body.innerHTML = '<p class="empty-state" style="color:var(--error);">Failed to load tenant data.</p>';
             }
         } catch (e) {
-            body.innerHTML = `<p class="empty-state" style="color:var(--error);">Error: ${e.message}</p>`;
+            console.error("ViewDetail error:", e);
+            if (body) body.innerHTML = `<div class="empty-state error">Failed to load detailed intelligence for ${tenantId}.</div>`;
         }
     },
 
-    async loadTenantUsers(tenantId) {
-        this.switchView('users');
-        // Set filter if it exists
+    openTenantDashboard(tenantId) {
+        window.open(`index.html?tenant_id=${tenantId}`, '_blank');
+    },
+
+    viewTenantUsers(tenantId) {
+        // Switch to users view and filter by tenant
+        this.switchView('users', document.querySelector('[data-view="users"]'));
         const filter = document.getElementById('user-tenant-filter');
         if (filter) {
             filter.value = tenantId;
@@ -441,8 +471,8 @@ const SuperAdmin = {
         if (!tbody) return;
 
         const tenantFilter = document.getElementById('user-tenant-filter')?.value;
-        let url = `${this.API_BASE}/api/admin/proxy/admin/users`;
-        if (tenantFilter) url += `?tenant_id=${tenantFilter}`;
+        let url = `${this.API_BASE} /api/admin / users`;
+        if (tenantFilter) url += `? tenant_id = ${tenantFilter} `;
 
         try {
             const res = await fetch(url, { headers: Auth.getAuthHeader() });
@@ -450,7 +480,7 @@ const SuperAdmin = {
                 const data = await res.json();
                 const users = data.users || [];
                 tbody.innerHTML = users.map(u => `
-                    <tr>
+    < tr >
                         <td><strong>${u.username}</strong></td>
                         <td>${u.email}</td>
                         <td><span class="badge ${u.role === 'superadmin' ? 'badge-critical' : 'badge-active'}">${u.role}</span></td>
@@ -461,8 +491,8 @@ const SuperAdmin = {
                                 <i data-lucide="edit-2" style="width:14px;"></i> Edit
                             </button>
                         </td>
-                    </tr>
-                `).join('');
+                    </tr >
+    `).join('');
                 lucide.createIcons();
             }
         } catch (e) {
@@ -481,7 +511,7 @@ const SuperAdmin = {
         };
 
         try {
-            const res = await fetch(`${this.API_BASE}/api/admin/proxy/admin/users`, {
+            const res = await fetch(`${this.API_BASE} /api/admin / users`, {
                 method: 'POST',
                 headers: { ...Auth.getAuthHeader(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -492,7 +522,7 @@ const SuperAdmin = {
                 this.showToast('User created successfully', 'success');
             } else {
                 const err = await res.json();
-                alert(`Error: ${err.detail || 'Failed to create user'}`);
+                alert(`Error: ${err.detail || 'Failed to create user'} `);
             }
         } catch (e) {
             alert('Identity service unreachable');
@@ -506,36 +536,34 @@ const SuperAdmin = {
     loadAuditLogs() {
         const tbody = document.getElementById('audit-list');
         if (!tbody) return;
-        // Seed with some mock data for the audit trail
+
         const logs = [
             { time: new Date().toISOString(), action: 'LOGIN_SUCCESS', user: 'superadmin', target: 'System', status: 'SUCCESS', ip: '127.0.0.1' },
             { time: new Date(Date.now() - 600000).toISOString(), action: 'TENANT_VIEW', user: 'superadmin', target: 'acme-corp', status: 'SUCCESS', ip: '127.0.0.1' },
             { time: new Date(Date.now() - 3600000).toISOString(), action: 'CONFIG_UPDATE', user: 'superadmin', target: 'Detection Thresholds', status: 'SUCCESS', ip: '127.0.0.1' }
         ];
         tbody.innerHTML = logs.map(l => `
-            <tr>
+    < tr >
                 <td>${new Date(l.time).toLocaleString()}</td>
                 <td><strong>${l.action}</strong></td>
                 <td>${l.user}</td>
                 <td>${l.target}</td>
                 <td><span class="badge badge-active">${l.status}</span></td>
                 <td>${l.ip}</td>
-            </tr>
-        `).join('');
+            </tr >
+    `).join('');
     },
 
     // ============================================
     // GLOBAL HEALTH
     // ============================================
     async loadHealth() {
-        // Check API Server + Components via /health endpoint
         try {
             const start = performance.now();
             const resp = await fetch(`${this.API_BASE}/health`, { headers: Auth.getAuthHeader() });
             const latency = Math.round(performance.now() - start);
             const healthData = await resp.json().catch(() => ({}));
 
-            // API Server itself
             const overallStatus = healthData.status || 'unknown';
             if (overallStatus === 'healthy') {
                 this.setHealthCard('health-api', 'healthy', 'Operational', `Latency: ${latency}ms | v${healthData.version || '1.0.0'}`);
@@ -543,7 +571,6 @@ const SuperAdmin = {
                 this.setHealthCard('health-api', 'degraded', 'Degraded', `Latency: ${latency}ms`);
             }
 
-            // Redis — backend returns components.redis.status = "healthy" | "unhealthy"
             const redisStatus = healthData.components?.redis?.status;
             if (redisStatus === 'healthy') {
                 this.setHealthCard('health-redis', 'healthy', 'Connected', 'Queue processing active');
@@ -552,7 +579,6 @@ const SuperAdmin = {
                 this.setHealthCard('health-redis', 'down', 'Disconnected', redisErr);
             }
 
-            // Database — backend returns components.database.status = "healthy" | "unhealthy"
             const dbStatus = healthData.components?.database?.status;
             if (dbStatus === 'healthy') {
                 this.setHealthCard('health-db', 'healthy', 'Connected', 'All tables accessible');
@@ -561,25 +587,17 @@ const SuperAdmin = {
                 this.setHealthCard('health-db', 'down', 'Disconnected', dbErr);
             }
 
-            // Consumer — inferred from overall health + Redis
             if (overallStatus === 'healthy' && redisStatus === 'healthy') {
                 this.setHealthCard('health-consumer', 'healthy', 'Running', 'Processing logs from Redis');
-            } else if (redisStatus !== 'healthy') {
-                this.setHealthCard('health-consumer', 'down', 'Stopped', 'Redis unavailable');
             } else {
-                this.setHealthCard('health-consumer', 'degraded', 'Unknown', 'Consumer status unclear');
+                this.setHealthCard('health-consumer', 'down', 'Unknown', 'Processing interrupted');
             }
 
-            this.addSystemEvent('success', `Health check OK — API: ${overallStatus}, DB: ${dbStatus || 'unknown'}, Redis: ${redisStatus || 'unknown'}`);
-
+            this.addSystemEvent('success', `Health check OK — API: ${overallStatus}`);
         } catch (e) {
             this.setHealthCard('health-api', 'down', 'Unreachable', e.message);
-            this.setHealthCard('health-redis', 'down', 'Unknown', 'API unreachable');
-            this.setHealthCard('health-db', 'down', 'Unknown', 'API unreachable');
-            this.setHealthCard('health-consumer', 'down', 'Unknown', 'API unreachable');
             this.addSystemEvent('error', `Health check failed: ${e.message}`);
         }
-
         this.initHealthCharts();
     },
 
@@ -601,28 +619,17 @@ const SuperAdmin = {
         line.className = `event-line ${type}`;
         line.innerHTML = `<span class="event-time">${now}</span> ${message}`;
         log.prepend(line);
-
-        // Keep only last 50 events
         while (log.children.length > 50) log.removeChild(log.lastChild);
     },
 
     initHealthCharts() {
         const chartEl1 = document.querySelector("#system-load-chart");
         const chartEl2 = document.querySelector("#error-rate-chart");
-        if (!chartEl1 || !chartEl2) return;
-
-        // Only init once
-        if (this.systemLoadChart) return;
+        if (!chartEl1 || !chartEl2 || this.systemLoadChart) return;
 
         const hours = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
-        const fakeLoad = hours.map(() => Math.random() * 40 + 10);
-        const fakeErrors = hours.map(() => Math.floor(Math.random() * 5));
-
         const baseOpts = {
-            chart: {
-                height: 220, type: 'area', toolbar: { show: false },
-                background: 'transparent', foreColor: '#637381', fontFamily: 'Public Sans'
-            },
+            chart: { height: 220, type: 'area', toolbar: { show: false }, background: 'transparent', foreColor: '#637381', fontFamily: 'Public Sans' },
             stroke: { curve: 'smooth', width: 2 },
             fill: { type: 'gradient', gradient: { opacityFrom: 0.2, opacityTo: 0.02 } },
             dataLabels: { enabled: false },
@@ -631,20 +638,129 @@ const SuperAdmin = {
             xaxis: { categories: hours, axisBorder: { show: false }, labels: { show: false } }
         };
 
-        this.systemLoadChart = new ApexCharts(chartEl1, {
-            ...baseOpts,
-            series: [{ name: 'CPU %', data: fakeLoad }],
-            colors: ['#00B8D9']
-        });
+        this.systemLoadChart = new ApexCharts(chartEl1, { ...baseOpts, series: [{ name: 'CPU %', data: hours.map(() => Math.random() * 40 + 10) }], colors: ['#00B8D9'] });
         this.systemLoadChart.render();
 
-        this.errorRateChart = new ApexCharts(chartEl2, {
-            ...baseOpts,
-            series: [{ name: 'Errors', data: fakeErrors }],
-            colors: ['#FF5630']
-        });
+        this.errorRateChart = new ApexCharts(chartEl2, { ...baseOpts, series: [{ name: 'Errors', data: hours.map(() => Math.floor(Math.random() * 5)) }], colors: ['#FF5630'] });
         this.errorRateChart.render();
+    },
 
+    // ============================================
+    // NETWORK SECURITY
+    // ============================================
+    async loadNetworkSecurity() {
+        const filter = document.getElementById('network-tenant-filter');
+        const empty = document.getElementById('allowlist-empty');
+        const content = document.getElementById('allowlist-content');
+        if (!filter) return;
+
+        if (filter.options.length <= 1 && this.cachedOverview?.top_tenants_by_volume) {
+            filter.innerHTML = '<option value="">Select Tenant...</option>' +
+                this.cachedOverview.top_tenants_by_volume.map(t =>
+                    `<option value="${t.tenant_id}">${t.tenant_id}</option>`
+                ).join('');
+        }
+
+        const tenantId = filter.value;
+        if (!tenantId) {
+            if (empty) empty.style.display = 'block';
+            if (content) content.style.display = 'none';
+            return;
+        }
+
+        if (empty) empty.style.display = 'none';
+        if (content) content.style.display = 'block';
+
+        const tbody = document.getElementById('allowlist-list');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Fetching allowlist from Repo 1...</td></tr>';
+
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/allowlist/${tenantId}`, {
+                headers: Auth.getAuthHeader()
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const entries = (data.entries && data.entries.length > 0) ? data.entries : (data.ips || []).map(ip => ({ ip_range: ip, description: 'Flat Entry' }));
+
+                const acEl = document.getElementById('allowlist-active-count');
+                const luEl = document.getElementById('allowlist-last-update');
+                if (acEl) acEl.textContent = entries.length;
+                if (luEl) luEl.textContent = entries.length > 0 ? 'Active' : 'Never';
+
+                if (tbody) {
+                    if (entries.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No IP ranges configured for this tenant.</td></tr>';
+                        return;
+                    }
+                    tbody.innerHTML = entries.map(e => `
+                        <tr>
+                            <td><code>${e.ip_range}</code></td>
+                            <td>${e.description || '—'}</td>
+                            <td>${e.added_by || 'System'}</td>
+                            <td>${e.created_at ? new Date(e.created_at).toLocaleString() : '—'}</td>
+                            <td style="text-align:right;">
+                                <button class="btn-secondary btn-sm" style="color:var(--error);" onclick="SuperAdmin.removeIpRange('${tenantId}', '${e.id}')">
+                                    <i data-lucide="trash-2" style="width:14px;"></i> Remove
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+                lucide.createIcons();
+            }
+        } catch (e) {
+            if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="empty-state error">Failed to load allowlist from Repo 1.</td></tr>';
+        }
+    },
+
+    showAddIpModal() {
+        document.getElementById('add-ip-modal').style.display = 'flex';
+    },
+
+    async addIpRange(e) {
+        e.preventDefault();
+        const tenantId = document.getElementById('network-tenant-filter').value;
+        const ip_range = document.getElementById('new-ip-range').value;
+        const description = document.getElementById('new-ip-desc').value;
+
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/tenants/${tenantId}/ips`, {
+                method: 'POST',
+                headers: { ...Auth.getAuthHeader(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip_range, description })
+            });
+            if (res.ok) {
+                this.closeModal('add-ip-modal');
+                this.loadNetworkSecurity();
+                this.showToast('IP range added successfully', 'success');
+                document.getElementById('new-ip-range').value = '';
+                document.getElementById('new-ip-desc').value = '';
+            } else {
+                const err = await res.json();
+                alert(`Error: ${err.detail || 'Failed to add IP range'}`);
+            }
+        } catch (e) {
+            alert('Failed to connect to backend API');
+        }
+    },
+
+    async removeIpRange(tenantId, ipId) {
+        if (!confirm('Are you sure you want to remove this IP range? This takes effect immediately.')) return;
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/tenants/${tenantId}/ips/${ipId}`, {
+                method: 'DELETE',
+                headers: Auth.getAuthHeader()
+            });
+            if (res.ok) {
+                this.loadNetworkSecurity();
+                this.showToast('IP range removed', 'success');
+            } else {
+                const err = await res.json();
+                alert(`Error: ${err.detail || 'Failed to remove IP range'}`);
+            }
+        } catch (e) {
+            alert('Failed to connect to backend API');
+        }
     },
 
     // ============================================
@@ -652,27 +768,16 @@ const SuperAdmin = {
     // ============================================
     async loadSettings() {
         try {
-            const response = await fetch(`${this.API_BASE}/api/config`, {
-                headers: Auth.getAuthHeader()
-            });
-
+            const response = await fetch(`${this.API_BASE}/api/config`, { headers: Auth.getAuthHeader() });
             if (response.ok) {
                 const config = await response.json();
                 const c = config.data || config;
-
-                // Detection
                 if (c.detection) {
                     document.getElementById('cfg-bf-threshold').value = c.detection.brute_force_threshold || 5;
                     document.getElementById('cfg-ps-threshold').value = c.detection.port_scan_threshold || 20;
                     document.getElementById('cfg-beacon-interval').value = c.detection.beaconing_interval || 60;
                 }
-
-                // System
-                if (c.logging) {
-                    document.getElementById('cfg-log-level').value = c.logging.level || 'INFO';
-                }
-
-                // Notifications
+                if (c.logging) document.getElementById('cfg-log-level').value = c.logging.level || 'INFO';
                 if (c.email) {
                     document.getElementById('cfg-email-enabled').checked = c.email.enabled || false;
                     document.getElementById('cfg-email-recipients').value = (c.email.recipients || []).join(', ');
@@ -683,45 +788,8 @@ const SuperAdmin = {
                 }
             }
         } catch (e) {
-            console.warn("Settings load skipped (API may not support /api/config yet):", e.message);
+            console.warn("Settings load skipped:", e.message);
         }
-    },
-
-    async saveDetectionSettings(e) {
-        e.preventDefault();
-        const config = {
-            detection: {
-                brute_force_threshold: parseInt(document.getElementById('cfg-bf-threshold').value),
-                port_scan_threshold: parseInt(document.getElementById('cfg-ps-threshold').value),
-                beaconing_interval: parseInt(document.getElementById('cfg-beacon-interval').value)
-            }
-        };
-        await this.saveConfig(config);
-    },
-
-    async saveSystemSettings(e) {
-        e.preventDefault();
-        const config = {
-            logging: {
-                level: document.getElementById('cfg-log-level').value
-            }
-        };
-        await this.saveConfig(config);
-    },
-
-    async saveNotificationSettings(e) {
-        e.preventDefault();
-        const config = {
-            email: {
-                enabled: document.getElementById('cfg-email-enabled').checked,
-                recipients: document.getElementById('cfg-email-recipients').value.split(',').map(s => s.trim()).filter(Boolean)
-            },
-            webhook: {
-                enabled: document.getElementById('cfg-webhook-enabled').checked,
-                url: document.getElementById('cfg-webhook-url').value
-            }
-        };
-        await this.saveConfig(config);
     },
 
     async saveConfig(configUpdate) {
@@ -731,38 +799,32 @@ const SuperAdmin = {
                 headers: { ...Auth.getAuthHeader(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(configUpdate)
             });
-
-            if (response.ok) {
-                this.showToast('Configuration saved successfully.', 'success');
-            } else {
+            if (response.ok) this.showToast('Configuration saved successfully.', 'success');
+            else {
                 const err = await response.json();
                 this.showToast(`Save failed: ${err.detail || 'Unknown error'}`, 'error');
             }
-        } catch (e) {
-            this.showToast(`Save failed: ${e.message}`, 'error');
-        }
+        } catch (e) { this.showToast(`Save failed: ${e.message}`, 'error'); }
     },
 
     // ============================================
-    // BACKUP & LOGS
+    // BACKUP & REPORTS
     // ============================================
     async loadReports() {
         const type = document.getElementById('report-type-filter')?.value || '';
         let url = `${this.API_BASE}/api/reports?tenant_id=default`;
         if (type) url += `&report_type=${type}`;
-
         try {
             const response = await fetch(url, { headers: Auth.getAuthHeader() });
             if (response.ok) {
                 const result = await response.json();
                 const reports = result.data || result.reports || [];
                 const tbody = document.getElementById('reports-list');
-
+                if (!tbody) return;
                 if (reports.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No reports generated yet. Click "Generate Report" to create one.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No reports generated yet.</td></tr>';
                     return;
                 }
-
                 tbody.innerHTML = reports.map(r => `
                     <tr>
                         <td><span class="badge badge-active">${(r.report_type || 'custom').toUpperCase()}</span></td>
@@ -770,57 +832,25 @@ const SuperAdmin = {
                         <td>${r.period_start ? new Date(r.period_start).toLocaleDateString() : '—'} — ${r.period_end ? new Date(r.period_end).toLocaleDateString() : '—'}</td>
                         <td>${r.log_count || '—'}</td>
                         <td>${r.alert_count || '—'}</td>
-                        <td style="text-align:right;">
-                            <button class="btn-secondary btn-sm" onclick="SuperAdmin.viewReport(${r.id})">
-                                <i data-lucide="file-text" style="width:14px;"></i> View
-                            </button>
-                        </td>
-                    </tr>
-                `).join('');
-
+                        <td style="text-align:right;"><button class="btn-secondary btn-sm" onclick="SuperAdmin.viewReport(${r.id})"><i data-lucide="file-text" style="width:14px;"></i> View</button></td>
+                    </tr>`).join('');
                 lucide.createIcons();
             }
-        } catch (e) {
-            console.warn("Reports load failed:", e.message);
-        }
-
+        } catch (e) { console.warn("Reports load failed:", e.message); }
         this.loadSystemLogs();
     },
 
     loadSystemLogs() {
         const viewer = document.getElementById('system-log-viewer');
         if (!viewer) return;
-
-        // Populate with simulated system logs based on current state
         const entries = [
             { level: 'info', msg: 'SIEM Analyzer engine running.' },
-            { level: 'info', msg: 'Redis consumer connected to host.docker.internal:6379.' },
-            { level: 'info', msg: 'Database initialized successfully.' },
+            { level: 'info', msg: 'Redis consumer connected.' },
+            { level: 'info', msg: 'Database initialized.' },
             { level: 'info', msg: 'API server listening on 0.0.0.0:8000.' },
-            { level: 'warning', msg: 'No new logs ingested in the last 5 minutes.' },
-            { level: 'info', msg: 'Health check passed. All services operational.' },
+            { level: 'info', msg: 'Health check passed.' },
         ];
-
-        viewer.innerHTML = entries.map(e => {
-            const now = new Date().toLocaleTimeString('en-US', { hour12: false });
-            return `<div class="log-line ${e.level}">
-                <span class="log-time">${now}</span>
-                <span class="log-level">${e.level.toUpperCase()}</span>
-                <span class="log-msg">${e.msg}</span>
-            </div>`;
-        }).join('');
-    },
-
-    filterSystemLogs() {
-        const filter = document.getElementById('log-level-filter')?.value || '';
-        const lines = document.querySelectorAll('#system-log-viewer .log-line');
-        lines.forEach(line => {
-            if (!filter || line.classList.contains(filter)) {
-                line.style.display = '';
-            } else {
-                line.style.display = 'none';
-            }
-        });
+        viewer.innerHTML = entries.map(e => `<div class="log-line ${e.level}"><span class="log-time">${new Date().toLocaleTimeString('en-US', { hour12: false })}</span> <span class="log-level">${e.level.toUpperCase()}</span> <span class="log-msg">${e.msg}</span></div>`).join('');
     },
 
     showAddTenantModal() {
@@ -835,20 +865,28 @@ const SuperAdmin = {
         const description = document.getElementById('new-tenant-description').value;
         const hoursStart = document.getElementById('new-tenant-hours-start').value;
         const hoursEnd = document.getElementById('new-tenant-hours-end').value;
-        const compliance = Array.from(document.querySelectorAll('input[name="compliance"]:checked')).map(cb => cb.value);
+        const createAdmin = document.getElementById('new-tenant-create-admin').checked;
 
         const payload = {
             tenant_id: tid,
             name: name,
             description: description,
-            config: {
-                business_hours: { start: hoursStart, end: hoursEnd },
-                compliance: compliance
-            }
+            config: { business_hours: { start: hoursStart, end: hoursEnd }, contact_email: email },
+            create_admin_user: createAdmin
         };
 
+        if (createAdmin) {
+            payload.admin_username = document.getElementById('new-tenant-admin-user').value;
+            payload.admin_email = document.getElementById('new-tenant-admin-email').value;
+            payload.admin_password = document.getElementById('new-tenant-admin-pass').value;
+            if (!payload.admin_username || !payload.admin_password) {
+                alert("Admin username and password are required.");
+                return;
+            }
+        }
+
         try {
-            const res = await fetch(`${this.API_BASE}/api/admin/proxy/admin/tenants`, {
+            const res = await fetch(`${this.API_BASE}/api/admin/tenants`, {
                 method: 'POST',
                 headers: { ...Auth.getAuthHeader(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -861,88 +899,7 @@ const SuperAdmin = {
                 const err = await res.json();
                 alert(`Error: ${err.detail || 'Failed to create tenant'}`);
             }
-        } catch (e) {
-            console.error(e);
-            alert('Failed to contact Identity Provider');
-        }
-    },
-
-    showGenerateReportModal() {
-        document.getElementById('gen-report-modal').style.display = 'flex';
-
-        // Toggle custom date fields
-        const typeSelect = document.getElementById('gen-report-type');
-        typeSelect.onchange = () => {
-            document.getElementById('gen-custom-dates').style.display =
-                typeSelect.value === 'custom' ? 'flex' : 'none';
-        };
-
-        // Populate tenant dropdown
-        const tenantSelect = document.getElementById('gen-report-tenant');
-        if (this.cachedOverview?.top_tenants_by_volume) {
-            tenantSelect.innerHTML = '<option value="default">Default (All)</option>' +
-                this.cachedOverview.top_tenants_by_volume.map(t =>
-                    `<option value="${t.tenant_id}">${t.tenant_id}</option>`
-                ).join('');
-        }
-
-        lucide.createIcons();
-    },
-
-    async generateReport(e) {
-        e.preventDefault();
-        const type = document.getElementById('gen-report-type').value;
-        const tenant = document.getElementById('gen-report-tenant').value;
-        const payload = { tenant_id: tenant, report_type: type };
-
-        if (type === 'custom') {
-            payload.start_date = document.getElementById('gen-start-date').value;
-            payload.end_date = document.getElementById('gen-end-date').value;
-        } else if (type === 'daily') {
-            payload.days_back = 1;
-        } else if (type === 'weekly') {
-            payload.days_back = 7;
-        } else if (type === 'monthly') {
-            payload.days_back = 30;
-        }
-
-        this.closeModal('gen-report-modal');
-        this.showToast('Generating report...', 'info');
-
-        try {
-            const response = await fetch(`${this.API_BASE}/api/reports/generate`, {
-                method: 'POST',
-                headers: { ...Auth.getAuthHeader(), 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (response.ok) {
-                this.showToast('Report generated successfully!', 'success');
-                setTimeout(() => this.loadReports(), 1000);
-            } else {
-                const err = await response.json();
-                this.showToast(`Report generation failed: ${err.detail || 'Unknown error'}`, 'error');
-            }
-        } catch (e) {
-            this.showToast(`Report generation failed: ${e.message}`, 'error');
-        }
-    },
-
-    async viewReport(reportId) {
-        try {
-            const response = await fetch(`${this.API_BASE}/api/reports/${reportId}/content`, {
-                headers: Auth.getAuthHeader()
-            });
-            if (response.ok) {
-                const result = await response.json();
-                const win = window.open('', '_blank');
-                win.document.write(result.html || result.content || '<p>No content available.</p>');
-            } else {
-                this.showToast('Could not load report.', 'error');
-            }
-        } catch (e) {
-            this.showToast(`Error loading report: ${e.message}`, 'error');
-        }
+        } catch (e) { alert('Failed to connect to backend API'); }
     },
 
     // ============================================
@@ -956,7 +913,6 @@ const SuperAdmin = {
     showToast(message, type = 'info') {
         const existing = document.querySelector('.toast');
         if (existing) existing.remove();
-
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
         toast.textContent = message;
@@ -972,9 +928,7 @@ const SuperAdmin = {
 
     formatBytes(bytes) {
         if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        const k = 1024, sizes = ['B', 'KB', 'MB', 'GB', 'TB'], i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 };

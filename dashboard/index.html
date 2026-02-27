@@ -20,9 +20,9 @@
         <aside>
             <div class="logo">
                 <div class="logo-icon">
-                    <i data-lucide="shield-check" style="width:18px;height:18px;"></i>
+                    <i data-lucide="shield"></i>
                 </div>
-                <span>Afric-Analyzer</span>
+                <span id="logo-text">Afric-Analyzer</span>
             </div>
 
             <ul class="nav-links">
@@ -35,6 +35,7 @@
                 <li><a href="#" onclick="switchView('analytics')"><i data-lucide="bar-chart-3"></i> Analytics</a></li>
                 <li><a href="#" onclick="switchView('compliance')"><i data-lucide="file-check"></i> Compliance</a></li>
                 <li><a href="#" onclick="switchView('reports')"><i data-lucide="clipboard-list"></i> Reports</a></li>
+                <li><a href="#" onclick="switchView('profile')"><i data-lucide="user-circle"></i> Profile</a></li>
                 <li><a href="#" onclick="switchView('settings')"><i data-lucide="settings"></i> Settings</a></li>
             </ul>
 
@@ -88,67 +89,67 @@
                 </div>
             </header>
 
-            <!-- ============================================ -->
-            <!-- OVERVIEW VIEW                                -->
-            <!-- ============================================ -->
             <div id="overview-view" class="dashboard-view active">
 
-                <!-- Stat Cards -->
+                <!-- Stats Row -->
                 <div class="stats-grid">
                     <div class="stat-card">
-                        <div class="stat-top">
-                            <div class="stat-icon-wrapper icon-teal">
-                                <i data-lucide="shield" style="width:20px;height:20px;"></i>
-                            </div>
-                            <span class="trend up" id="trend-blocked"><i data-lucide="trending-up"></i> +12.5%</span>
+                        <div class="stat-header">
+                            <div class="stat-icon icon-teal"><i data-lucide="shield"></i></div>
+                            <span class="trend up" id="trend-blocked">+12.5%</span>
                         </div>
-                        <div class="stat-value" id="stats-total-logs">—</div>
-                        <div class="stat-label">Threats Blocked</div>
+                        <div class="stat-line"></div>
+                        <div class="stat-body">
+                            <h2 id="stats-total-logs">0</h2>
+                            <p>Threats Blocked</p>
+                        </div>
                     </div>
 
                     <div class="stat-card">
-                        <div class="stat-top">
-                            <div class="stat-icon-wrapper icon-orange">
-                                <i data-lucide="alert-triangle" style="width:20px;height:20px;"></i>
-                            </div>
-                            <span class="trend down" id="trend-incidents"><i data-lucide="trending-down"></i>
-                                -8.3%</span>
+                        <div class="stat-header">
+                            <div class="stat-icon icon-orange"><i data-lucide="alert-triangle"></i></div>
+                            <span class="trend down" id="trend-incidents">-8.3%</span>
                         </div>
-                        <div class="stat-value" id="stats-total-alerts">—</div>
-                        <div class="stat-label">Active Incidents</div>
+                        <div class="stat-line"></div>
+                        <div class="stat-body">
+                            <h2 id="stats-total-alerts">0</h2>
+                            <p>Active Incidents</p>
+                        </div>
                     </div>
 
                     <div class="stat-card">
-                        <div class="stat-top">
-                            <div class="stat-icon-wrapper icon-purple">
-                                <i data-lucide="activity" style="width:20px;height:20px;"></i>
-                            </div>
-                            <span class="trend up" id="trend-assets"><i data-lucide="trending-up"></i> +3.2%</span>
+                        <div class="stat-header">
+                            <div class="stat-icon icon-purple"><i data-lucide="activity"></i></div>
+                            <span class="trend up" id="trend-assets">+3.2%</span>
                         </div>
-                        <div class="stat-value" id="stats-critical-high">—</div>
-                        <div class="stat-label">Monitored Assets</div>
+                        <div class="stat-line"></div>
+                        <div class="stat-body">
+                            <h2 id="stats-critical-high">0</h2>
+                            <p>Monitored Assets</p>
+                        </div>
                     </div>
 
                     <div class="stat-card">
-                        <div class="stat-top">
-                            <div class="stat-icon-wrapper icon-green">
-                                <i data-lucide="check-circle" style="width:20px;height:20px;"></i>
-                            </div>
-                            <span class="trend up" id="trend-score"><i data-lucide="trending-up"></i> +2.1%</span>
+                        <div class="stat-header">
+                            <div class="stat-icon icon-green"><i data-lucide="check-circle"></i></div>
+                            <span class="trend up" id="trend-score">+2.1%</span>
                         </div>
-                        <div class="stat-value" id="stats-active-threats">—</div>
-                        <div class="stat-label">Security Score</div>
+                        <div class="stat-line"></div>
+                        <div class="stat-body">
+                            <h2 id="stats-active-threats">0</h2>
+                            <p>Security Score</p>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Charts Row -->
-                <div class="charts-grid">
+                <!-- Main Activity Grid -->
+                <div class="dashboard-grid-main">
                     <!-- Threat Activity Timeline -->
-                    <div class="chart-container">
+                    <div class="chart-container grid-span-2">
                         <div class="chart-header">
                             <div class="chart-header-left">
                                 <h3>Threat Activity Timeline</h3>
-                                <p>Last 24 hours</p>
+                                <p>Real-time incident detection</p>
                             </div>
                             <div class="chart-tabs">
                                 <button class="active" onclick="setChartRange('24h')">24h</button>
@@ -160,33 +161,74 @@
                     </div>
 
                     <!-- Top Threat Vectors -->
-                    <div class="chart-container" style="min-height:auto;">
+                    <div class="chart-container">
                         <div class="threat-vectors-header">
                             <div>
                                 <h3>Top Threat Vectors</h3>
-                                <p>Most common attacks</p>
+                                <p>Common attack patterns</p>
                             </div>
                             <i data-lucide="alert-triangle" class="alert-icon"></i>
                         </div>
                         <div id="threat-vectors-list">
                             <!-- Populated by JS -->
                         </div>
-                        <button class="btn-outline" onclick="switchView('alerts')">View All Threats</button>
+                    </div>
+
+                    <!-- Security Event Log (Concise) -->
+                    <div class="event-log-container">
+                        <div class="event-log-header">
+                            <div>
+                                <h3>Security Event Log</h3>
+                                <p>Recent activity</p>
+                            </div>
+                            <a href="#" class="view-all" onclick="switchView('logs')">View All</a>
+                        </div>
+                        <div id="event-log-list" class="concise-list">
+                            <!-- Populated by JS -->
+                        </div>
                     </div>
                 </div>
 
-                <!-- Security Event Log -->
-                <div class="event-log-container">
-                    <div class="event-log-header">
-                        <div>
-                            <h3>Security Event Log</h3>
-                            <p>Recent activity and alerts</p>
+                <!-- Secondary Intelligence Row -->
+                <h2 class="section-title">Business Intelligence</h2>
+                <div class="dashboard-grid-secondary">
+                    <!-- Top Source IPs -->
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3>Top Source IPs</h3>
                         </div>
-                        <a href="#" class="view-all" onclick="switchView('logs')">View All <i
-                                data-lucide="external-link" style="width:12px;height:12px;"></i></a>
+                        <div id="top-sources-chart"></div>
                     </div>
-                    <div id="event-log-list">
-                        <!-- Populated by JS -->
+
+                    <!-- Protocol Distribution -->
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3>Protocol Distribution</h3>
+                        </div>
+                        <div id="protocol-chart"></div>
+                    </div>
+
+                    <!-- Business Intelligence -->
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3>Activity Patterns</h3>
+                        </div>
+                        <div class="bi-tabs">
+                            <button id="tab-hours" class="active" onclick="toggleBIChart('hours')">Hours</button>
+                            <button id="tab-weekend" onclick="toggleBIChart('weekend')">Weekend</button>
+                        </div>
+                        <div id="bi-chart-container">
+                            <div id="business-hours-chart"></div>
+                            <div id="weekend-activity-chart" style="display:none;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Endpoint Breakdown -->
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3>Endpoint Breakdown</h3>
+                        </div>
+                        <div id="vendor-breakdown-chart"></div>
                     </div>
                 </div>
             </div>
@@ -223,64 +265,6 @@
                             <!-- Populated by JS -->
                         </tbody>
                     </table>
-                </div>
-            </div>
-
-            <!-- ============================================ -->
-            <!-- ANALYTICS VIEW                               -->
-            <!-- ============================================ -->
-            <div id="analytics-view" class="dashboard-view">
-                <div class="analytics-grid">
-                    <div class="chart-container">
-                        <div class="chart-header">
-                            <div class="chart-header-left">
-                                <h3>Top Source IPs</h3>
-                            </div>
-                        </div>
-                        <div id="top-sources-chart"></div>
-                    </div>
-                    <div class="chart-container">
-                        <div class="chart-header">
-                            <div class="chart-header-left">
-                                <h3>Protocol Distribution</h3>
-                            </div>
-                        </div>
-                        <div id="protocol-chart"></div>
-                    </div>
-                </div>
-
-                <h2 class="analytics-section-title">Business Intelligence</h2>
-                <div class="analytics-grid">
-                    <div class="chart-container">
-                        <div class="chart-header">
-                            <div class="chart-header-left">
-                                <h3>Business vs After Hours</h3>
-                            </div>
-                        </div>
-                        <div id="business-hours-chart"></div>
-                        <p class="help-text" style="margin-top:0.75rem;text-align:center;">Office hours vs night-time
-                            activity patterns</p>
-                    </div>
-                    <div class="chart-container">
-                        <div class="chart-header">
-                            <div class="chart-header-left">
-                                <h3>Weekday vs Weekend</h3>
-                            </div>
-                        </div>
-                        <div id="weekend-activity-chart"></div>
-                        <p class="help-text" style="margin-top:0.75rem;text-align:center;">Detect anomalous weekend data
-                            transfers</p>
-                    </div>
-                    <div class="chart-container">
-                        <div class="chart-header">
-                            <div class="chart-header-left">
-                                <h3>Endpoint Breakdown</h3>
-                            </div>
-                        </div>
-                        <div id="vendor-breakdown-chart"></div>
-                        <p class="help-text" style="margin-top:0.75rem;text-align:center;">Contribution by device vendor
-                        </p>
-                    </div>
                 </div>
             </div>
 
@@ -447,9 +431,9 @@
                     <div class="table-header">
                         <!-- Generate Report Modal -->
                         <div id="gen-report-modal" class="modal-overlay"
-                            style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:9999; padding:40px; display: flex; align-items: center; justify-content: center;">
+                            style="display:none; position:fixed; inset:0; background:rgba(2,6,23,0.85); backdrop-filter:blur(8px); z-index:9999; padding:40px; align-items: center; justify-content: center;">
                             <div class="modal-content"
-                                style="background:#0B1120; width:450px; border: 1px solid rgba(255,255,255,0.1); border-radius:12px; display:flex; flex-direction:column; padding: 2rem; color: white;">
+                                style="background: var(--bg-card); backdrop-filter: var(--glass-blur); border: 1px solid var(--glass-border); width:450px; border-radius:var(--radius-xl); display:flex; flex-direction:column; padding: 2.5rem; color: white; box-shadow: var(--shadow-elevated);">
                                 <div
                                     style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1.5rem;">
                                     <h3 style="margin:0;">Generate Security Report</h3>
@@ -530,6 +514,55 @@
                             <!-- Populated by JS -->
                         </tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- ============================================ -->
+            <!-- PROFILE VIEW                                 -->
+            <!-- ============================================ -->
+            <div id="profile-view" class="dashboard-view">
+                <div class="profile-container">
+                    <div class="glass-card profile-card">
+                        <div class="profile-header">
+                            <div class="profile-avatar-large">
+                                <i data-lucide="user"></i>
+                            </div>
+                            <div class="profile-title-group">
+                                <h2 id="profile-name">Loading...</h2>
+                                <p id="profile-email">email@example.com</p>
+                            </div>
+                            <div class="profile-badge" id="profile-role">Analyst</div>
+                        </div>
+
+                        <div class="profile-grid">
+                            <div class="profile-info-group">
+                                <label>Organization / Tenant</label>
+                                <div class="profile-info-value" id="profile-tenant">default</div>
+                            </div>
+                            <div class="profile-info-group">
+                                <label>Account Status</label>
+                                <div class="profile-info-value"><span class="status-indicator online"></span> Active
+                                </div>
+                            </div>
+                            <div class="profile-info-group">
+                                <label>User Type</label>
+                                <div class="profile-info-value" id="profile-type">Tenant User</div>
+                            </div>
+                            <div class="profile-info-group">
+                                <label>Permissions</label>
+                                <div class="profile-info-value" id="profile-permissions">Standard Access</div>
+                            </div>
+                        </div>
+
+                        <div class="profile-actions">
+                            <button class="btn-primary" onclick="showToast('Profile settings coming soon', false)">
+                                <i data-lucide="edit-3"></i> Edit Profile
+                            </button>
+                            <button class="btn-secondary" onclick="Auth.logout()">
+                                <i data-lucide="log-out"></i> Sign Out
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 

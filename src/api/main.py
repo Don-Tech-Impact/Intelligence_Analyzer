@@ -13,6 +13,10 @@ from pydantic import BaseModel
 from src.models.schemas import AlertUpdateSchema, DashboardSummarySchema, ApiResponse
 from src.services.log_ingestion import AnalysisPipeline
 from src.services.report_generator import ReportGenerator
+from src.services.redis_consumer import RedisConsumer
+from src.services.scheduler import TaskScheduler
+from threading import Thread
+import logging
 
 # V1 API Router, Health endpoints, and Admin API
 from src.api.v1_router import router as v1_router
@@ -50,8 +54,9 @@ async def lifespan(app):
     
     if db_manager.engine is None:
         db_manager.initialize()
+    
     yield
-    # --- Shutdown (cleanup if needed) ---
+    # --- Shutdown ---
 
 app = FastAPI(
     title="Intelligence Analyzer API", 

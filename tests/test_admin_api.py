@@ -9,7 +9,11 @@ from src.core.database import db_manager
 from src.models.database import Base, Tenant, Alert, NormalizedLog, Report
 
 
-ADMIN_KEY = os.getenv("ADMIN_API_KEY", "changeme-admin-key")
+# Force both env var names so _get_admin_key() in admin_router picks up "changeme-admin-key"
+os.environ["ADMIN_KEY"] = "changeme-admin-key"
+os.environ["ADMIN_API_KEY"] = "changeme-admin-key"
+
+ADMIN_KEY = "changeme-admin-key"
 ADMIN_HEADERS = {"X-Admin-Key": ADMIN_KEY}
 
 
@@ -61,17 +65,18 @@ def client():
 # ===== Auth Tests =====
 
 class TestAdminAuth:
-    def test_missing_admin_key_returns_422(self, client):
+    def test_missing_admin_key_returns_401(self, client):
+        """Missing X-Admin-Key header must return 401 (not 422) per Repo 1 contract."""
         resp = client.get("/api/admin/system/overview")
-        assert resp.status_code == 422
+        assert resp.status_code == 401
 
-    def test_wrong_admin_key_returns_403(self, client):
+    def test_wrong_admin_key_returns_401(self, client):
+        """Wrong X-Admin-Key must return 401 per Repo 1 contract."""
         resp = client.get(
             "/api/admin/system/overview",
             headers={"X-Admin-Key": "wrong-key"}
         )
-        assert resp.status_code == 403
-        assert "Invalid admin API key" in resp.json()["detail"]
+        assert resp.status_code == 401
 
     def test_correct_admin_key_passes(self, client):
         resp = client.get("/api/admin/system/overview", headers=ADMIN_HEADERS)
@@ -181,12 +186,14 @@ class TestTenantUsage:
         assert data["is_active"] is False
 
     def test_requires_admin_key(self, client):
+        """Missing X-Admin-Key must return 401 per Repo 1 contract."""
         resp = client.get("/api/admin/tenants/acme_corp/usage")
-        assert resp.status_code == 422
+        assert resp.status_code == 401
 
     def test_rejects_wrong_key(self, client):
+        """Wrong X-Admin-Key must return 401 per Repo 1 contract."""
         resp = client.get(
             "/api/admin/tenants/acme_corp/usage",
             headers={"X-Admin-Key": "bad-key"}
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 401

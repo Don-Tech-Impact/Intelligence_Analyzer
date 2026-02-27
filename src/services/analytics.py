@@ -58,8 +58,10 @@ class AnalyticsService:
         total_threats = sum(severity_map.values())
 
         # Affected assets (fallback to source_ip if device_id is missing)
+        # Cast INET to String for PostgreSQL compatibility in COALESCE
+        from sqlalchemy import cast, String
         affected_assets = db.query(func.count(func.distinct(
-            func.coalesce(NormalizedLog.device_id, NormalizedLog.source_ip)
+            func.coalesce(NormalizedLog.device_id, cast(NormalizedLog.source_ip, String))
         ))).filter(
             NormalizedLog.tenant_id == tenant_id,
             NormalizedLog.timestamp >= last_24h
@@ -68,7 +70,7 @@ class AnalyticsService:
         # Asset types breakdown (fallback to source_ip if device_id is missing)
         asset_types = db.query(
             NormalizedLog.vendor,
-            func.count(func.distinct(func.coalesce(NormalizedLog.device_id, NormalizedLog.source_ip)))
+            func.count(func.distinct(func.coalesce(NormalizedLog.device_id, cast(NormalizedLog.source_ip, String))))
         ).filter(
             NormalizedLog.tenant_id == tenant_id
         ).group_by(NormalizedLog.vendor).all()

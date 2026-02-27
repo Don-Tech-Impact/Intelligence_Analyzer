@@ -9,11 +9,15 @@ from src.api.main import app
 from src.core.database import db_manager
 from src.models.database import NormalizedLog, Alert, Report
 
+# Force admin key so _get_admin_key() resolves correctly regardless of .env.production
+os.environ["ADMIN_KEY"] = "changeme-admin-key"
+os.environ["ADMIN_API_KEY"] = "changeme-admin-key"
+
 # Disable rate limiting for tests
 app.state.limiter.enabled = False
 
 client = TestClient(app)
-ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "changeme-admin-key")
+ADMIN_API_KEY = "changeme-admin-key"
 
 @pytest.fixture(scope="module")
 def setup_db():
@@ -125,10 +129,11 @@ class TestReportingAI:
 
     def test_unauthorized_access(self):
         """Test that endpoints are protected."""
-        # Missing Header (FastAPI returns 422 because it's required)
+        # Missing Header — returns 401 (Header(None) makes it optional at schema
+        # level; our verify_admin_key raises 401 explicitly when key is absent)
         response = client.post("/reports/generate", json={})
-        assert response.status_code == 422
-        
-        # Incorrect Header (System returns 403)
+        assert response.status_code == 401
+
+        # Incorrect Header — returns 401 (wrong key)
         response = client.get("/reports/1/content", headers={"X-Admin-Key": "wrong-key"})
-        assert response.status_code == 403
+        assert response.status_code == 401

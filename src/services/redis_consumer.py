@@ -66,7 +66,10 @@ class RedisConsumer:
         self.discovered_queues: List[str] = []
         self.known_tenants: Set[str] = set()
         self.last_scan_time = 0.0
-        self.scan_interval = config.redis_queue_scan_interval
+        try:
+            self.scan_interval = int(config.redis_queue_scan_interval)
+        except (ValueError, TypeError):
+            self.scan_interval = 30
         
         # Batch accumulators (one per log type)
         self.batch_ingest: List[Dict] = []
@@ -310,7 +313,7 @@ class RedisConsumer:
         
         return True
 
-    def _handle_ingest_log(self, log_data: Dict[str, Any]) -> bool:
+    def _handle_ingest_log(self, log_data: Dict[str, Any], tenant_id: Optional[str] = None) -> bool:
         """
         Handle raw ingest logs (full pipeline).
         
@@ -318,7 +321,7 @@ class RedisConsumer:
         """
         try:
             # 1. Normalize using LogAdapter (handles V1 and V2 schemas)
-            normalized = self.log_adapter.normalize(log_data)
+            normalized = self.log_adapter.normalize(log_data, tenant_id_fallback=tenant_id)
             
             # 2. Convert to dict for batch insert
             log_dict = {
@@ -354,14 +357,14 @@ class RedisConsumer:
             })
             return False
 
-    def _handle_clean_log(self, log_data: Dict[str, Any]) -> bool:
+    def _handle_clean_log(self, log_data: Dict[str, Any], tenant_id: Optional[str] = None) -> bool:
         """
         Handle clean logs (fast path, already normalized by Repo1).
         
         These come from Repo1's logs:{TENANT}:clean queue in v2.0 schema format.
         """
         try:
-            normalized = self.log_adapter.normalize(log_data)
+            normalized = self.log_adapter.normalize(log_data, tenant_id_fallback=tenant_id)
             
             log_dict = {
                 'tenant_id': normalized.tenant_id,
@@ -527,13 +530,14 @@ class RedisConsumer:
             
         try:
             queue_type = self._get_queue_type(queue_name)
+            tenant_id = self._get_queue_tenant(queue_name)
             
             if queue_type == 'dead':
                 return self._handle_dead_log(log_data)
             elif queue_type == 'ingest':
-                return self._handle_ingest_log(log_data)
+                return self._handle_ingest_log(log_data, tenant_id=tenant_id)
             elif queue_type == 'clean':
-                return self._handle_clean_log(log_data)
+                return self._handle_clean_log(log_data, tenant_id=tenant_id)
             else:
                 logger.warning(f"Unknown queue type '{queue_type}' from queue: {queue_name}")
                 return False
@@ -576,7 +580,10 @@ class RedisConsumer:
                     time.sleep(5)
                     continue
                 
-                result = self.redis_client.blpop(self.discovered_queues, timeout=1)
+                # BRPOP reads from the RIGHT (FIFO order) — Repo 1 uses LPUSH (writes to left)
+                # FIFO ensures oldest logs are processed first for correct chronological analysis.
+                # The previous BLPOP read from the LEFT (LIFO) which broke time-ordered detection.
+                result = self.redis_client.brpop(self.discovered_queues, timeout=1)
                 
                 if result:
                     queue_name, message = result
