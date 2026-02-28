@@ -9,8 +9,8 @@ const urlParams = new URLSearchParams(window.location.search);
 // 🔍 Security: Prefer tenant_id from JWT payload
 function getTenantFromToken() {
     const payload = Auth.getPayload();
-    if (!payload) return 'default'; // Using 'default' as it has the latest 24h alerts
-    return payload.tenant_id || payload.sub || 'default';
+    if (!payload) return 'my_company'; // Reverting to my_company as it has the demo data
+    return payload.tenant_id || payload.sub || 'my_company';
 }
 
 let currentTenant = getTenantFromToken();
@@ -1237,6 +1237,15 @@ function setVal(id, val) {
 function getVal(id) {
     const el = document.getElementById(id);
     return el ? el.value : '';
+}
+
+/**
+ * Utility: Format large numbers (e.g. 1500 -> 1.5k)
+ */
+function formatNumber(num) {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'm';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+    return num.toString();
 }
 
 // ===== AI Assistant Logic (Legacy Refinement) =====
