@@ -7,7 +7,7 @@ from typing import Optional
 from datetime import datetime, timedelta
 
 from src.core.database import db_manager
-from src.models.database import Alert, NormalizedLog, Report
+from src.models.database import Alert, NormalizedLog, Report, ManagedDevice
 from src.services.analytics import AnalyticsService
 from src.services.assets import AssetService
 from src.services.report_generator import ReportGenerator
@@ -589,3 +589,128 @@ def update_config(new_config: dict, tenant_id: str = Depends(get_tenant_id)):
         return ApiResponse(status="success", message="Configuration updated successfully")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update config: {str(e)}")
+
+
+# ============================================
+# Asset Management Endpoints (Managed Devices)
+# ============================================
+
+@router.get("/assets/managed")
+def list_managed_devices(
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """List all formally registered devices for this tenant."""
+    devices = db.query(ManagedDevice).filter(ManagedDevice.tenant_id == tenant_id).all()
+    
+    # Enrich with "Status" based on last_log_at
+    now = datetime.utcnow()
+    results = []
+    for d in devices:
+        dict_d = d.to_dict()
+        is_online = d.last_log_at and (now - d.last_log_at) < timedelta(minutes=10)
+        dict_d["is_online"] = bool(is_online)
+        results.append(dict_d)
+        
+    return ApiResponse(status="success", data=results)
+
+
+@router.post("/assets/managed")
+async def register_device(
+    payload: dict,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """
+    Register a new managed device. 
+    Also automatically adds the IP to the Repo 1 allowlist.
+    """
+    try:
+        name = payload.get("name")
+        ip = payload.get("ip_address")
+        if not name or not ip:
+            raise HTTPException(status_code=400, detail="Name and IP Address are required")
+
+        # 1. Create locally
+        device = ManagedDevice(
+            tenant_id=tenant_id,
+            name=name,
+            ip_address=ip,
+            device_id=payload.get("device_id"),
+            category=payload.get("category", "other"),
+            description=payload.get("description")
+        )
+        db.add(device)
+        db.commit()
+
+        # 2. Sync with Repo 1 Allowlist (Automatic Ingestion enablement)
+        try:
+            import httpx
+            import os
+            repo1_url = os.getenv("REPO1_URL") or "http://host.docker.internal:8080"
+            admin_key = os.getenv("ADMIN_KEY") or "changeme-admin-key"
+            
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"{repo1_url}/admin/tenants/{tenant_id}/ips",
+                    json={
+                        "ip_range": ip,
+                        "label": f"Managed Device: {name}",
+                        "is_active": True
+                    },
+                    headers={"X-Admin-Key": admin_key}
+                )
+        except Exception as sync_err:
+            # We don't want to fail the whole request if Repo 1 is unreachable,
+            # but we should log it.
+            print(f"[SIEM] Device registered locally but failed to sync allowlist: {sync_err}")
+
+        return ApiResponse(status="success", data=device.to_dict())
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/assets/managed/{device_id_int}")
+def delete_managed_device(
+    device_id_int: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """Unregister a managed device."""
+    device = db.query(ManagedDevice).filter(
+        ManagedDevice.id == device_id_int, 
+        ManagedDevice.tenant_id == tenant_id
+    ).first()
+    
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+        
+    db.delete(device)
+    db.commit()
+    return ApiResponse(status="success", message="Device unregistered")
+
+
+@router.get("/assets/discovered")
+def list_discovered_assets(
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db),
+    page: int = 1,
+    limit: int = 20
+):
+    """
+    Returns unique assets discovered from logs that are NOT yet in managed_devices.
+    """
+    # 1. Get all managed IPs to exclude them
+    managed_ips = [d.ip_address for d in db.query(ManagedDevice.ip_address).filter(ManagedDevice.tenant_id == tenant_id).all()]
+    
+    # 2. Use existing AssetService logic but filter out managed ones
+    all_assets = AssetService.get_assets(tenant_id, db, page, limit)
+    
+    # 3. Filter
+    discovered = [a for a in all_assets["data"] if a["device_id"] not in managed_ips]
+    
+    return ApiResponse(status="success", data={
+        "data": discovered,
+        "pagination": all_assets["pagination"]
+    })

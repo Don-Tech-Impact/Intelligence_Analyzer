@@ -290,3 +290,44 @@ class User(Base):
 
     def __repr__(self):
         return f"<User(username={self.username}, role={self.role})>"
+
+
+class ManagedDevice(Base):
+    """
+    Formally registered device/asset for a tenant.
+    Used for authoritative identification, health monitoring, and auto-allowlisting.
+    """
+    __tablename__ = 'managed_devices'
+
+    id = Column(PortableBigInt, primary_key=True, autoincrement=True)
+    tenant_id = Column(String(64), nullable=False, default='default', index=True)
+    name = Column(String(128), nullable=False)
+    ip_address = Column(String(45), nullable=False, index=True)
+    device_id = Column(String(100), index=True, nullable=True) # For correlation with logs
+    category = Column(String(32), default='other') # firewall, switch, server, endpoint, waf
+    status = Column(String(20), default='active') # active, maintenance, retired
+    
+    # Metadata
+    description = Column(Text)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_log_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index('idx_managed_dev_tenant_ip', 'tenant_id', 'ip_address'),
+        Index('idx_managed_dev_tenant_id_corr', 'tenant_id', 'device_id'),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "tenant_id": self.tenant_id,
+            "name": self.name,
+            "ip_address": self.ip_address,
+            "device_id": self.device_id,
+            "category": self.category,
+            "status": self.status,
+            "description": self.description,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "last_log_at": self.last_log_at.isoformat() if self.last_log_at else None
+        }

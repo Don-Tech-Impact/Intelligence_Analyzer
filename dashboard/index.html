@@ -33,6 +33,7 @@
                 <li><a href="#" onclick="switchView('ai-assistant')"><i data-lucide="bot"></i> AI Assistant <span
                             class="badge-pro">PRO</span></a></li>
                 <li><a href="#" onclick="switchView('analytics')"><i data-lucide="bar-chart-3"></i> Analytics</a></li>
+                <li><a href="#" onclick="switchView('assets')"><i data-lucide="server"></i> Assets</a></li>
                 <li><a href="#" onclick="switchView('compliance')"><i data-lucide="file-check"></i> Compliance</a></li>
                 <li><a href="#" onclick="switchView('reports')"><i data-lucide="clipboard-list"></i> Reports</a></li>
                 <li><a href="#" onclick="switchView('profile')"><i data-lucide="user-circle"></i> Profile</a></li>
@@ -95,7 +96,6 @@
                     <i data-lucide="sparkles"></i>
                     <span id="ai-insight-text-overview">Analyzing signals...</span>
                 </div>
-
                 <!-- Stats Row -->
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -337,6 +337,98 @@
                             <!-- Populated by JS -->
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- ============================================ -->
+            <!-- ASSETS (DEVICE MANAGEMENT) VIEW              -->
+            <!-- ============================================ -->
+            <div id="assets-view" class="dashboard-view">
+                <div class="table-header" style="border-bottom:none; padding-bottom:0;">
+                    <div class="header-left">
+                        <h3>Asset Inventory</h3>
+                        <p>Manage registered security devices and discover new assets</p>
+                    </div>
+                    <div class="table-filters" style="gap:15px;">
+                        <button class="btn-primary" onclick="openRegisterDeviceModal()">
+                            <i data-lucide="plus-circle"></i> Register Device
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Asset Summary Row -->
+                <div class="stats-grid" style="margin: 1.5rem 0; grid-template-columns: repeat(4, 1fr);">
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="label">Total Assets</span>
+                            <i data-lucide="server" class="icon-blue"></i>
+                        </div>
+                        <div class="stat-value" id="asset-count-total">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="label">Active/Online</span>
+                            <i data-lucide="zap" class="icon-green"></i>
+                        </div>
+                        <div class="stat-value" id="asset-count-online">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="label">Critical Threats</span>
+                            <i data-lucide="alert-triangle" class="icon-orange"></i>
+                        </div>
+                        <div class="stat-value" id="asset-count-threats">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="label">Unmanaged</span>
+                            <i data-lucide="help-circle" class="icon-purple"></i>
+                        </div>
+                        <div class="stat-value" id="asset-count-unmanaged">0</div>
+                    </div>
+                </div>
+
+                <div class="data-table-container">
+                    <div class="table-header" style="background: rgba(148, 163, 184, 0.03);">
+                        <div class="header-left">
+                            <h4 style="font-size: 0.9rem; font-weight: 700;">Managed Security Devices</h4>
+                        </div>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>IP Address</th>
+                                <th>Category</th>
+                                <th>Status</th>
+                                <th>Last Activity</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="managed-assets-body"></tbody>
+                    </table>
+                </div>
+
+                <div class="data-table-container">
+                    <div class="table-header" style="background: rgba(148, 163, 184, 0.03);">
+                        <div class="header-left">
+                            <h4 style="font-size: 0.9rem; font-weight: 700;">Discovered (Unmanaged) Assets</h4>
+                            <p>IPs detected in logs but not yet registered</p>
+                        </div>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Source IP</th>
+                                <th>Vendor/Type</th>
+                                <th>Event Count</th>
+                                <th>Threat Count</th>
+                                <th>Last Seen</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="discovered-assets-body"></tbody>
+                    </table>
                 </div>
             </div>
 
@@ -688,6 +780,67 @@
             </div>
 
         </main>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- REGISTER DEVICE MODAL                        -->
+    <!-- ============================================ -->
+    <div id="register-device-modal" class="modal" style="display:none;">
+        <div class="modal-content glass-effect" style="width:500px;">
+            <div class="modal-header"
+                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+                <h3 style="margin:0;">Register Security Device</h3>
+                <button onclick="closeRegisterDeviceModal()"
+                    style="background:none; border:none; color:white; cursor:pointer;"><i data-lucide="x"></i></button>
+            </div>
+            <form id="register-device-form" onsubmit="submitRegisterDevice(event)">
+                <div class="form-group" style="margin-bottom:1.25rem;">
+                    <label
+                        style="display:block; font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem;">DEVICE
+                        NAME</label>
+                    <input type="text" id="reg-device-name" class="glass-input" style="width:100%;"
+                        placeholder="e.g. London Firewall" required>
+                </div>
+                <div class="form-group" style="margin-bottom:1.25rem;">
+                    <label
+                        style="display:block; font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem;">IP
+                        ADDRESS / CIDR</label>
+                    <input type="text" id="reg-device-ip" class="glass-input" style="width:100%;"
+                        placeholder="e.g. 192.168.1.1" required>
+                </div>
+                <div class="form-group" style="margin-bottom:1.25rem;">
+                    <label
+                        style="display:block; font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem;">CORRELATION
+                        DEVICE ID (OPTIONAL)</label>
+                    <input type="text" id="reg-device-id" class="glass-input" style="width:100%;"
+                        placeholder="From logs/vendor system">
+                </div>
+                <div class="form-group" style="margin-bottom:1.25rem;">
+                    <label
+                        style="display:block; font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem;">CATEGORY</label>
+                    <select id="reg-device-category" class="glass-input" style="width:100%;">
+                        <option value="firewall">Firewall</option>
+                        <option value="switch">Switch</option>
+                        <option value="server">Server</option>
+                        <option value="endpoint">Endpoint</option>
+                        <option value="waf">WAF</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom:1.25rem;">
+                    <label
+                        style="display:block; font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem;">DESCRIPTION</label>
+                    <textarea id="reg-device-desc" class="glass-input" style="width:100%;" rows="3"></textarea>
+                </div>
+                <div style="margin-top:1.5rem; display:flex; gap:10px;">
+                    <button type="submit" class="btn-primary" style="flex:1;">
+                        <i data-lucide="check" style="width:16px;height:16px;"></i> Register & Allow
+                    </button>
+                    <button type="button" class="btn-secondary" style="flex:1;"
+                        onclick="closeRegisterDeviceModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <script src="auth.js"></script>

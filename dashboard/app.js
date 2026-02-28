@@ -168,6 +168,7 @@ async function fetchData() {
         else if (currentView === 'compliance') await fetchComplianceData();
         else if (currentView === 'reports') await fetchReportsData();
         else if (currentView === 'settings') await fetchSettingsData();
+        else if (currentView === 'assets') await renderAssets();
     } catch (error) { console.error('Data sync error:', error); }
     finally { fetchInProgress = false; }
 }
@@ -1339,4 +1340,181 @@ async function submitReportGeneration() {
 function closeReportModal() {
     const modal = document.getElementById('report-modal');
     if (modal) modal.style.display = 'none';
+}
+
+// ============================================
+// ASSETS (DEVICE MANAGEMENT) LOGIC
+// ============================================
+
+async function renderAssets() {
+    try {
+        setLoading(true);
+        // 1. Fetch Managed and Discovered Assets
+        const managedRes = await apiFetch(`${API_BASE_URL}/api/v1/assets/managed?tenant_id=${currentTenant}`);
+        const discoveredRes = await apiFetch(`${API_BASE_URL}/api/v1/assets/discovered?tenant_id=${currentTenant}`);
+
+        const managed = (managedRes && managedRes.ok) ? await managedRes.json() : [];
+        const discovered = (discoveredRes && discoveredRes.ok) ? (await discoveredRes.json()).data : [];
+
+        // Update Stats
+        const totalCount = document.getElementById('asset-count-total');
+        const onlineCount = document.getElementById('asset-count-online');
+        const unmanagedCount = document.getElementById('asset-count-unmanaged');
+
+        if (totalCount) totalCount.textContent = managed.length;
+        if (onlineCount) onlineCount.textContent = managed.filter(d => d.is_online).length;
+        if (unmanagedCount) unmanagedCount.textContent = discovered.length;
+
+        // Render Managed Table
+        const managedBody = document.getElementById('managed-assets-body');
+        if (managedBody) {
+            managedBody.innerHTML = managed.length ? managed.map(d => `
+                <tr>
+                    <td>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <div class="avatar" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">
+                                <i data-lucide="${getCategoryIcon(d.category)}" style="width:14px;height:14px;"></i>
+                            </div>
+                            <div style="display:flex; flex-direction:column;">
+                                <span style="font-weight:600;">${d.name}</span>
+                                <span style="font-size:10px; color:var(--text-muted);">${d.device_id || 'ID Pending'}</span>
+                            </div>
+                        </div>
+                    </td>
+                    <td><code>${d.ip_address}</code></td>
+                    <td><span class="badge-beta" style="background:rgba(148,163,184,0.1); color:var(--text-muted); padding:2px 6px;">${d.category.toUpperCase()}</span></td>
+                    <td>
+                        <span class="status-badge ${d.is_online ? 'online' : 'offline'}">
+                            <i data-lucide="${d.is_online ? 'zap' : 'zap-off'}"></i>
+                            ${d.is_online ? 'Online' : 'Offline'}
+                        </span>
+                    </td>
+                    <td style="font-size:0.75rem; color:var(--text-muted);">${d.last_log_at ? formatTime(d.last_log_at) : 'No logs yet'}</td>
+                    <td>
+                        <button class="btn-secondary" style="padding:4px 8px; font-size:11px;" onclick="deleteManagedDevice(${d.id})">
+                            <i data-lucide="trash-2" style="width:12px;height:12px;"></i> Unregister
+                        </button>
+                    </td>
+                </tr>
+            `).join('') : '<tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-muted);">No managed devices. Start by registering one!</td></tr>';
+        }
+
+        // Render Discovered Table
+        const discoveredBody = document.getElementById('discovered-assets-body');
+        if (discoveredBody) {
+            discoveredBody.innerHTML = discovered.length ? discovered.map(a => `
+                <tr>
+                    <td><code style="color:var(--accent-blue);">${a.device_id}</code></td>
+                    <td>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span class="badge-beta" style="background:rgba(59,130,246,0.1); color:#3b82f6; padding:2px 6px;">${a.type.toUpperCase()}</span>
+                            <span style="font-size:11px; color:var(--text-muted);">${a.vendor}</span>
+                        </div>
+                    </td>
+                    <td>${a.event_count}</td>
+                    <td>
+                        <span class="badge-threat ${a.threat_count > 0 ? 'high' : 'low'}" style="padding:2px 8px;">
+                            ${a.threat_count} Alerts
+                        </span>
+                    </td>
+                    <td style="font-size:0.75rem; color:var(--text-muted);">${formatTime(a.last_seen)}</td>
+                    <td>
+                        <button class="btn-primary" style="padding:4px 8px; font-size:11px;" 
+                                onclick="prefillRegistration('${a.device_id}', '${a.vendor}', '${a.type}')">
+                            <i data-lucide="plus" style="width:12px;height:12px;"></i> Register
+                        </button>
+                    </td>
+                </tr>
+            `).join('') : '<tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-muted);">No newly discovered assets.</td></tr>';
+        }
+
+        lucide.createIcons();
+    } catch (e) { console.error('[SIEM] Asset rendering error:', e); }
+    finally { setLoading(false); }
+}
+
+function getCategoryIcon(cat) {
+    const icons = {
+        'firewall': 'shield',
+        'switch': 'network',
+        'server': 'database',
+        'endpoint': 'monitor',
+        'waf': 'globe',
+        'other': 'server'
+    };
+    return icons[cat ? cat.toLowerCase() : 'other'] || 'server';
+}
+
+function openRegisterDeviceModal() {
+    const modal = document.getElementById('register-device-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        lucide.createIcons();
+    }
+}
+
+function closeRegisterDeviceModal() {
+    const modal = document.getElementById('register-device-modal');
+    if (modal) modal.style.display = 'none';
+    const form = document.getElementById('register-device-form');
+    if (form) form.reset();
+}
+
+function prefillRegistration(ip, vendor, type) {
+    openRegisterDeviceModal();
+    const ipField = document.getElementById('reg-device-ip');
+    const nameField = document.getElementById('reg-device-name');
+    const catField = document.getElementById('reg-device-category');
+
+    if (ipField) ipField.value = ip;
+    if (nameField) nameField.value = `${vendor} ${type}`.trim();
+    if (catField) catField.value = (['firewall', 'switch', 'server', 'endpoint', 'waf'].includes(type.toLowerCase())) ? type.toLowerCase() : 'other';
+}
+
+async function submitRegisterDevice(e) {
+    if (e) e.preventDefault();
+    const payload = {
+        name: document.getElementById('reg-device-name').value,
+        ip_address: document.getElementById('reg-device-ip').value,
+        device_id: document.getElementById('reg-device-id').value,
+        category: document.getElementById('reg-device-category').value,
+        description: document.getElementById('reg-device-desc').value
+    };
+
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/assets/managed?tenant_id=${currentTenant}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...Auth.getAuthHeader() },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            showToast('Device registered and allowlisted successfully!', false);
+            closeRegisterDeviceModal();
+            renderAssets();
+        } else {
+            const err = await res.json();
+            showToast(`Registration failed: ${err.message || err.detail || 'Error'}`, true);
+        }
+    } catch (e) {
+        console.error('Registration error:', e);
+        showToast('Network error while registering device', true);
+    }
+}
+
+async function deleteManagedDevice(id) {
+    if (!confirm('Are you sure you want to unregister this device? It will no longer be tracked as managed.')) return;
+
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/assets/managed/${id}?tenant_id=${currentTenant}`, {
+            method: 'DELETE',
+            headers: Auth.getAuthHeader()
+        });
+        if (res.ok) {
+            showToast('Device unregistered successfully', false);
+            renderAssets();
+        } else {
+            showToast('Failed to unregister device', true);
+        }
+    } catch (e) { showToast('Error unregistering device', true); }
 }
