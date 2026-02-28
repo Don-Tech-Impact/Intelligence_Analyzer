@@ -39,7 +39,8 @@ const VIEWS = {
     compliance: { title: 'Compliance Dashboard', subtitle: 'Security standards and regulatory adherence' },
     reports: { title: 'Report Archive', subtitle: 'Generated security summaries and audits' },
     profile: { title: 'User Profile', subtitle: 'Account details and security settings' },
-    settings: { title: 'System Settings', subtitle: 'Analyzer thresholds and configuration' }
+    settings: { title: 'System Settings', subtitle: 'Analyzer thresholds and configuration' },
+    assets: { title: 'Asset Inventory', subtitle: 'Manage registered security devices and discover new assets' }
 };
 
 // ===== Chart Color Palette =====
@@ -101,12 +102,14 @@ function updateUserInfo() {
 }
 
 // ===== API Helper =====
-async function apiFetch(url) {
+async function apiFetch(url, options = {}) {
     try {
         const response = await fetch(url, {
+            ...options,
             headers: {
                 'Content-Type': 'application/json',
-                ...Auth.getAuthHeader()
+                ...Auth.getAuthHeader(),
+                ...(options.headers || {})
             }
         });
 
@@ -116,13 +119,22 @@ async function apiFetch(url) {
             return null;
         }
 
-        if (!response.ok) return null;
-        const body = await response.json();
-        // Unwrap envelope if present
-        if (body && body.status === 'success' && body.hasOwnProperty('data')) {
-            return { ok: true, json: async () => body.data };
+        let body;
+        try {
+            body = await response.json();
+        } catch (e) {
+            body = { status: 'error', message: 'Non-JSON response' };
         }
-        return { ok: true, json: async () => body };
+
+        // Handle standard envelope {status: "success", data: ...}
+        if (response.ok) {
+            if (body && body.status === 'success' && body.hasOwnProperty('data')) {
+                return { ok: true, json: async () => body.data };
+            }
+            return { ok: true, data: body.data || body, json: async () => body.data || body };
+        } else {
+            return { ok: false, status: response.status, message: body.message || body.detail || 'API Error', json: async () => body };
+        }
     } catch (e) {
         console.error('API fetch error:', e);
         return null;
@@ -136,6 +148,15 @@ async function checkApiStatus() {
         setApiOnline(res.ok);
     } catch (e) {
         setApiOnline(false);
+    }
+}
+
+function setLoading(loading) {
+    fetchInProgress = loading;
+    // We can add a visual indicator here if desired
+    const statusText = document.getElementById('api-status-text');
+    if (statusText && loading) {
+        // Optional: subtle hint that we are working
     }
 }
 
@@ -1482,23 +1503,26 @@ async function submitRegisterDevice(e) {
     };
 
     try {
-        const res = await fetch(`${API_BASE_URL}/api/v1/assets/managed?tenant_id=${currentTenant}`, {
+        setLoading(true);
+        // Use standardized apiFetch with POST method
+        const res = await apiFetch(`${API_BASE_URL}/api/v1/assets/managed?tenant_id=${currentTenant}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...Auth.getAuthHeader() },
             body: JSON.stringify(payload)
         });
 
-        if (res.ok) {
+        if (res && res.ok) {
             showToast('Device registered and allowlisted successfully!', false);
             closeRegisterDeviceModal();
             renderAssets();
         } else {
-            const err = await res.json();
-            showToast(`Registration failed: ${err.message || err.detail || 'Error'}`, true);
+            const msg = res ? res.message : 'Unknown error';
+            showToast(`Registration failed: ${msg}`, true);
         }
     } catch (e) {
         console.error('Registration error:', e);
         showToast('Network error while registering device', true);
+    } finally {
+        setLoading(false);
     }
 }
 
@@ -1506,15 +1530,22 @@ async function deleteManagedDevice(id) {
     if (!confirm('Are you sure you want to unregister this device? It will no longer be tracked as managed.')) return;
 
     try {
-        const res = await fetch(`${API_BASE_URL}/api/v1/assets/managed/${id}?tenant_id=${currentTenant}`, {
-            method: 'DELETE',
-            headers: Auth.getAuthHeader()
+        setLoading(true);
+        const res = await apiFetch(`${API_BASE_URL}/api/v1/assets/managed/${id}?tenant_id=${currentTenant}`, {
+            method: 'DELETE'
         });
-        if (res.ok) {
+
+        if (res && res.ok) {
             showToast('Device unregistered successfully', false);
             renderAssets();
         } else {
-            showToast('Failed to unregister device', true);
+            const msg = res ? res.message : 'Unknown error';
+            showToast(`Delete failed: ${msg}`, true);
         }
-    } catch (e) { showToast('Error unregistering device', true); }
+    } catch (e) {
+        console.error('Delete error:', e);
+        showToast('Network error while unregistering device', true);
+    } finally {
+        setLoading(false);
+    }
 }

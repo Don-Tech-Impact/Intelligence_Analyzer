@@ -786,38 +786,30 @@
     <!-- REGISTER DEVICE MODAL                        -->
     <!-- ============================================ -->
     <div id="register-device-modal" class="modal" style="display:none;">
-        <div class="modal-content glass-effect" style="width:500px;">
-            <div class="modal-header"
-                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
-                <h3 style="margin:0;">Register Security Device</h3>
-                <button onclick="closeRegisterDeviceModal()"
-                    style="background:none; border:none; color:white; cursor:pointer;"><i data-lucide="x"></i></button>
+        <div class="modal-content glass-effect">
+            <div class="modal-header">
+                <h3>Register Security Device</h3>
+                <button class="close-btn" onclick="closeRegisterDeviceModal()"><i data-lucide="x"
+                        style="width:16px;height:16px;"></i></button>
             </div>
             <form id="register-device-form" onsubmit="submitRegisterDevice(event)">
-                <div class="form-group" style="margin-bottom:1.25rem;">
-                    <label
-                        style="display:block; font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem;">DEVICE
-                        NAME</label>
+                <div class="form-group-with-icon">
+                    <label><i data-lucide="tag"></i> Device Name</label>
                     <input type="text" id="reg-device-name" class="glass-input" style="width:100%;"
                         placeholder="e.g. London Firewall" required>
                 </div>
-                <div class="form-group" style="margin-bottom:1.25rem;">
-                    <label
-                        style="display:block; font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem;">IP
-                        ADDRESS / CIDR</label>
+                <div class="form-group-with-icon">
+                    <label><i data-lucide="network"></i> IP Address / CIDR</label>
                     <input type="text" id="reg-device-ip" class="glass-input" style="width:100%;"
                         placeholder="e.g. 192.168.1.1" required>
                 </div>
-                <div class="form-group" style="margin-bottom:1.25rem;">
-                    <label
-                        style="display:block; font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem;">CORRELATION
-                        DEVICE ID (OPTIONAL)</label>
+                <div class="form-group-with-icon">
+                    <label><i data-lucide="hash"></i> Correlation Device ID (Optional)</label>
                     <input type="text" id="reg-device-id" class="glass-input" style="width:100%;"
                         placeholder="From logs/vendor system">
                 </div>
-                <div class="form-group" style="margin-bottom:1.25rem;">
-                    <label
-                        style="display:block; font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem;">CATEGORY</label>
+                <div class="form-group-with-icon">
+                    <label><i data-lucide="layers"></i> Category</label>
                     <select id="reg-device-category" class="glass-input" style="width:100%;">
                         <option value="firewall">Firewall</option>
                         <option value="switch">Switch</option>
@@ -827,17 +819,18 @@
                         <option value="other">Other</option>
                     </select>
                 </div>
-                <div class="form-group" style="margin-bottom:1.25rem;">
-                    <label
-                        style="display:block; font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem;">DESCRIPTION</label>
-                    <textarea id="reg-device-desc" class="glass-input" style="width:100%;" rows="3"></textarea>
+                <div class="form-group-with-icon">
+                    <label><i data-lucide="align-left"></i> Description</label>
+                    <textarea id="reg-device-desc" class="glass-input" style="width:100%;" rows="3"
+                        placeholder="Provide context about this device..."></textarea>
                 </div>
-                <div style="margin-top:1.5rem; display:flex; gap:10px;">
-                    <button type="submit" class="btn-primary" style="flex:1;">
-                        <i data-lucide="check" style="width:16px;height:16px;"></i> Register & Allow
+                <div class="modal-footer">
+                    <button type="submit" class="btn-primary">
+                        <i data-lucide="check-circle" style="width:16px;height:16px;"></i> Register & Allow
                     </button>
-                    <button type="button" class="btn-secondary" style="flex:1;"
-                        onclick="closeRegisterDeviceModal()">Cancel</button>
+                    <button type="button" class="btn-secondary" onclick="closeRegisterDeviceModal()">
+                        <i data-lucide="slash" style="width:16px;height:16px;"></i> Cancel
+                    </button>
                 </div>
             </form>
         </div>

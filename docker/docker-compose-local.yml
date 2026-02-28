@@ -67,6 +67,7 @@ services:
   analyzer:
     build:
       context: ..
+      dockerfile: docker/Dockerfile.dev
       target: development
     image: intelligence-analyzer:latest
     container_name: siem-analyzer
@@ -119,8 +120,9 @@ services:
   consumer:
     build:
       context: ..
+      dockerfile: docker/Dockerfile.dev
       target: production
-    image: intelligence-analyzer:latest
+    image: intelligence-analyzer-worker:latest
     # Note: container_name removed to allow horizontal scaling with deploy.replicas
     environment:
       # Database: PostgreSQL

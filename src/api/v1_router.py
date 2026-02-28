@@ -16,7 +16,13 @@ from src.api.auth import verify_jwt
 from src.core.config import config as siem_config
 
 # Create V1 router (protected by JWT)
-router = APIRouter(prefix="/api/v1", tags=["V1 API"], dependencies=[Depends(verify_jwt)])
+# Create V1 router (protected by JWT)
+router = APIRouter(
+    prefix="/api/v1", 
+    tags=["V1 API"], 
+    dependencies=[Depends(verify_jwt)],
+    redirect_slashes=False  # Added to prevent 307 redirects/405s on trailing slashes
+)
 
 
 # Dependency for getting DB session
@@ -402,198 +408,15 @@ def _generate_recommendations(alert_type: str, severity: str) -> list:
 # Asset Endpoints
 # ============================================
 
-@router.get("/assets")
-def list_assets(
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    search: Optional[str] = None,
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
-    """
-    List discovered assets with pagination.
-    """
-    result = AssetService.get_assets(tenant_id, db, page, limit, search)
-    return {
-        "status": "success",
-        **result,
-        "timestamp": datetime.utcnow().isoformat()
-    }
-
-
 @router.get("/assets/summary")
 def get_asset_summary(
     tenant_id: str = Depends(get_tenant_id),
     db: Session = Depends(get_db)
 ):
-    """
-    Get asset inventory summary.
-    """
+    """Get asset inventory summary."""
     data = AssetService.get_asset_summary(tenant_id, db)
     return ApiResponse(status="success", data=data)
 
-
-@router.get("/assets/{device_id}")
-def get_asset_detail(
-    device_id: str,
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
-    """
-    Get detailed asset information.
-    """
-    data = AssetService.get_asset_details(tenant_id, device_id, db)
-    if not data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Asset not found"
-        )
-    return ApiResponse(status="success", data=data)
-
-# ============================================
-# Report Endpoints
-# ============================================
-
-@router.get("/reports")
-def list_reports(
-    report_type: Optional[str] = None,
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
-    """List reports for the current tenant."""
-    query = db.query(Report).filter(Report.tenant_id == tenant_id)
-    if report_type:
-        query = query.filter(Report.report_type == report_type)
-    
-    reports = query.order_by(desc(Report.created_at)).all()
-    # Manual serialization since Report might not have to_dict
-    data = []
-    for r in reports:
-        data.append({
-            "id": r.id,
-            "report_type": r.report_type,
-            "start_date": r.start_date.isoformat() if r.start_date else None,
-            "end_date": r.end_date.isoformat() if r.end_date else None,
-            "total_logs": r.total_logs,
-            "total_alerts": r.total_alerts,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "format": r.format
-        })
-    return ApiResponse(status="success", data=data)
-
-
-@router.get("/reports/{report_id}/download")
-def download_report(
-    report_id: int,
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
-    """Download a specific report file."""
-    report = db.query(Report).filter(
-        Report.id == report_id,
-        Report.tenant_id == tenant_id
-    ).first()
-    
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
-    
-    import os
-    if not os.path.exists(report.file_path):
-        raise HTTPException(status_code=404, detail="Report file missing on server")
-        
-    from fastapi.responses import FileResponse
-    return FileResponse(report.file_path, filename=os.path.basename(report.file_path))
-
-
-@router.get("/reports/{report_id}/content")
-def get_report_content(
-    report_id: int,
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
-    """Get the HTML content of a report for in-dashboard viewing."""
-    report = db.query(Report).filter(
-        Report.id == report_id,
-        Report.tenant_id == tenant_id
-    ).first()
-    
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
-        
-    import os
-    if not os.path.exists(report.file_path):
-        raise HTTPException(status_code=404, detail="Report file missing on server")
-        
-    with open(report.file_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-        
-    return ApiResponse(status="success", data={"html": content, "type": report.report_type})
-
-
-@router.post("/reports/generate")
-def generate_report(
-    report_type: str = "daily",
-    days_back: int = 1,
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
-    """Trigger manual report generation for tenant."""
-    try:
-        gen = ReportGenerator()
-        end_date = datetime.utcnow()
-        start_date = end_date - timedelta(days=days_back)
-        
-        report = gen.generate_report(
-            start_date=start_date,
-            end_date=end_date,
-            report_type=report_type,
-            tenant_id=tenant_id
-        )
-        
-        if not report:
-            raise HTTPException(status_code=500, detail="Failed to generate report")
-            
-        return ApiResponse(status="success", data={"report_id": report.id})
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ============================================
-# Configuration Endpoints
-# ============================================
-
-@router.get("/config")
-def get_config(tenant_id: str = Depends(get_tenant_id)):
-    """Get tenant-safe configuration thresholds."""
-    return ApiResponse(status="success", data={
-        "brute_force_threshold": siem_config.brute_force_threshold,
-        "port_scan_threshold": siem_config.port_scan_threshold,
-        "log_level": siem_config.log_level,
-        "tenant_id": tenant_id
-    })
-
-
-@router.post("/config")
-def update_config(new_config: dict, tenant_id: str = Depends(get_tenant_id)):
-    """Update SIEM configuration thresholds."""
-    try:
-        # For now, we update global config as in main.py, 
-        # but scoped to tenant in future iterations with DB persistence.
-        if "brute_force_threshold" in new_config:
-            siem_config.set("detection.brute_force.threshold", int(new_config["brute_force_threshold"]))
-        if "port_scan_threshold" in new_config:
-            siem_config.set("detection.port_scan.threshold", int(new_config["port_scan_threshold"]))
-        if "log_level" in new_config:
-            siem_config.set("logging.level", new_config["log_level"])
-        
-        return ApiResponse(status="success", message="Configuration updated successfully")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update config: {str(e)}")
-
-
-# ============================================
-# Asset Management Endpoints (Managed Devices)
-# ============================================
 
 @router.get("/assets/managed")
 def list_managed_devices(
@@ -602,16 +425,13 @@ def list_managed_devices(
 ):
     """List all formally registered devices for this tenant."""
     devices = db.query(ManagedDevice).filter(ManagedDevice.tenant_id == tenant_id).all()
-    
-    # Enrich with "Status" based on last_log_at
-    now = datetime.utcnow()
     results = []
+    now = datetime.utcnow()
     for d in devices:
         dict_d = d.to_dict()
         is_online = d.last_log_at and (now - d.last_log_at) < timedelta(minutes=10)
         dict_d["is_online"] = bool(is_online)
         results.append(dict_d)
-        
     return ApiResponse(status="success", data=results)
 
 
@@ -643,11 +463,11 @@ async def register_device(
         db.add(device)
         db.commit()
 
-        # 2. Sync with Repo 1 Allowlist (Automatic Ingestion enablement)
+        # 2. Sync with Repo 1 Allowlist
         try:
             import httpx
             import os
-            repo1_url = os.getenv("REPO1_URL") or "http://host.docker.internal:8080"
+            repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
             admin_key = os.getenv("ADMIN_KEY") or "changeme-admin-key"
             
             async with httpx.AsyncClient(timeout=5.0) as client:
@@ -661,8 +481,6 @@ async def register_device(
                     headers={"X-Admin-Key": admin_key}
                 )
         except Exception as sync_err:
-            # We don't want to fail the whole request if Repo 1 is unreachable,
-            # but we should log it.
             print(f"[SIEM] Device registered locally but failed to sync allowlist: {sync_err}")
 
         return ApiResponse(status="success", data=device.to_dict())
@@ -698,19 +516,161 @@ def list_discovered_assets(
     page: int = 1,
     limit: int = 20
 ):
-    """
-    Returns unique assets discovered from logs that are NOT yet in managed_devices.
-    """
-    # 1. Get all managed IPs to exclude them
+    """Returns unique assets discovered from logs that are NOT yet in managed_devices."""
     managed_ips = [d.ip_address for d in db.query(ManagedDevice.ip_address).filter(ManagedDevice.tenant_id == tenant_id).all()]
-    
-    # 2. Use existing AssetService logic but filter out managed ones
     all_assets = AssetService.get_assets(tenant_id, db, page, limit)
-    
-    # 3. Filter
     discovered = [a for a in all_assets["data"] if a["device_id"] not in managed_ips]
-    
     return ApiResponse(status="success", data={
         "data": discovered,
         "pagination": all_assets["pagination"]
     })
+
+
+@router.get("/assets")
+def list_assets(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    search: Optional[str] = None,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """List discovered assets with pagination."""
+    result = AssetService.get_assets(tenant_id, db, page, limit, search)
+    return {
+        "status": "success",
+        **result,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+@router.get("/assets/telemetry/{device_id}")
+def get_asset_detail(
+    device_id: str,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """Get detailed asset information."""
+    data = AssetService.get_asset_details(tenant_id, device_id, db)
+    if not data:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return ApiResponse(status="success", data=data)
+
+
+# ============================================
+# Report Endpoints
+# ============================================
+
+@router.get("/reports")
+def list_reports(
+    report_type: Optional[str] = None,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """List reports for the current tenant."""
+    query = db.query(Report).filter(Report.tenant_id == tenant_id)
+    if report_type:
+        query = query.filter(Report.report_type == report_type)
+    
+    reports = query.order_by(desc(Report.created_at)).all()
+    data = []
+    for r in reports:
+        data.append({
+            "id": r.id,
+            "report_type": r.report_type,
+            "start_date": r.start_date.isoformat() if r.start_date else None,
+            "end_date": r.end_date.isoformat() if r.end_date else None,
+            "total_logs": r.total_logs,
+            "total_alerts": r.total_alerts,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "format": r.format
+        })
+    return ApiResponse(status="success", data=data)
+
+
+@router.get("/reports/{report_id}/download")
+def download_report(
+    report_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """Download a specific report file."""
+    report = db.query(Report).filter(Report.id == report_id, Report.tenant_id == tenant_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    import os
+    if not os.path.exists(report.file_path):
+        raise HTTPException(status_code=404, detail="Report file missing on server")
+        
+    from fastapi.responses import FileResponse
+    return FileResponse(report.file_path, filename=os.path.basename(report.file_path))
+
+
+@router.get("/reports/{report_id}/content")
+def get_report_content(
+    report_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """Get the HTML content of a report."""
+    report = db.query(Report).filter(Report.id == report_id, Report.tenant_id == tenant_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+        
+    import os
+    if not os.path.exists(report.file_path):
+        raise HTTPException(status_code=404, detail="Report file missing on server")
+        
+    with open(report.file_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    return ApiResponse(status="success", data={"html": content, "type": report.report_type})
+
+
+@router.post("/reports/generate")
+def generate_report(
+    report_type: str = "daily",
+    days_back: int = 1,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """Trigger manual report generation."""
+    try:
+        gen = ReportGenerator()
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=days_back)
+        report = gen.generate_report(start_date, end_date, report_type, tenant_id)
+        if not report:
+            raise HTTPException(status_code=500, detail="Failed to generate report")
+        return ApiResponse(status="success", data={"report_id": report.id})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
+# Configuration Endpoints
+# ============================================
+
+@router.get("/config")
+def get_config(tenant_id: str = Depends(get_tenant_id)):
+    """Get tenant-safe configuration thresholds."""
+    return ApiResponse(status="success", data={
+        "brute_force_threshold": siem_config.brute_force_threshold,
+        "port_scan_threshold": siem_config.port_scan_threshold,
+        "log_level": siem_config.log_level,
+        "tenant_id": tenant_id
+    })
+
+
+@router.post("/config")
+def update_config(new_config: dict, tenant_id: str = Depends(get_tenant_id)):
+    """Update SIEM configuration symbols."""
+    try:
+        if "brute_force_threshold" in new_config:
+            siem_config.set("detection.brute_force.threshold", int(new_config["brute_force_threshold"]))
+        if "port_scan_threshold" in new_config:
+            siem_config.set("detection.port_scan.threshold", int(new_config["port_scan_threshold"]))
+        if "log_level" in new_config:
+            siem_config.set("logging.level", new_config["log_level"])
+        return ApiResponse(status="success", message="Configuration updated successfully")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
