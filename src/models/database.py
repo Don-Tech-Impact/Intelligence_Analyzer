@@ -119,6 +119,8 @@ class NormalizedLog(Base):
             'action': self.action,
             'log_type': self.log_type,
             'vendor': self.vendor,
+            'company_id': self.company_id,
+            'device_id': self.device_id,
             'severity': self.severity,
             'message': self.message,
             'business_context': self.business_context
@@ -200,6 +202,8 @@ class Alert(Base):
             'severity': self.severity,
             'source_ip': self.source_ip,
             'destination_ip': self.destination_ip,
+            'company_id': self.company_id,
+            'device_id': self.device_id,
             'description': self.description,
             'details': self.details,
             'status': self.status,

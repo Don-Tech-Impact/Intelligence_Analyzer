@@ -241,6 +241,8 @@ class LogAdapter:
         
         return NormalizedLogSchema(
             tenant_id=str(metadata.get('tenant_id', 'default')).strip('[]'),
+            company_id=metadata.get('tenant_id') or metadata.get('company_id'),
+            device_id=metadata.get('device_id') or parsed.get('device_id'),
             timestamp=LogAdapter._parse_timestamp(log.get('timestamp')),
             source_ip=parsed.get('src_ip') or parsed.get('source_ip'),
             destination_ip=parsed.get('dst_ip') or parsed.get('dest_ip') or parsed.get('destination_ip'),
@@ -262,6 +264,8 @@ class LogAdapter:
         """Normalize flat format where fields are at root level."""
         return NormalizedLogSchema(
             tenant_id=str(data.get('tenant_id', 'default')).strip('[]'),
+            company_id=data.get('tenant_id') or data.get('company_id'),
+            device_id=data.get('device_id'),
             timestamp=LogAdapter._parse_timestamp(data.get('timestamp')),
             source_ip=data.get('source_ip'),
             destination_ip=data.get('destination_ip'),

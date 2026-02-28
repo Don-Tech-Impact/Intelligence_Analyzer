@@ -31,24 +31,17 @@ router = APIRouter(prefix="/api/admin", tags=["Admin (Service-to-Service)"])
 # ---------- Auth ----------
 
 def _get_admin_key() -> str:
-    """Get the admin API key from environment.
-
-    Prefers ADMIN_KEY (the name specified in the integration contract).
-    Falls back to ADMIN_API_KEY for backward compatibility.
-    """
-    return (
-        os.getenv("ADMIN_KEY")
-        or os.getenv("ADMIN_API_KEY")
-        or "changeme-admin-key"
-    )
+    """Get the admin API key from environment."""
+    key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY")
+    if not key:
+        # In production contexts, this should fail. We log a critical warning.
+        logger.warning("CRITICAL: No ADMIN_KEY configured. Falling back to default for development ONLY.")
+        return "changeme-admin-key"
+    return key
 
 
 def _get_repo1_base() -> str:
-    """Return the base URL of Repo 1.
-
-    Prefers REPO1_URL (the name specified in the integration contract).
-    Falls back to REPO1_BASE_URL for backward compatibility.
-    """
+    """Return the base URL of Repo 1."""
     return (
         os.getenv("REPO1_URL")
         or os.getenv("REPO1_BASE_URL")
@@ -57,12 +50,7 @@ def _get_repo1_base() -> str:
 
 
 def verify_admin_key(x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key")) -> str:
-    """Validate X-Admin-Key header matches the configured secret.
-
-    Uses Header(None) so FastAPI does NOT enforce presence at schema level.
-    This ensures a missing header returns HTTP 401 (not 422 Unprocessable Entity),
-    matching the Repo 1 integration contract.
-    """
+    """Validate X-Admin-Key header matches the configured secret."""
     if not x_admin_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -82,11 +70,7 @@ def verify_admin_or_superadmin(
     x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key"),
     request: Request = None,
 ):
-    """Allow either the service API key or a verified Superadmin Bearer JWT.
-
-    Checks X-Admin-Key first, then falls back to Bearer JWT verification.
-    Raises 401 only when both methods fail.
-    """
+    """Allow either the service API key or a verified Superadmin Bearer JWT."""
     # --- Option A: X-Admin-Key ---
     if x_admin_key and x_admin_key == _get_admin_key():
         return {"sub": "service-account", "role": "superadmin"}
@@ -97,15 +81,26 @@ def verify_admin_or_superadmin(
         if auth_header.startswith("Bearer "):
             token = auth_header.split(" ", 1)[1]
             try:
-                from src.utils.auth import decode_access_token
-                payload = decode_access_token(token)
+                from src.api.auth import decode_token_payload
+                payload = decode_token_payload(token)
                 if payload:
-                    role = payload.get("role", "")
+                    role = str(payload.get("role", "")).lower()
                     is_admin = payload.get("is_admin", False)
+                    
+                    # Handle nested Repo 1 admin object
+                    admin_obj = payload.get("admin", {})
+                    if isinstance(admin_obj, dict):
+                        role = role or str(admin_obj.get("role", "")).lower()
+                        is_admin = is_admin or admin_obj.get("is_admin", False)
+
                     if role in ("superadmin", "admin") or is_admin:
                         return payload
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Auth Trace: Error during JWT verification: {e}")
+        else:
+            logger.warning(f"Auth Trace: Authorization header does not start with Bearer: {auth_header[:20]}...")
+    else:
+        logger.warning("Auth Trace: Request object is None")
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

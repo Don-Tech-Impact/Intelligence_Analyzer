@@ -219,6 +219,10 @@ reports/*.pdf
 config/.env
 *.rdb
 data/
-
-# Internal debugging/explanation notes
+*.txt
+repo2-rovo/
 Explanation/
+.pytest_cache/
+tests/integration/
+scripts/dev/
+docs/archive/

@@ -1,0 +1,122 @@
+version: '3.8'
+
+services:
+  # ===========================================================================
+  # PostgreSQL Database (Primary Storage)
+  # ===========================================================================
+  db:
+    image: postgres:15-alpine
+    container_name: siem-db
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-siem_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-siem_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    networks:
+      - siem-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U siem_user -d siem_db" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.50'
+
+  # ===========================================================================
+  # Intelligence Analyzer API (UI & Endpoints)
+  # ===========================================================================
+  analyzer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+      target: development
+    container_name: siem-analyzer-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://afric-analyzer-redis-local:6379/0
+    volumes:
+      - .env:/app/.env
+      - ./src:/app/src:ro
+      - ./dashboard:/app/dashboard:ro
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+      - ./tests:/app/tests:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - siem-network
+      - afric-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health/live" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.50'
+
+  # ===========================================================================
+  # Redis Log Consumer Worker
+  # ===========================================================================
+  consumer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+      target: development
+    container_name: siem-consumer-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://afric-analyzer-redis-local:6379/0
+      - BATCH_SIZE=100
+    volumes:
+      - .env:/app/.env
+      - ./src:/app/src:ro
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - siem-network
+      - afric-network
+    command: python -m src.services.redis_consumer
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.50'
+
+networks:
+  siem-network:
+    driver: bridge
+  afric-network:
+    external: true
+    name: docker_afric-network
+
+volumes:
+  # Point to the original volume to maintain data continuity
+  postgres_data:
+    external: true
+    name: docker_pg_data

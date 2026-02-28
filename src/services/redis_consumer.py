@@ -154,8 +154,8 @@ class RedisConsumer:
                 if len(parts) == 3:
                     new_tenants.add(parts[1])
             
-            # Check if new tenants were discovered
-            if new_tenants != self.known_tenants:
+            # Check if new tenants were discovered or if we need to initialize
+            if new_tenants != self.known_tenants or not self.discovered_queues:
                 added = new_tenants - self.known_tenants
                 removed = self.known_tenants - new_tenants
                 
@@ -167,7 +167,7 @@ class RedisConsumer:
                 self.known_tenants = new_tenants
                 
                 # Build queue list: ingest first (priority), then clean, then dead
-                self.discovered_queues = []
+                self.discovered_queues = ['log_queue']  # Always include legacy queue
                 for tenant in sorted(self.known_tenants):
                     self.discovered_queues.append(f'logs:{tenant}:ingest')
                     self.discovered_queues.append(f'logs:{tenant}:clean')
@@ -531,6 +531,16 @@ class RedisConsumer:
         try:
             queue_type = self._get_queue_type(queue_name)
             tenant_id = self._get_queue_tenant(queue_name)
+            
+            # Legacy log_queue handling
+            if queue_name == 'log_queue':
+                queue_type = 'ingest'
+                # Try to extract tenant from payload if queue name doesn't have it
+                tenant_id = (
+                    log_data.get('tenant_id') or 
+                    log_data.get('metadata', {}).get('tenant_id') or
+                    'default'
+                )
             
             if queue_type == 'dead':
                 return self._handle_dead_log(log_data)

@@ -36,33 +36,7 @@ services:
       postgres -c shared_buffers=256MB -c effective_cache_size=768MB -c maintenance_work_mem=128MB -c checkpoint_completion_target=0.9 -c wal_buffers=16MB -c default_statistics_target=100 -c random_page_cost=1.1 -c effective_io_concurrency=200 -c work_mem=16MB -c min_wal_size=1GB -c max_wal_size=4GB -c max_connections=200
 
   # ===========================================================================
-  # Redis Queue & State Store
-  # ===========================================================================
-  # Queues: dead_logs, ingest_logs, clean_logs
-  # State: bf:* (brute force), ps:* (port scan), bc:* (beaconing)
-  # ===========================================================================
-  # redis:
-  #   image: redis:7-alpine
-  #   container_name: siem-redis
-  #   ports:
-  #     - "6379:6379"
-  #   volumes:
-  #     - redis_data:/data
-  #     - ./config/redis.conf:/usr/local/etc/redis/redis.conf:ro
-  #   restart: unless-stopped
-  #   healthcheck:
-  #     test: [ "CMD", "redis-cli", "ping" ]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #   # Memory limit with LRU eviction for state keys (not queues)
-  #   command: >
-  #     redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru --save 60 1000 --tcp-keepalive 300
-
-  # ===========================================================================
   # Intelligence Analyzer API
-  # ===========================================================================
-  # FastAPI server for dashboards, alerts, and management
   # ===========================================================================
   analyzer:
     image: ${DOCKER_ORG:-africanalyzer}/${APP_NAME:-intelligence_analyzer}:${IMAGE_TAG:-latest}
