@@ -1228,6 +1228,34 @@ header {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    min-width: 0;
+    /* Important for ellipsis */
+}
+
+/* High Risk Entities Specific Styles */
+.concise-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-muted);
+    transition: all 0.2s;
+}
+
+.concise-item:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.concise-item .ip-link {
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.concise-item .ip-link:hover {
+    color: var(--primary);
 }
 
 .item-name {
@@ -1338,8 +1366,99 @@ header {
     padding: 1.5rem;
     gap: 2rem;
     flex-wrap: wrap;
-    /* Prevent overlap on small screens */
     border-bottom: 1px solid var(--border-default);
+}
+
+/* 🛡️ Robust Table Alignment Fix */
+.data-table-container table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    /* Ensures columns stay in their lane */
+}
+
+/* column specific widths for Alerts */
+#alerts-view table th:nth-child(1),
+#alerts-view table td:nth-child(1) {
+    width: 140px;
+}
+
+/* Time */
+#alerts-view table th:nth-child(2),
+#alerts-view table td:nth-child(2) {
+    width: 180px;
+}
+
+/* Type */
+#alerts-view table th:nth-child(3),
+#alerts-view table td:nth-child(3) {
+    width: 160px;
+}
+
+/* Source IP */
+#alerts-view table th:nth-child(4),
+#alerts-view table td:nth-child(4) {
+    width: 100px;
+}
+
+/* Severity */
+#alerts-view table th:nth-child(5),
+#alerts-view table td:nth-child(5) {
+    width: auto;
+}
+
+/* Description (flexible) */
+#alerts-view table th:nth-child(6),
+#alerts-view table td:nth-child(6) {
+    width: 100px;
+}
+
+/* Status */
+
+.data-table-container th {
+    text-align: left;
+    padding: 1rem 1.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    background: rgba(148, 163, 184, 0.05);
+    letter-spacing: 0.05em;
+}
+
+.data-table-container td {
+    padding: 1rem 1.5rem;
+    font-size: 0.8125rem;
+    border-bottom: 1px solid var(--border-muted);
+    vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 🛡️ Specific Alignment for Mini Tables (Overview) */
+#latest-alerts-body td {
+    padding: 0.875rem 1rem;
+}
+
+#latest-alerts-body td:nth-child(1) {
+    width: 100px;
+}
+
+#latest-alerts-body td:nth-child(2) {
+    width: 120px;
+}
+
+#latest-alerts-body td:nth-child(3) {
+    width: 130px;
+}
+
+#latest-alerts-body td:nth-child(4) {
+    width: 90px;
+}
+
+#latest-alerts-body td:nth-child(5) {
+    width: 90px;
 }
 
 .table-header .header-left h3 {
@@ -2126,6 +2245,7 @@ tr.severity-low td:first-child {
     display: flex;
     gap: 1rem;
 }
+
 /* AI Insights Pill - Premium Top Placement */
 .insights-pill {
     display: flex;
@@ -2157,12 +2277,21 @@ tr.severity-low td:first-child {
 }
 
 @keyframes slideDownFade {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /* Emboldened Chart Labels */
-.apexcharts-xaxis-label, .apexcharts-yaxis-label, .apexcharts-legend-text {
+.apexcharts-xaxis-label,
+.apexcharts-yaxis-label,
+.apexcharts-legend-text {
     font-weight: 600 !important;
     fill: var(--text-primary) !important;
     color: var(--text-primary) !important;

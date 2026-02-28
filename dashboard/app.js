@@ -906,8 +906,8 @@ function createVolumeChart(selector) {
             { name: 'Suspicious', data: [] }
         ],
         chart: { ...CHART_DEFAULTS.chart, height: 320, type: 'area' },
-        stroke: { curve: 'smooth', width: [3, 3, 3] }, // Thicker lines
-        fill: { type: 'gradient', gradient: { opacityFrom: 0.35, opacityTo: 0.05 } },
+        stroke: { curve: 'monotoneCubic', width: 4 }, // Unique premium thick line
+        fill: { type: 'gradient', gradient: { opacityFrom: 0.6, opacityTo: 0.05, stops: [0, 90, 100] } },
         xaxis: {
             type: 'datetime',
             axisBorder: { show: false },
@@ -916,6 +916,7 @@ function createVolumeChart(selector) {
         },
         yaxis: { labels: { style: { fontSize: '11px', fontWeight: 600 } } },
         colors: [COLORS.cyan, COLORS.green, COLORS.orange],
+        markers: { size: 4, strokeWidth: 2, hover: { size: 6 } }, // Added markers per feedback
         legend: {
             position: 'bottom',
             fontSize: '11px',
@@ -1147,24 +1148,28 @@ function updateHeatmap(data) {
 function renderHighRiskEntities(alerts) {
     const container = document.getElementById('high-risk-entities-list');
     if (!container) return;
+
     const ips = {};
     alerts.forEach(a => {
         const ip = a.source_ip || a.ip;
         if (!ip) return;
-        if (!ips[ip]) ips[ip] = { count: 0, sev: 'low' };
+        if (!ips[ip]) ips[ip] = { count: 0, sev: (a.severity || 'low').toLowerCase() };
         ips[ip].count++;
-        if (a.severity === 'critical') ips[ip].sev = 'critical';
-        else if (a.severity === 'high' && ips[ip].sev !== 'critical') ips[ip].sev = 'high';
+        // Maintain highest severity seen
+        const s = (a.severity || 'low').toLowerCase();
+        if (s === 'critical') ips[ip].sev = 'critical';
+        else if (s === 'high' && ips[ip].sev !== 'critical') ips[ip].sev = 'high';
     });
+
     const sorted = Object.entries(ips).sort((a, b) => b[1].count - a[1].count).slice(0, 5);
     container.innerHTML = sorted.map(([ip, d]) => `
         <div class="concise-item">
-            <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-                <span class="mono" style="font-weight:600; color:var(--text-primary); cursor:pointer;" onclick="askAI('Tell me more about IP ${ip}')">${ip}</span>
-                <span class="badge-status ${d.sev}">${d.count} Events</span>
+            <div class="item-main">
+                <span class="mono ip-link" onclick="askAI('Tell me more about IP ${ip}')">${ip}</span>
             </div>
+            <span class="badge badge-${d.sev}">${d.count} Events</span>
         </div>
-    `).join('') || '<div style="padding:1rem;color:var(--text-muted);">No risk entities.</div>';
+    `).join('') || '<div style="padding:1rem;color:var(--text-muted);font-size:0.8rem;">No risk entities recorded.</div>';
 }
 
 function generateMockHeatmapData() {

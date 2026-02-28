@@ -178,6 +178,17 @@ class AnalyticsService:
             NormalizedLog.timestamp >= start_time
         ).group_by('timestamp').order_by('timestamp').all()
 
+        # Demo Fallback: If 0 events in 24h, broaden to 14 days
+        if not events_query and time_range == "24h":
+            start_time = now - timedelta(days=14)
+            events_query = db.query(
+                time_bucket.label('timestamp'),
+                func.count(NormalizedLog.id).label('events')
+            ).filter(
+                NormalizedLog.tenant_id == tenant_id,
+                NormalizedLog.timestamp >= start_time
+            ).group_by('timestamp').order_by('timestamp').all()
+
         # Threats per bucket (high severity logs)
         threats_query = db.query(
             time_bucket.label('timestamp'),
