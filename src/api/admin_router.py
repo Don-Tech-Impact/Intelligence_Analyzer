@@ -14,6 +14,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Header, Request, Response
+from fastapi.responses import JSONResponse
+from src.core.limiter import limiter
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -432,7 +434,8 @@ async def sync_tenant(payload: dict, db: Session = Depends(get_db)):
 # ==========================================================================
 
 @router.post("/proxy/login")
-async def proxy_login(payload: dict, response: Response):
+@limiter.limit("5/minute")
+async def proxy_login(request: Request, payload: dict, response: Response):
     """
     Proxy login request to Repo 1 to bypass browser CORS issues.
     Relays the status code and JSON body from Repo 1.
@@ -455,25 +458,31 @@ async def proxy_login(payload: dict, response: Response):
                 headers={"Content-Type": "application/json"},
             )
             
-            # Relay the status code
-            response.status_code = r1_res.status_code
-            
+            # Standardize all auth errors (401/403) to a generic message
+            if r1_res.status_code in [401, 403]:
+                return JSONResponse(
+                    status_code=401,
+                    content={"status": "error", "detail": "Invalid credentials or unauthorized access."}
+                )
+
+            # Relay the status code for other errors (e.g. 500)
+            if r1_res.status_code >= 400:
+                return JSONResponse(
+                    status_code=r1_res.status_code,
+                    content={"status": "error", "detail": "Authentication system encountered an issue."}
+                )
+
             res_data = r1_res.json()
             # Normalize token key if Repo 1 uses 'token' instead of 'access_token'
             if "token" in res_data and "access_token" not in res_data:
                 res_data["access_token"] = res_data["token"]
                 
-            logger.info(
-                f"Repo 1 login → HTTP {r1_res.status_code}. "
-                f"Keys: {list(res_data.keys())}. "
-                f"Has token: {'access_token' in res_data}"
-            )
             return res_data
         except Exception as exc:
             logger.error(f"Proxy login failed: {exc}")
             raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Authentication server unreachable: {exc}",
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication currently unavailable.",
             )
 
 
