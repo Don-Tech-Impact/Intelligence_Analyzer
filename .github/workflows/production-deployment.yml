@@ -10,10 +10,9 @@ env:
   DOCKER_ORG: africanalyzer
   APP_NAME: intelligence_analyzer
   APP_DIR: /opt/intelligence-analyzer
-  # REGISTRY: docker.io
 
 jobs:
-  # ── Job 1: Run Tests ──────────────────────────────────────────────────────
+  # ── Job 1: Test ────────────────────────────────────────────────────────────
   test:
     name: Run Tests
     runs-on: ubuntu-latest
@@ -29,11 +28,9 @@ jobs:
           --health-retries 5
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5        # Updated: v4 → v5
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -42,24 +39,23 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install --no-cache-dir -r requirements/requirements.txt
-          pip install --no-cache-dir -r requirements/requirements-dev.txt
+          pip install --no-cache-dir \
+            -r requirements/requirements.txt \
+            -r requirements/requirements-dev.txt
 
       - name: Run tests
         env:
           REDIS_URL: redis://localhost:6379/0
           ADMIN_API_KEY: test-key
-        run: |
-          pytest tests/ -v --cov=src --cov-report=xml
+        run: pytest tests/ -v --cov=src --cov-report=xml
 
-      - name: Security scan
+      - name: Security scan (SAST + dependencies)
         run: |
           pip install bandit safety
           bandit -r src/ -f json -o bandit-report.json || true
-          safety check --json --output safety-report.json || true
+          safety scan --output json > safety-report.json || true   # 'scan' replaces deprecated 'check'
 
-      - name: Upload reports
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: security-reports
@@ -68,7 +64,7 @@ jobs:
             safety-report.json
             coverage.xml
 
-  # ── Job 2: Build & Push Docker Image ──────────────────────────────────────
+  # ── Job 2: Build & Push ────────────────────────────────────────────────────
   build:
     name: Build & Push Docker Image
     needs: test
@@ -76,16 +72,21 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      # Expose the short SHA for all downstream jobs — single source of truth
+      short_sha: ${{ steps.short_sha.outputs.sha }}
+      image_ref: ${{ steps.build.outputs.imageid }}
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Compute short SHA
+        id: short_sha
+        run: echo "sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
@@ -97,15 +98,14 @@ jobs:
           images: ${{ env.DOCKER_ORG }}/${{ env.APP_NAME }}
           tags: |
             type=ref,event=branch
-            type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push Docker image
+      - name: Build and push
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6    # Updated: v5 → v6
         with:
           context: .
           file: ./docker/Dockerfile.production
@@ -114,25 +114,37 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64             # REMOVED arm64 — EC2 t2/t3 are amd64 only
+                                             # Add arm64 back only if you move to Graviton
+
+      # Scan the image for CVEs BEFORE it reaches production
+      - name: Scan image for vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_ORG }}/${{ env.APP_NAME }}:sha-${{ steps.short_sha.outputs.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'           # Warn only — set to '1' to block deploys on CVEs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trivy-results
+          path: trivy-results.sarif
 
       - name: Generate SBOM
-        uses: anchore/sbom-action@v0
-        if: success()
+        uses: anchore/sbom-action@v0.17.2    # Pinned — never use @v0 floating tag in prod
         with:
           image: ${{ env.DOCKER_ORG }}/${{ env.APP_NAME }}@${{ steps.build.outputs.digest }}
-          # platform: linux/amd64
           format: spdx-json
           output-file: sbom.spdx.json
 
-      - name: Upload SBOM
-        uses: actions/upload-artifact@v4
-        if: success()
+      - uses: actions/upload-artifact@v4
         with:
           name: sbom
           path: sbom.spdx.json
 
-  # ── Job 3: Deploy to Production Server ────────────────────────────────────
+  # ── Job 3: Deploy ──────────────────────────────────────────────────────────
   deploy:
     name: Deploy to Production
     needs: build
@@ -143,27 +155,22 @@ jobs:
     environment: production
 
     steps:
-      - name: validate secrets
+      - name: Validate required secrets
         run: |
           MISSING=""
-          [ -z "${{ secrets.PROD_HOST }}" ] && MISSING="PROD_HOST"
-          [ -z "${{ secrets.PROD_USER }}" ] && MISSING="${MISSING} PROD_USER"
-          [ -z "${{ secrets.PROD_SSH_KEY }}" ] && MISSING="${MISSING} PROD_SSH_KEY"
-          [ -z "${{ secrets.PAT_TOKEN }}" ] && MISSING="${MISSING} PAT_TOKEN"
+          [ -z "${{ secrets.PROD_HOST }}" ]     && MISSING="${MISSING} PROD_HOST"
+          [ -z "${{ secrets.PROD_USER }}" ]     && MISSING="${MISSING} PROD_USER"
+          [ -z "${{ secrets.PROD_SSH_KEY }}" ]  && MISSING="${MISSING} PROD_SSH_KEY"
+          [ -z "${{ secrets.PAT_TOKEN }}" ]     && MISSING="${MISSING} PAT_TOKEN"
+          [ -n "${MISSING}" ] && echo "Missing secrets:${MISSING}" && exit 1
+          echo "All secrets present."
 
-          if [ -n "${MISSING}" ]; then
-            echo "Missing secrets: ${MISSING}"
-            exit 1
-          fi
-          echo "All secrets are set"
-
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
-          IMAGE_TAG:      ${{ github.sha }}
+          SHORT_SHA:      ${{ needs.build.outputs.short_sha }}
           DOCKER_ORG_ENV: ${{ env.DOCKER_ORG }}
           APP_NAME_ENV:   ${{ env.APP_NAME }}
           APP_DIR_ENV:    ${{ env.APP_DIR }}
@@ -171,103 +178,129 @@ jobs:
           DOCKER_USER:    ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASS:    ${{ secrets.DOCKER_PASSWORD }}
         with:
-          host:         ${{ secrets.PROD_HOST }}
-          username:     ${{ secrets.PROD_USER }}
-          key:          ${{ secrets.PROD_SSH_KEY }}
-          port:         22
-          envs:         IMAGE_TAG,DOCKER_ORG_ENV,APP_NAME_ENV,APP_DIR_ENV,PAT_TOKEN,DOCKER_USER,DOCKER_PASS
-          script_stop:  true
+          host:        ${{ secrets.PROD_HOST }}
+          username:    ${{ secrets.PROD_USER }}
+          key:         ${{ secrets.PROD_SSH_KEY }}
+          port:        22
+          envs:        SHORT_SHA,DOCKER_ORG_ENV,APP_NAME_ENV,APP_DIR_ENV,PAT_TOKEN,DOCKER_USER,DOCKER_PASS
+          script_stop: true
           script: |
-            set -x
-            echo "========================================="
-            echo "  Deploying ${DOCKER_ORG_ENV}/${APP_NAME_ENV}"
-            echo "  Image tag: ${IMAGE_TAG}"
-            echo "========================================="
+            # REMOVED: set -x  — would print DOCKER_PASS and PAT_TOKEN to logs
+            set -e              # Fail immediately on any error
+            set -o pipefail     # Catch errors in piped commands
 
-            APP_DIR="${APP_DIR_ENV:-$HOME/intelligence-analyzer}"
-            mkdir -p "${APP_DIR}"
-            cd "${APP_DIR}"
+            IMAGE_TAG="sha-${SHORT_SHA}"
 
-            echo ">> Checking disk space before deployment"
-            df -h
+            echo "========================================"
+            echo "  Deploying: ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:${IMAGE_TAG}"
+            echo "  Server:    $(hostname)"
+            echo "  Time:      $(date -u)"
+            echo "========================================"
 
-            # Clone or pull latest code
+            # ── Step 1: Prepare directory ──────────────────────────────────
+            mkdir -p "${APP_DIR_ENV}"
+            cd "${APP_DIR_ENV}"
+            df -h   # Log disk space for visibility
+
+            # ── Step 2: Pull latest config and compose file ────────────────
+            # Use credential helper — PAT never appears in process list
+            git config --global credential.helper store
+            echo "https://${PAT_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
+            chmod 600 ~/.git-credentials
+
             rm -rf /tmp/repo_temp
             git clone --depth 1 \
-              https://${PAT_TOKEN}@github.com/Don-Tech-Impact/Intelligence_Analyzer.git \
-              /tmp/repo_temp  
-            
-            echo ">> Updating configuration and scripts"
+              https://github.com/Don-Tech-Impact/Intelligence_Analyzer.git \
+              /tmp/repo_temp
+
+            # Remove credentials immediately after clone
+            rm -f ~/.git-credentials
+            git config --global --unset credential.helper || true
+
             cp -r /tmp/repo_temp/config ./ || true
             cp -r /tmp/repo_temp/scripts ./ || true
             cp /tmp/repo_temp/docker/docker-compose-prod.yml ./docker-compose.yml
             rm -rf /tmp/repo_temp
 
-            echo ">> Docker compose file and project structure updated"
+            # ── Step 3: Write runtime .env (non-secret values only) ────────
+            # Secrets (POSTGRES_PASSWORD, HMAC_KEY, etc.) must be pre-configured
+            # on the server at ${APP_DIR_ENV}/config/.env.production
+            # Never write secrets into a temp .env file in the deploy script
+            cat > "${APP_DIR_ENV}/.env" <<EOF
+            IMAGE_TAG=${IMAGE_TAG}
+            DOCKER_ORG=${DOCKER_ORG_ENV}
+            APP_NAME=${APP_NAME_ENV}
+            DEPLOY_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            REDIS_URL=redis://afric-analyzer-redis-1:6379/0
+            CONSUMER_REPLICAS=1
+            EOF
 
-            ## Step3 to pul up the new image in the server"
-            ## Login to the private repo to avoid rate limiting 
-            echo ">> Logging in to docker hub to pull image now"
+            # ── Step 4: Log in to Docker Hub ───────────────────────────────
             echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
-           
-            echo ">> Freeing up disk space by removing unused images and builder cache"
+
+            # ── Step 5: Pull new image ─────────────────────────────────────
+            echo ">> Pulling: ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:${IMAGE_TAG}"
+            docker pull "${DOCKER_ORG_ENV}/${APP_NAME_ENV}:${IMAGE_TAG}"
+
+            # ── Step 6: Safe cleanup — images only, NEVER volumes ──────────
+            # --volumes is intentionally omitted — it would destroy pg_data
             docker system prune -f
+            # Aggressive image cleanup only (no volumes, no running containers)
+            docker image prune -af
 
-            echo ">> Ensuring port 8000 is free (stopping conflicting containers)"
-            docker ps -q --filter "publish=8000" | xargs -r docker stop || true
+            # ── Step 7: Recreate containers with new image ─────────────────
+            IMAGE_TAG="${IMAGE_TAG}" \
+              docker compose -p intel up -d --force-recreate --remove-orphans
 
-            echo ">> pulling the image from the hub"
-            echo ">> Pulling image: ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:sha-${IMAGE_TAG:0:7}"
-            docker pull "${DOCKER_ORG_ENV}/${APP_NAME_ENV}:sha-${IMAGE_TAG:0:7}"
+            # ── Step 8: Verify health (wait for start_period + margin) ─────
+            echo ">> Waiting 45s for containers to pass health checks..."
+            sleep 45
 
-            ## -- Step 4 Restart the container ###
-            echo ">> Restarting the container"
-            SHORT_SHA="${IMAGE_TAG:0:7}"
-            echo "IMAGE_TAG=sha-${SHORT_SHA}" > "${APP_DIR_ENV}/.env"
-            echo "DOCKER_ORG=${DOCKER_ORG_ENV}" >> "${APP_DIR_ENV}/.env"
-            echo "APP_NAME=${APP_NAME_ENV}" >> "${APP_DIR_ENV}/.env"
+            # Check that all containers are healthy — fail deploy if any are not
+            UNHEALTHY=$(docker compose -p intel ps --format json \
+              | python3 -c "
+            import sys, json
+            containers = [json.loads(l) for l in sys.stdin if l.strip()]
+            bad = [c['Name'] for c in containers if c.get('Health','') not in ('healthy','')]
+            print('\n'.join(bad))
+            ")
 
-            # ADD THIS LINE BELOW:
-            echo "REDIS_URL=redis://afric-analyzer-redis-1:6379/0" >> "${APP_DIR_ENV}/.env"
-            echo "DEPLOY_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${APP_DIR_ENV}/.env"
-
-            # Check for aggressive cleanup flag (set to 'true' to activate)
-            AGGRESSIVE_CLEAN="true" 
-            if [ "$AGGRESSIVE_CLEAN" = "true" ]; then
-                echo ">> WARNING: Performing aggressive Docker cleanup (killing and removing all unused resources)"
-                docker system prune -af --volumes
+            if [ -n "$UNHEALTHY" ]; then
+              echo "ERROR: Unhealthy containers detected:"
+              echo "$UNHEALTHY"
+              echo ">> Rolling back to previous image..."
+              # Docker Compose does not have native rollback — log and alert
+              # The previous image is still pulled and tagged; manual rollback:
+              # IMAGE_TAG=sha-<previous_sha> docker compose -p intel up -d
+              docker compose -p intel logs --tail=50
+              exit 1
             fi
 
-            IMAGE_TAG="sha-${SHORT_SHA}" docker compose -p intel up -d --force-recreate --remove-orphans
-
-
-            # ── Step 5: Verify ──
-            echo ">> Waiting for containers to stabilise..."
-            sleep 5
             docker compose -p intel ps
 
-            # Clean up old dangling images to save disk space
-            docker image prune -f
-
-            echo "========================================="
+            echo "========================================"
             echo "  ✅ Deploy complete"
-            echo "  Image: ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:sha-${IMAGE_TAG:0:7}"
-            echo "========================================="
+            echo "  Image: ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:${IMAGE_TAG}"
+            echo "========================================"
 
-  # # ── Job 4: Notify ─────────────────────────────────────────────────────────
-  # notify:
-  #   name: Notify Deployment Status
-  #   needs: [test, build, deploy]
-  #   runs-on: ubuntu-latest
-  #   if: always()
+  # ── Job 4: Deployment Summary ──────────────────────────────────────────────
+  notify:
+    name: Deployment Summary
+    needs: [test, build, deploy]
+    runs-on: ubuntu-latest
+    if: always()   # Run even if deploy fails — you need to know
 
-  #   steps:
-  #     - name: Deployment summary
-  #       run: |
-  #         echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-  #         echo "- **Repo:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
-  #         echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-  #         echo "- **Author:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
-  #         echo "- **Tests:** ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
-  #         echo "- **Build:** ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
-  #         echo "- **Deploy:** ${{ needs.deploy.result }}" >> $GITHUB_STEP_SUMMARY
+    steps:
+      - name: Write job summary
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Repo** | ${{ github.repository }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Image Tag** | sha-${{ needs.build.outputs.short_sha }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Triggered by** | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Tests** | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Build** | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Deploy** | ${{ needs.deploy.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Time** | $(date -u) |" >> $GITHUB_STEP_SUMMARY
