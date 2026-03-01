@@ -142,13 +142,17 @@ class TestSystemOverview:
 # ===== Tenant Usage Tests =====
 
 class TestTenantUsage:
-    def test_nonexistent_tenant_returns_404(self, client):
+    def test_unknown_tenant_returns_empty_stats_not_404(self, client):
+        """Hardening: Unknown tenants should return zeroed stats, not a 404, for Repo 1 compatibility."""
         resp = client.get(
-            "/api/admin/tenants/does_not_exist/usage",
+            "/api/admin/tenants/unknown_tenant/usage",
             headers=ADMIN_HEADERS
         )
-        assert resp.status_code == 404
-        assert "not found" in resp.json()["detail"].lower()
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["tenant_id"] == "unknown_tenant"
+        assert data["tenant_name"] == "unknown_tenant"
+        assert data["logs"]["total"] == 0
 
     def test_existing_tenant_returns_usage(self, client):
         resp = client.get(

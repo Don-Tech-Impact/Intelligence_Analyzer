@@ -471,8 +471,8 @@ const SuperAdmin = {
         if (!tbody) return;
 
         const tenantFilter = document.getElementById('user-tenant-filter')?.value;
-        let url = `${this.API_BASE} /api/admin / users`;
-        if (tenantFilter) url += `? tenant_id = ${tenantFilter} `;
+        let url = `${this.API_BASE}/api/admin/users`;
+        if (tenantFilter) url += `?tenant_id=${tenantFilter}`;
 
         try {
             const res = await fetch(url, { headers: Auth.getAuthHeader() });
@@ -480,7 +480,7 @@ const SuperAdmin = {
                 const data = await res.json();
                 const users = data.users || [];
                 tbody.innerHTML = users.map(u => `
-    < tr >
+                    <tr>
                         <td><strong>${u.username}</strong></td>
                         <td>${u.email}</td>
                         <td><span class="badge ${u.role === 'superadmin' ? 'badge-critical' : 'badge-active'}">${u.role}</span></td>
@@ -491,7 +491,7 @@ const SuperAdmin = {
                                 <i data-lucide="edit-2" style="width:14px;"></i> Edit
                             </button>
                         </td>
-                    </tr >
+                    </tr>
     `).join('');
                 lucide.createIcons();
             }
@@ -533,25 +533,36 @@ const SuperAdmin = {
         document.getElementById('add-user-modal').style.display = 'flex';
     },
 
-    loadAuditLogs() {
+    async loadAuditLogs() {
         const tbody = document.getElementById('audit-list');
         if (!tbody) return;
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Fetching global audit trail...</td></tr>';
 
-        const logs = [
-            { time: new Date().toISOString(), action: 'LOGIN_SUCCESS', user: 'superadmin', target: 'System', status: 'SUCCESS', ip: '127.0.0.1' },
-            { time: new Date(Date.now() - 600000).toISOString(), action: 'TENANT_VIEW', user: 'superadmin', target: 'acme-corp', status: 'SUCCESS', ip: '127.0.0.1' },
-            { time: new Date(Date.now() - 3600000).toISOString(), action: 'CONFIG_UPDATE', user: 'superadmin', target: 'Detection Thresholds', status: 'SUCCESS', ip: '127.0.0.1' }
-        ];
-        tbody.innerHTML = logs.map(l => `
-    < tr >
-                <td>${new Date(l.time).toLocaleString()}</td>
-                <td><strong>${l.action}</strong></td>
-                <td>${l.user}</td>
-                <td>${l.target}</td>
-                <td><span class="badge badge-active">${l.status}</span></td>
-                <td>${l.ip}</td>
-            </tr >
-    `).join('');
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/audit-log`, {
+                headers: Auth.getAuthHeader()
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const logs = data.logs || data.audit_log || [];
+                if (logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No audit events recorded.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = logs.map(l => `
+                    <tr>
+                        <td>${new Date(l.timestamp).toLocaleString()}</td>
+                        <td><strong>${l.action}</strong></td>
+                        <td>${l.username || l.user || 'system'}</td>
+                        <td>${l.tenant_id || 'Global'}</td>
+                        <td><span class="badge badge-active">${l.status || 'SUCCESS'}</span></td>
+                        <td>${l.ip_address || '—'}</td>
+                    </tr>
+                `).join('');
+            }
+        } catch (e) {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-state error">Failed to load system audit trail.</td></tr>';
+        }
     },
 
     // ============================================
@@ -812,7 +823,7 @@ const SuperAdmin = {
     // ============================================
     async loadReports() {
         const type = document.getElementById('report-type-filter')?.value || '';
-        let url = `${this.API_BASE}/api/reports?tenant_id=default`;
+        let url = `${this.API_BASE}/api/v1/reports?tenant_id=default`;
         if (type) url += `&report_type=${type}`;
         try {
             const response = await fetch(url, { headers: Auth.getAuthHeader() });
@@ -832,7 +843,7 @@ const SuperAdmin = {
                         <td>${r.period_start ? new Date(r.period_start).toLocaleDateString() : '—'} — ${r.period_end ? new Date(r.period_end).toLocaleDateString() : '—'}</td>
                         <td>${r.log_count || '—'}</td>
                         <td>${r.alert_count || '—'}</td>
-                        <td style="text-align:right;"><button class="btn-secondary btn-sm" onclick="SuperAdmin.viewReport(${r.id})"><i data-lucide="file-text" style="width:14px;"></i> View</button></td>
+                        <td style="text-align:right;"><button class="btn-secondary btn-sm" onclick="SuperAdmin.viewReport('${r.id}')"><i data-lucide="file-text" style="width:14px;"></i> View</button></td>
                     </tr>`).join('');
                 lucide.createIcons();
             }
@@ -847,10 +858,49 @@ const SuperAdmin = {
             { level: 'info', msg: 'SIEM Analyzer engine running.' },
             { level: 'info', msg: 'Redis consumer connected.' },
             { level: 'info', msg: 'Database initialized.' },
-            { level: 'info', msg: 'API server listening on 0.0.0.0:8000.' },
-            { level: 'info', msg: 'Health check passed.' },
+            { level: 'api', msg: 'Admin API listening for events.' },
+            { level: 'info', msg: 'Health monitoring active.' },
         ];
         viewer.innerHTML = entries.map(e => `<div class="log-line ${e.level}"><span class="log-time">${new Date().toLocaleTimeString('en-US', { hour12: false })}</span> <span class="log-level">${e.level.toUpperCase()}</span> <span class="log-msg">${e.msg}</span></div>`).join('');
+    },
+
+    showGenerateReportModal() {
+        document.getElementById('gen-report-modal').style.display = 'flex';
+    },
+
+    async generateReport(e) {
+        if (e) e.preventDefault();
+        const type = document.getElementById('gen-report-type').value;
+        const tenant = document.getElementById('gen-report-tenant').value;
+
+        this.showToast('Generating security intelligence report...', 'info');
+
+        try {
+            const res = await fetch(`${this.API_BASE}/api/v1/reports/generate`, {
+                method: 'POST',
+                headers: { ...Auth.getAuthHeader(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    report_type: type,
+                    tenant_id: tenant === 'default' ? 'default' : tenant,
+                    days_back: type === 'daily' ? 1 : (type === 'weekly' ? 7 : 30)
+                })
+            });
+
+            if (res.ok) {
+                this.showToast('Report generated successfully', 'success');
+                this.closeModal('gen-report-modal');
+                this.loadReports();
+            } else {
+                const err = await res.json();
+                this.showToast(`Generation failed: ${err.detail || 'Internal error'}`, 'error');
+            }
+        } catch (e) {
+            this.showToast('Failed to connect to report controller', 'error');
+        }
+    },
+
+    async viewReport(reportId) {
+        window.open(`${this.API_BASE}/api/v1/reports/${reportId}/content`, '_blank');
     },
 
     showAddTenantModal() {

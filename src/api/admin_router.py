@@ -200,13 +200,10 @@ def get_tenant_usage(
         - Dead letter count
         - Estimated storage (bytes)
     """
-    # --- Verify tenant exists ---
+    # --- Verify if tenant exists locally ---
     tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
-    if not tenant:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Tenant '{tenant_id}' not found"
-        )
+    # Note: We don't 404 here anymore, as the tenant might exist in Repo 1 but 
+    # hasn't synced or ingested logs yet. We return zeroed stats.
 
     now = datetime.utcnow()
     last_24h = now - timedelta(hours=24)
@@ -261,9 +258,9 @@ def get_tenant_usage(
         "status": "success",
         "data": {
             "tenant_id": tenant_id,
-            "tenant_name": tenant.name,
-            "is_active": tenant.is_active,
-            "created_at": tenant.created_at.isoformat() if tenant.created_at else None,
+            "tenant_name": tenant.name if tenant else tenant_id,
+            "is_active": tenant.is_active if tenant else True,
+            "created_at": (tenant.created_at.isoformat() if tenant.created_at else None) if tenant else None,
             "logs": {
                 "total": total_logs,
                 "last_24h": logs_24h,
