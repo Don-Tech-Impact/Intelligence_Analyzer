@@ -119,9 +119,11 @@ jobs:
 
       # Scan the image for CVEs BEFORE it reaches production
       - name: Scan image for vulnerabilities (Trivy)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.24.0
+        # uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.DOCKER_ORG }}/${{ env.APP_NAME }}:sha-${{ steps.short_sha.outputs.sha }}
+          # image-ref: ${{ env.DOCKER_ORG }}/${{ env.APP_NAME }}:sha-${{ steps.short_sha.outputs.sha }}
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
@@ -131,6 +133,12 @@ jobs:
         with:
           name: trivy-results
           path: trivy-results.sarif
+      
+      - name: Upload Trivy scan to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0.17.2    # Pinned — never use @v0 floating tag in prod
