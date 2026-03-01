@@ -1,72 +1,98 @@
 # =============================================================================
-# INTELLIGENCE ANALYZER - PRODUCTION DOCKER COMPOSE
+# AfricAnalyzer — Repo2 Intelligence Analyzer — Production Stack
 # =============================================================================
-# Architecture: Multi-queue Redis → Worker Pool → PostgreSQL (Partitioned)
-# Designed for: 10+ devices/tenant × 1,000+ logs/min/device
+# Pre-requisite: Run ONCE on EC2 before deploying either repo:
+#   docker network create afric-shared-network
 # =============================================================================
 
 services:
-  # ===========================================================================
-  # PostgreSQL Database (Primary Storage)
-  # ===========================================================================
-  # Time-partitioned tables with Row-Level Security for tenant isolation
-  # ===========================================================================
+  # ── PostgreSQL (Internal only — never exposed publicly) ───────────────────
+
   postgres:
-    image: postgres:15-alpine
-    container_name: siem-postgres
-    ports:
-      - "5432:5432"
+    image: postgres:16-alpine
+    container_name: siem-postgres-production
+    restart: unless-stopped
+    user: "999:999" # postgres official non-root UID
     environment:
-      POSTGRES_USER: siem_user
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-siem_secure_password_2026}
-      POSTGRES_DB: siem_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pg_data:/var/lib/postgresql/data
       # Init scripts for partitioning and RLS setup
       - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
-    restart: unless-stopped
+    networks:
+      - siem-internal # Private: only analyzer + consumer can reach it
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    # Tuned for t2.micro/t3.micro (1GB RAM) — conservative and safe
+    command: >
+      postgres -c shared_buffers=128MB -c effective_cache_size=384MB -c maintenance_work_mem=64MB -c checkpoint_completion_target=0.9 -c wal_buffers=8MB -c work_mem=4MB -c max_connections=50 -c min_wal_size=256MB -c max_wal_size=1GB
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U siem_user -d siem_db" ]
-      interval: 10s
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 15s
       timeout: 5s
       retries: 5
       start_period: 10s
-    # Performance tuning for high-volume writes
-    command: >
-      postgres -c shared_buffers=256MB -c effective_cache_size=768MB -c maintenance_work_mem=128MB -c checkpoint_completion_target=0.9 -c wal_buffers=16MB -c default_statistics_target=100 -c random_page_cost=1.1 -c effective_io_concurrency=200 -c work_mem=16MB -c min_wal_size=1GB -c max_wal_size=4GB -c max_connections=200
-
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
   # ===========================================================================
   # Intelligence Analyzer API
   # ===========================================================================
   analyzer:
     image: ${DOCKER_ORG:-africanalyzer}/${APP_NAME:-intelligence_analyzer}:${IMAGE_TAG:-latest}
-    container_name: siem-analyzer
+    container_name: siem-analyzer-prod
+    restart: unless-stopped
+    user: "1000:1000"
     labels:
       com.afric.version: "${IMAGE_TAG:-latest}"
-      com.afric.deployed: "${DEPLOY_TIME:-latest}"
-      com.afric.service: "ingestion-analyzer"
+      com.afric.service: "intelligence-analyzer"
+    # No public ports — Cloudflare tunnel routes to this service internally
+    # Metrics port bound to localhost only for safe scraping
     ports:
-      - "8000:8000"
+      - "127.0.0.1:9091:9091" # Metrics: localhost only
     env_file:
       - ./config/.env.production
     volumes:
       - ./reports:/app/reports
       - ./logs:/app/logs
+      - ./config:/app/config:ro # Read-only
     depends_on:
       postgres:
         condition: service_healthy
-    # extra_hosts:
-    #   - "host.docker.internal:host-gateway"
-    restart: unless-stopped
+    networks:
+      - siem-internal # Reaches postgres
+      - afric-shared # Reaches Repo1's Redis + Cloudflare
+
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/health/live" ]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live', timeout=5)" ]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
-    networks:
-      - default
-      - repo1_network
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ===========================================================================
   # Redis Consumer Workers (Log Processing Pipeline)
@@ -78,39 +104,57 @@ services:
   consumer:
     image: ${DOCKER_ORG:-africanalyzer}/${APP_NAME:-intelligence_analyzer}:${IMAGE_TAG:-latest}
     container_name: siem-consumer
+    restart: unless-stopped
+    user: "1000:1000"
+    labels:
+      com.afric.version: "${IMAGE_TAG:-latest}"
+      com.afric.service: "consumer-intelligence-analyzer"
     env_file:
       - ./config/.env.production
     volumes:
-      - ./logs:/app/logs
+      - ./logs/consumer:/app/logs
+      - ./config:/app/config:ro
     depends_on:
       postgres:
         condition: service_healthy
-    # extra_hosts:
-    #   - "host.docker.internal:host-gateway"
-    restart: unless-stopped
-    # Scale horizontally: docker-compose up -d --scale consumer=10
+    networks:
+      - siem-internal # Reaches postgres
+      - afric-shared # Reaches Repo1's Redis queue
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 60s # Workers need more time to finish batch processing
     deploy:
       replicas: ${CONSUMER_REPLICAS:-1}
-    command: python -m src.services.redis_consumer
-    networks:
-      - default
-      - repo1_network
+      resources:
+        limits:
+          memory: 384M
+        reservations:
+          memory: 192M
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import redis, os; r=redis.Redis.from_url(os.environ['REDIS_URL'], password=os.environ.get('REDIS_PASSWORD')); r.ping()" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 # =============================================================================
-# Persistent Volumes
+# Volumes & Networks
 # =============================================================================
 volumes:
   pg_data:
     driver: local
-  redis_data:
-    driver: local
 
-# =============================================================================
-# Network
-# =============================================================================
 networks:
-  default:
-    name: siem-network
-  repo1_network:
+  siem-internal:
+    driver: bridge # Private: postgres ↔ analyzer ↔ consumer only
+
+  afric-shared:
     external: true
-    name: afric-analyzer_app_network
+    name: afric-shared-network # Fixed name — created manually once on EC2
+    # docker network create afric-shared-network
+
