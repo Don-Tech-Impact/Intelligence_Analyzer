@@ -372,3 +372,26 @@ class AnalyticsService:
             "weekends": weekends,
             "by_vendor": by_vendor
         }
+
+    @staticmethod
+    def get_protocols(tenant_id: str, db: Session) -> List[Dict[str, Any]]:
+        """Alias for get_traffic_analysis (used by legacy endpoints)."""
+        return AnalyticsService.get_traffic_analysis(tenant_id, db)
+
+    @staticmethod
+    def get_trends(tenant_id: str, db: Session) -> Dict[str, Any]:
+        """Alias for get_timeline (used by legacy endpoints)."""
+        return AnalyticsService.get_timeline(tenant_id, db)
+
+    @staticmethod
+    def get_top_ips(tenant_id: str, db: Session, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get top source IPs (replicated from v1 router logic)."""
+        results = db.query(
+            NormalizedLog.source_ip,
+            func.count(NormalizedLog.id).label('count')
+        ).filter(
+            NormalizedLog.tenant_id == tenant_id,
+            NormalizedLog.source_ip.isnot(None)
+        ).group_by(NormalizedLog.source_ip).order_by(desc('count')).limit(limit).all()
+        
+        return [{"ip": r.source_ip, "count": r.count} for r in results]
