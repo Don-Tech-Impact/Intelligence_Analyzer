@@ -1,60 +1,75 @@
-# Stage 1: Build
+# =============================================================================
+# AfricAnalyzer — Repo2 Intelligence Analyzer — Production Dockerfile
+# Multi-stage: builder (compile deps) → runtime (slim, non-root, no compilers)
+# =============================================================================
+
+# -- Stage 1: Builder ---------------------------------------------------------
 FROM python:3.11-slim-bookworm AS builder
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-WORKDIR /app
+WORKDIR /build
 
-# Install Python dependencies
-COPY requirements/requirements.txt requirements.txt
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc g++ build-essential && \
+    rm -rf /var/lib/apt/lists/*
 
-# Stage 2: Runtime
+# Virtual environment approach — cleaner than --prefix
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY requirements/requirements.txt ./
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# -- Stage 2: Runtime ---------------------------------------------------------
 FROM python:3.11-slim-bookworm
 
-# Install runtime dependencies (curl for healthcheck, tini for signal handling)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    tini \
-    && rm -rf /var/lib/apt/lists/*
+# tini for PID 1 signal handling, procps for debugging only
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends tini procps && \
+    rm -rf /var/lib/apt/lists/*
+# Note: healthcheck uses Python urllib
 
 # Create a non-root user
-RUN groupadd -r appgroup && useradd -r -g appgroup -s /sbin/nologin -c "Docker image user" appuser
+RUN groupadd -r appgroup && \
+    useradd -r -g appgroup -d /app -s /sbin/nologin -c "App user" appuser
 
 WORKDIR /app
+# Copy only the venv from builder — no compilers come with it
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy only installed dependencies from builder
-COPY --from=builder /install /usr/local
-
-# Copy application code
 COPY src/ ./src/
-# Dashboard is static, usually served by Nginx, but here we keep it for simplicity if backend serves it
 COPY dashboard/ ./dashboard/
 
-# Create logs directory
-RUN mkdir -p /app/logs && chown -R appuser:appgroup /app
+RUN mkdir -p /app/logs /app/reports && \
+    chown -R appuser:appgroup /app
 
-# Environment hardening
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     PORT=8000
 
-# Security: Switch to non-root user
 USER appuser
 
 EXPOSE 8000
+# No curl — stdlib urllib is sufficient and safer
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD python -c \
+    "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live', timeout=5)" \
+    || exit 1
 
-# Healthcheck
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Use tini as PID 1 for proper signal handling (SIGTERM -> graceful shutdown)
 ENTRYPOINT ["tini", "--"]
 
-# Performance: Use gunicorn with uvicorn workers for production
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# --proxy-headers: trusts Cloudflare's X-Forwarded-For headers — essential for
+# accurate tenant IP logging when traffic comes through the tunnel
+CMD ["uvicorn", "src.api.main:app", \
+    "--host", "0.0.0.0", \
+    "--port", "8000", \
+    "--proxy-headers", \
+    "--forwarded-allow-ips", "*", \
+    "--workers", "2", \
+    "--log-level", "info", \
+    "--access-log"]
