@@ -241,8 +241,8 @@ jobs:
             DOCKER_ORG=${DOCKER_ORG_ENV}
             APP_NAME=${APP_NAME_ENV}
             DEPLOY_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-            REDIS_URL=redis://afric-analyzer-redis-1:6379/0
-            CONSUMER_REPLICAS=1
+            # REDIS_URL=redis://afric-analyzer-redis-1:6379/0
+            # CONSUMER_REPLICAS=1
             EOF
 
             # ── Step 4: Log in to Docker Hub ───────────────────────────────
