@@ -1,6 +1,82 @@
+# # =============================================================================
+# # AfricAnalyzer — Repo2 Intelligence Analyzer — Production Dockerfile
+# # Multi-stage: builder (compile deps) → runtime (slim, non-root, no compilers)
+# # =============================================================================
+
+# # -- Stage 1: Builder ---------------------------------------------------------
+# FROM python:3.11-slim-bookworm AS builder
+
+# ENV PYTHONDONTWRITEBYTECODE=1 \
+#     PYTHONUNBUFFERED=1
+
+# WORKDIR /build
+
+# RUN apt-get update && \
+#     apt-get install -y --no-install-recommends gcc g++ build-essential && \
+#     rm -rf /var/lib/apt/lists/*
+
+# # Virtual environment approach — cleaner than --prefix
+# RUN python -m venv /opt/venv
+# ENV PATH="/opt/venv/bin:$PATH"
+
+# COPY requirements/requirements.txt ./
+# RUN pip install --upgrade pip && \
+#     pip install --no-cache-dir -r requirements.txt
+
+# # -- Stage 2: Runtime ---------------------------------------------------------
+# FROM python:3.11-slim-bookworm
+
+# # tini for PID 1 signal handling, procps for debugging only
+# RUN apt-get update && \
+#     apt-get install -y --no-install-recommends tini procps && \
+#     rm -rf /var/lib/apt/lists/*
+# # Note: healthcheck uses Python urllib
+
+# # Create a non-root user
+# RUN groupadd -r appgroup && \
+#     useradd -r -g appgroup -d /app -s /sbin/nologin -c "App user" appuser
+
+# WORKDIR /app
+# # Copy only the venv from builder — no compilers come with it
+# COPY --from=builder /opt/venv /opt/venv
+# ENV PATH="/opt/venv/bin:$PATH"
+
+# COPY src/ ./src/
+# COPY dashboard/ ./dashboard/
+
+# RUN mkdir -p /app/logs /app/reports && \
+#     chown -R appuser:appgroup /app
+
+# ENV PYTHONDONTWRITEBYTECODE=1 \
+#     PYTHONUNBUFFERED=1 \
+#     PYTHONPATH=/app \
+#     PORT=8000
+
+# USER appuser
+
+# EXPOSE 8000
+# # No curl — stdlib urllib is sufficient and safer
+# HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+#     CMD python -c \
+#     "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live', timeout=5)" \
+#     || exit 1
+
+# ENTRYPOINT ["tini", "--"]
+
+# # --proxy-headers: trusts Cloudflare's X-Forwarded-For headers — essential for
+# # accurate tenant IP logging when traffic comes through the tunnel
+# CMD ["uvicorn", "src.api.main:app", \
+#     "--host", "0.0.0.0", \
+#     "--port", "8000", \
+#     "--proxy-headers", \
+#     "--forwarded-allow-ips", "*", \
+#     "--workers", "2", \
+#     "--log-level", "info", \
+#     "--access-log"]
+
+
 # =============================================================================
 # AfricAnalyzer — Repo2 Intelligence Analyzer — Production Dockerfile
-# Multi-stage: builder (compile deps) → runtime (slim, non-root, no compilers)
 # =============================================================================
 
 # -- Stage 1: Builder ---------------------------------------------------------
@@ -15,7 +91,6 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc g++ build-essential && \
     rm -rf /var/lib/apt/lists/*
 
-# Virtual environment approach — cleaner than --prefix
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
@@ -26,18 +101,16 @@ RUN pip install --upgrade pip && \
 # -- Stage 2: Runtime ---------------------------------------------------------
 FROM python:3.11-slim-bookworm
 
-# tini for PID 1 signal handling, procps for debugging only
 RUN apt-get update && \
     apt-get install -y --no-install-recommends tini procps && \
     rm -rf /var/lib/apt/lists/*
-# Note: healthcheck uses Python urllib
 
-# Create a non-root user
-RUN groupadd -r appgroup && \
-    useradd -r -g appgroup -d /app -s /sbin/nologin -c "App user" appuser
+# FIX: pin UID/GID to 1000 — must match user: "1000:1000" in compose
+RUN groupadd -r -g 1000 appgroup && \
+    useradd -r -u 1000 -g appgroup -d /app -s /sbin/nologin -c "App user" appuser
 
 WORKDIR /app
-# Copy only the venv from builder — no compilers come with it
+
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
@@ -55,16 +128,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 USER appuser
 
 EXPOSE 8000
-# No curl — stdlib urllib is sufficient and safer
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c \
     "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live', timeout=5)" \
     || exit 1
 
 ENTRYPOINT ["tini", "--"]
 
-# --proxy-headers: trusts Cloudflare's X-Forwarded-For headers — essential for
-# accurate tenant IP logging when traffic comes through the tunnel
 CMD ["uvicorn", "src.api.main:app", \
     "--host", "0.0.0.0", \
     "--port", "8000", \
