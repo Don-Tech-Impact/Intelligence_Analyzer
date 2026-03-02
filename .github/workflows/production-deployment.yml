@@ -155,6 +155,145 @@ jobs:
           path: sbom.spdx.json
 
   # ── Job 3: Deploy ──────────────────────────────────────────────────────────
+  # deploy:
+  #   name: Deploy to Production
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: read
+  #   if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+  #   environment: production
+
+  #   steps:
+  #     - name: Validate required secrets
+  #       run: |
+  #         MISSING=""
+  #         [ -z "${{ secrets.PROD_HOST }}" ]     && MISSING="${MISSING} PROD_HOST"
+  #         [ -z "${{ secrets.PROD_USER }}" ]     && MISSING="${MISSING} PROD_USER"
+  #         [ -z "${{ secrets.PROD_SSH_KEY }}" ]  && MISSING="${MISSING} PROD_SSH_KEY"
+  #         [ -z "${{ secrets.PAT_TOKEN }}" ]     && MISSING="${MISSING} PAT_TOKEN"
+  #         [ -n "${MISSING}" ] && echo "Missing secrets:${MISSING}" && exit 1
+  #         echo "All secrets present."
+
+  #     - uses: actions/checkout@v4
+
+  #     - name: Deploy via SSH
+  #       uses: appleboy/ssh-action@v1.0.3
+  #       env:
+  #         SHORT_SHA:      ${{ needs.build.outputs.short_sha }}
+  #         DOCKER_ORG_ENV: ${{ env.DOCKER_ORG }}
+  #         APP_NAME_ENV:   ${{ env.APP_NAME }}
+  #         APP_DIR_ENV:    ${{ env.APP_DIR }}
+  #         PAT_TOKEN:      ${{ secrets.PAT_TOKEN }}
+  #         DOCKER_USER:    ${{ secrets.DOCKER_USERNAME }}
+  #         DOCKER_PASS:    ${{ secrets.DOCKER_PASSWORD }}
+  #       with:
+  #         host:        ${{ secrets.PROD_HOST }}
+  #         username:    ${{ secrets.PROD_USER }}
+  #         key:         ${{ secrets.PROD_SSH_KEY }}
+  #         port:        22
+  #         envs:        SHORT_SHA,DOCKER_ORG_ENV,APP_NAME_ENV,APP_DIR_ENV,PAT_TOKEN,DOCKER_USER,DOCKER_PASS
+  #         script_stop: true
+  #         script: |
+  #           # REMOVED: set -x  — would print DOCKER_PASS and PAT_TOKEN to logs
+  #           set -e              # Fail immediately on any error
+  #           set -o pipefail     # Catch errors in piped commands
+
+  #           IMAGE_TAG="sha-${SHORT_SHA}"
+
+  #           echo "========================================"
+  #           echo "  Deploying: ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:${IMAGE_TAG}"
+  #           echo "  Server:    $(hostname)"
+  #           echo "  Time:      $(date -u)"
+  #           echo "========================================"
+
+  #           # ── Step 1: Prepare directory ──────────────────────────────────
+  #           mkdir -p "${APP_DIR_ENV}"
+  #           cd "${APP_DIR_ENV}"
+  #           df -h   # Log disk space for visibility
+
+  #           # ── Step 2: Pull latest config and compose file ────────────────
+  #           # Use credential helper — PAT never appears in process list
+  #           git config --global credential.helper store
+  #           echo "https://${PAT_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
+  #           chmod 600 ~/.git-credentials
+
+  #           rm -rf /tmp/repo_temp
+  #           git clone --depth 1 \
+  #             https://github.com/Don-Tech-Impact/Intelligence_Analyzer.git \
+  #             /tmp/repo_temp
+
+  #           # Remove credentials immediately after clone
+  #           rm -f ~/.git-credentials
+  #           git config --global --unset credential.helper || true
+
+  #           cp -r /tmp/repo_temp/config ./ || true
+  #           cp -r /tmp/repo_temp/scripts ./ || true
+  #           cp /tmp/repo_temp/docker/docker-compose-prod.yml ./docker-compose.yml
+  #           rm -rf /tmp/repo_temp
+
+  #           # ── Step 3: Write runtime .env (non-secret values only) ────────
+  #           # Secrets (POSTGRES_PASSWORD, HMAC_KEY, etc.) must be pre-configured
+  #           # on the server at ${APP_DIR_ENV}/config/.env.production
+  #           # Never write secrets into a temp .env file in the deploy script
+  #           cat > "${APP_DIR_ENV}/.env" <<EOF
+  #           IMAGE_TAG=${IMAGE_TAG}
+  #           DOCKER_ORG=${DOCKER_ORG_ENV}
+  #           APP_NAME=${APP_NAME_ENV}
+  #           DEPLOY_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  #           # REDIS_URL=redis://afric-analyzer-redis-1:6379/0
+  #           # CONSUMER_REPLICAS=1
+  #           EOF
+
+  #           # ── Step 4: Log in to Docker Hub ───────────────────────────────
+  #           echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
+
+  #           # ── Step 5: Pull new image ─────────────────────────────────────
+  #           echo ">> Pulling: ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:${IMAGE_TAG}"
+  #           docker pull "${DOCKER_ORG_ENV}/${APP_NAME_ENV}:${IMAGE_TAG}"
+
+  #           # ── Step 6: Safe cleanup — images only, NEVER volumes ──────────
+  #           # --volumes is intentionally omitted — it would destroy pg_data
+  #           docker system prune -f
+  #           # Aggressive image cleanup only (no volumes, no running containers)
+  #           docker image prune -af
+
+  #           # ── Step 7: Recreate containers with new image ─────────────────
+  #           IMAGE_TAG="${IMAGE_TAG}" \
+  #             docker compose -p intel up -d --force-recreate --remove-orphans
+
+  #           # ── Step 8: Verify health (wait for start_period + margin) ─────
+  #           echo ">> Waiting 45s for containers to pass health checks..."
+  #           sleep 45
+
+  #           # Check that all containers are healthy — fail deploy if any are not
+  #           UNHEALTHY=$(docker compose -p intel ps --format json \
+  #             | python3 -c "
+  #           import sys, json
+  #           containers = [json.loads(l) for l in sys.stdin if l.strip()]
+  #           bad = [c['Name'] for c in containers if c.get('Health','') not in ('healthy','')]
+  #           print('\n'.join(bad))
+  #           ")
+
+  #           if [ -n "$UNHEALTHY" ]; then
+  #             echo "ERROR: Unhealthy containers detected:"
+  #             echo "$UNHEALTHY"
+  #             echo ">> Rolling back to previous image..."
+  #             # Docker Compose does not have native rollback — log and alert
+  #             # The previous image is still pulled and tagged; manual rollback:
+  #             # IMAGE_TAG=sha-<previous_sha> docker compose -p intel up -d
+  #             docker compose -p intel logs --tail=50
+  #             exit 1
+  #           fi
+
+  #           docker compose -p intel ps
+
+  #           echo "========================================"
+  #           echo "  ✅ Deploy complete"
+  #           echo "  Image: ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:${IMAGE_TAG}"
+  #           echo "========================================"
+
+    # ── Job 3: Deploy ──────────────────────────────────────────────────────────
   deploy:
     name: Deploy to Production
     needs: build
@@ -168,130 +307,136 @@ jobs:
       - name: Validate required secrets
         run: |
           MISSING=""
-          [ -z "${{ secrets.PROD_HOST }}" ]     && MISSING="${MISSING} PROD_HOST"
-          [ -z "${{ secrets.PROD_USER }}" ]     && MISSING="${MISSING} PROD_USER"
-          [ -z "${{ secrets.PROD_SSH_KEY }}" ]  && MISSING="${MISSING} PROD_SSH_KEY"
-          [ -z "${{ secrets.PAT_TOKEN }}" ]     && MISSING="${MISSING} PAT_TOKEN"
+          [ -z "${{ secrets.PROD_HOST }}" ]    && MISSING="${MISSING} PROD_HOST"
+          [ -z "${{ secrets.PROD_USER }}" ]    && MISSING="${MISSING} PROD_USER"
+          [ -z "${{ secrets.PROD_SSH_KEY }}" ] && MISSING="${MISSING} PROD_SSH_KEY"
           [ -n "${MISSING}" ] && echo "Missing secrets:${MISSING}" && exit 1
           echo "All secrets present."
 
       - uses: actions/checkout@v4
 
+      # ── Step A: SCP compose file to server ────────────────────────────────
+      - name: Copy compose file to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host:     ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key:      ${{ secrets.PROD_SSH_KEY }}
+          port:     22
+          source:   "docker/docker-compose-prod.yml"
+          target:   "/opt/intelligence-analyzer/docker/"
+          strip_components: 1
+
+      # ── Step B: SSH and deploy ─────────────────────────────────────────────
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
           SHORT_SHA:      ${{ needs.build.outputs.short_sha }}
           DOCKER_ORG_ENV: ${{ env.DOCKER_ORG }}
           APP_NAME_ENV:   ${{ env.APP_NAME }}
-          APP_DIR_ENV:    ${{ env.APP_DIR }}
-          PAT_TOKEN:      ${{ secrets.PAT_TOKEN }}
-          DOCKER_USER:    ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASS:    ${{ secrets.DOCKER_PASSWORD }}
         with:
           host:        ${{ secrets.PROD_HOST }}
           username:    ${{ secrets.PROD_USER }}
           key:         ${{ secrets.PROD_SSH_KEY }}
           port:        22
-          envs:        SHORT_SHA,DOCKER_ORG_ENV,APP_NAME_ENV,APP_DIR_ENV,PAT_TOKEN,DOCKER_USER,DOCKER_PASS
+          envs:        SHORT_SHA,DOCKER_ORG_ENV,APP_NAME_ENV
           script_stop: true
+          timeout:     300s
+
           script: |
-            # REMOVED: set -x  — would print DOCKER_PASS and PAT_TOKEN to logs
-            set -e              # Fail immediately on any error
-            set -o pipefail     # Catch errors in piped commands
+            set -e
+            set -o pipefail
 
             IMAGE_TAG="sha-${SHORT_SHA}"
+            APP_DIR="/opt/intelligence-analyzer"
+            COMPOSE_FILE="${APP_DIR}/docker/docker-compose-prod.yml"
+            ENV_FILE="${APP_DIR}/config/.env.production"
 
             echo "========================================"
             echo "  Deploying: ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:${IMAGE_TAG}"
-            echo "  Server:    $(hostname)"
             echo "  Time:      $(date -u)"
             echo "========================================"
 
-            # ── Step 1: Prepare directory ──────────────────────────────────
-            mkdir -p "${APP_DIR_ENV}"
-            cd "${APP_DIR_ENV}"
-            df -h   # Log disk space for visibility
+            echo ">> Step 1: ensure directories exist"
+            mkdir -p "${APP_DIR}/docker" "${APP_DIR}/logs" "${APP_DIR}/config" "${APP_DIR}/reports"
 
-            # ── Step 2: Pull latest config and compose file ────────────────
-            # Use credential helper — PAT never appears in process list
-            git config --global credential.helper store
-            echo "https://${PAT_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
-            chmod 600 ~/.git-credentials
+            echo ">> Step 2: verify compose file arrived"
+            if [ ! -f "${COMPOSE_FILE}" ]; then
+              echo "ERROR: compose file not found at ${COMPOSE_FILE}"
+              exit 1
+            fi
+            echo ">> Compose file OK"
 
-            rm -rf /tmp/repo_temp
-            git clone --depth 1 \
-              https://github.com/Don-Tech-Impact/Intelligence_Analyzer.git \
-              /tmp/repo_temp
-
-            # Remove credentials immediately after clone
-            rm -f ~/.git-credentials
-            git config --global --unset credential.helper || true
-
-            cp -r /tmp/repo_temp/config ./ || true
-            cp -r /tmp/repo_temp/scripts ./ || true
-            cp /tmp/repo_temp/docker/docker-compose-prod.yml ./docker-compose.yml
-            rm -rf /tmp/repo_temp
-
-            # ── Step 3: Write runtime .env (non-secret values only) ────────
-            # Secrets (POSTGRES_PASSWORD, HMAC_KEY, etc.) must be pre-configured
-            # on the server at ${APP_DIR_ENV}/config/.env.production
-            # Never write secrets into a temp .env file in the deploy script
-            cat > "${APP_DIR_ENV}/.env" <<EOF
+            echo ">> Step 3: write runtime .env"
+            cat > "${APP_DIR}/.env" <<EOF
             IMAGE_TAG=${IMAGE_TAG}
             DOCKER_ORG=${DOCKER_ORG_ENV}
             APP_NAME=${APP_NAME_ENV}
             DEPLOY_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-            # REDIS_URL=redis://afric-analyzer-redis-1:6379/0
-            # CONSUMER_REPLICAS=1
             EOF
 
-            # ── Step 4: Log in to Docker Hub ───────────────────────────────
-            echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
+            echo ">> Step 4: docker login"
+            echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-            # ── Step 5: Pull new image ─────────────────────────────────────
-            echo ">> Pulling: ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:${IMAGE_TAG}"
-            docker pull "${DOCKER_ORG_ENV}/${APP_NAME_ENV}:${IMAGE_TAG}"
+            echo ">> Step 4b: ensure shared network exists"
+            docker network inspect afric-shared-network > /dev/null 2>&1 || \
+              docker network create \
+                --driver bridge \
+                --subnet 172.22.0.0/24 \
+                afric-shared-network
 
-            # ── Step 6: Safe cleanup — images only, NEVER volumes ──────────
-            # --volumes is intentionally omitted — it would destroy pg_data
-            docker system prune -f
-            # Aggressive image cleanup only (no volumes, no running containers)
-            docker image prune -af
+            echo ">> Step 4c: graceful shutdown of existing stack"
+            docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
+              down --remove-orphans --timeout 30 || true
+            # NO network prune — would delete afric-shared-network
 
-            # ── Step 7: Recreate containers with new image ─────────────────
-            IMAGE_TAG="${IMAGE_TAG}" \
-              docker compose -p intel up -d --force-recreate --remove-orphans
+            echo ">> Step 5: docker compose pull"
+            IMAGE_TAG="${IMAGE_TAG}" docker compose \
+              -f "${COMPOSE_FILE}" \
+              --env-file "${ENV_FILE}" \
+              pull
 
-            # ── Step 8: Verify health (wait for start_period + margin) ─────
-            echo ">> Waiting 45s for containers to pass health checks..."
+            echo ">> Step 6: docker compose up"
+            IMAGE_TAG="${IMAGE_TAG}" docker compose \
+              -f "${COMPOSE_FILE}" \
+              --env-file "${ENV_FILE}" \
+              up -d --force-recreate --remove-orphans
+
+            echo ">> Step 7: waiting 45s for app to start..."
             sleep 45
 
-            # Check that all containers are healthy — fail deploy if any are not
-            UNHEALTHY=$(docker compose -p intel ps --format json \
-              | python3 -c "
-            import sys, json
-            containers = [json.loads(l) for l in sys.stdin if l.strip()]
-            bad = [c['Name'] for c in containers if c.get('Health','') not in ('healthy','')]
-            print('\n'.join(bad))
-            ")
+            echo ">> Step 8: health check"
+            HEALTHY=false
+            for i in $(seq 1 12); do
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                -H "Host: dashboard.africanalyzer.com" \
+                http://localhost:8000/health/live 2>/dev/null)
+              echo ">> Attempt ${i}/12 - HTTP ${HTTP_CODE}"
+              if [ "${HTTP_CODE}" = "200" ]; then
+                HEALTHY=true
+                echo ">> Health check passed on attempt ${i}"
+                break
+              fi
+              sleep 10
+            done
 
-            if [ -n "$UNHEALTHY" ]; then
-              echo "ERROR: Unhealthy containers detected:"
-              echo "$UNHEALTHY"
-              echo ">> Rolling back to previous image..."
-              # Docker Compose does not have native rollback — log and alert
-              # The previous image is still pulled and tagged; manual rollback:
-              # IMAGE_TAG=sha-<previous_sha> docker compose -p intel up -d
-              docker compose -p intel logs --tail=50
+            if [ "$HEALTHY" = "true" ]; then
+              echo "========================================"
+              echo "  DEPLOYMENT SUCCESSFUL"
+              echo "========================================"
+              docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" ps
+            else
+              echo "========================================"
+              echo "  DEPLOYMENT FAILED"
+              echo "========================================"
+              docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" logs --tail=80
               exit 1
             fi
 
-            docker compose -p intel ps
-
-            echo "========================================"
-            echo "  ✅ Deploy complete"
-            echo "  Image: ${DOCKER_ORG_ENV}/${APP_NAME_ENV}:${IMAGE_TAG}"
-            echo "========================================"
+            echo ">> Cleaning up old images (safe — never prunes networks or volumes)..."
+            docker image prune -f
+            docker logout
+            echo ">> Done."
 
   # ── Job 4: Deployment Summary ──────────────────────────────────────────────
   notify:
