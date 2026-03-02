@@ -323,8 +323,8 @@ jobs:
           username: ${{ secrets.PROD_USER }}
           key:      ${{ secrets.PROD_SSH_KEY }}
           port:     22
-          source:   "docker/docker-compose-prod.yml"
-          target:   "/opt/intelligence-analyzer/docker/"
+          source:   "docker-compose.yml"
+          target:   "/opt/intelligence-analyzer/"
           strip_components: 1
 
       # ── Step B: SSH and deploy ─────────────────────────────────────────────
@@ -349,7 +349,7 @@ jobs:
 
             IMAGE_TAG="sha-${SHORT_SHA}"
             APP_DIR="/opt/intelligence-analyzer"
-            COMPOSE_FILE="${APP_DIR}/docker/docker-compose-prod.yml"
+            COMPOSE_FILE="${APP_DIR}/docker-compose.yml"
             ENV_FILE="${APP_DIR}/config/.env.production"
 
             echo "========================================"
