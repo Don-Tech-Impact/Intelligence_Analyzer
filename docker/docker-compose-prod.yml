@@ -220,11 +220,11 @@ services:
       - "127.0.0.1:8000:8000" # FIX: expose for deploy health check (localhost only)
       - "127.0.0.1:9091:9091" # Metrics: localhost only
     env_file:
-      - ../config/.env.production # FIX: was ./config — relative to compose file location
+      - ./config/.env.production # FIX: was ./config — relative to compose file location
     volumes:
-      - ../reports:/app/reports # FIX: was ./reports
-      - ../logs:/app/logs # FIX: was ./logs
-      - ../config:/app/config:ro # FIX: was ./config
+      - ./reports:/app/reports # FIX: was ./reports
+      - ./logs:/app/logs # FIX: was ./logs
+      - ./config:/app/config:ro # FIX: was ./config
     depends_on:
       postgres:
         condition: service_healthy
@@ -264,10 +264,10 @@ services:
       com.afric.version: "${IMAGE_TAG:-latest}"
       com.afric.service: "consumer-intelligence-analyzer"
     env_file:
-      - ../config/.env.production # FIX: was ./config
+      - ./config/.env.production # FIX: was ./config
     volumes:
-      - ../logs/consumer:/app/logs # FIX: was ./logs/consumer
-      - ../config:/app/config:ro # FIX: was ./config
+      - ./logs/consumer:/app/logs # FIX: was ./logs/consumer
+      - ./config:/app/config:ro # FIX: was ./config
     depends_on:
       postgres:
         condition: service_healthy
