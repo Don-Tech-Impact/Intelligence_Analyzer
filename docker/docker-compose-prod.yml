@@ -175,7 +175,7 @@ services:
     image: postgres:16-alpine
     container_name: siem-postgres-prod
     restart: unless-stopped
-    user: "999:999"
+    # user: "999:999" # Postgres handles it own users
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -259,7 +259,7 @@ services:
     restart: unless-stopped
     user: "1000:1000"
     # FIX: add explicit command — without this it runs uvicorn (wrong for a worker)
-    command: [ "python", "-m", "src.workers.consumer" ]
+    command: [ "python", "-m", "src.services.redis_consumer" ]
     labels:
       com.afric.version: "${IMAGE_TAG:-latest}"
       com.afric.service: "consumer-intelligence-analyzer"
