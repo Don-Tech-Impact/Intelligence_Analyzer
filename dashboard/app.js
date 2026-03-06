@@ -41,6 +41,7 @@ const VIEWS = {
     profile: { title: 'User Profile', subtitle: 'Account details and security settings' },
     settings: { title: 'System Settings', subtitle: 'Analyzer thresholds and configuration' },
     assets: { title: 'Asset Inventory', subtitle: 'Manage registered security devices and discover new assets' }
+    // 'api-keys': { title: 'API Key Management', subtitle: 'Generate and manage keys for automated ingestion' }
 };
 
 // ===== Chart Color Palette =====
@@ -194,80 +195,86 @@ async function fetchData() {
     finally { fetchInProgress = false; }
 }
 
-// ===== Overview =====
+// ===== Overview (Optimized for Weak Networks) =====
 async function fetchOverviewData() {
-    // Stats (using V1 summary)
-    try {
-        const summaryRes = await apiFetch(`${API_BASE_URL}/api/v1/dashboard/summary?tenant_id=${currentTenant}`);
-        if (summaryRes && summaryRes.ok) {
-            const summary = await summaryRes.json();
-            updateStatsFromSummary(summary);
-        }
-    } catch (e) { console.error('[SIEM] v1 summary error:', e); }
+    // 1. Stale-While-Revalidate: Load from cache first for instant UI
+    const cacheKey = `dashboard_bundle_${currentTenant}`;
+    const cachedData = localStorage.getItem(cacheKey);
+    if (cachedData) {
+        try {
+            const data = JSON.parse(cachedData);
+            renderDashboardBundle(data);
+        } catch (e) { localStorage.removeItem(cacheKey); }
+    }
 
-    // Alerts for Threat Summary + Event Log
+    // 2. Fetch new data in a single round-trip (Bundle)
     try {
-        const alertsRes = await apiFetch(`${API_BASE_URL}/api/v1/alerts?tenant_id=${currentTenant}&limit=10`);
-        if (alertsRes && alertsRes.ok) {
-            const alerts = await alertsRes.json();
-            const alertsArr = Array.isArray(alerts) ? alerts : [];
-            renderEventLog(alertsArr);
-            renderThreatVectors(alertsArr);
-            const dot = document.getElementById('notification-dot');
-            if (dot) dot.style.display = (alertsArr.length > 0) ? 'block' : 'none';
+        const res = await apiFetch(`${API_BASE_URL}/api/v1/dashboard/bundle?tenant_id=${currentTenant}`);
+        if (res && res.ok) {
+            const bundle = await res.json();
+            // Store in cache for next time
+            localStorage.setItem(cacheKey, JSON.stringify(bundle));
+            // Update UI with fresh data
+            renderDashboardBundle(bundle);
         }
-    } catch (e) { console.error('[SIEM] v1 alerts error:', e); }
+    } catch (e) {
+        console.error('[SIEM] Dashboard bundle fetch failed:', e);
+    }
 
-    // Top Sources for Business Summary
-    try {
-        const ipsRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/top-ips?tenant_id=${currentTenant}`);
-        if (ipsRes && ipsRes.ok) {
-            const sources = await ipsRes.json();
-            renderTopSourcesList(Array.isArray(sources) ? sources : []);
-        }
-    } catch (e) { console.error('[SIEM] v1 top-ips error:', e); }
-
-    // AI Insight Strip
+    // UI Insight Update
     updateAIInsightPill();
+}
 
-    // Overview Specific Charts (Phase 13 Revert)
-    fetchOverviewCharts();
+/**
+ * Consolidated rendering for the Dashboard Bundle
+ */
+function renderDashboardBundle(bundle) {
+    if (!bundle) return;
+
+    // A. Update Stats (Counter Boxes)
+    if (bundle.summary) {
+        updateStatsFromSummary(bundle.summary);
+        previousStats = bundle.summary;
+    }
+
+    // B. Update Timeline Chart
+    if (bundle.timeline && volumeChartMain) {
+        updateVolumeChart(bundle.timeline, volumeChartMain, 'volume-chart-main');
+    }
+
+    // C. Update Recent Alerts & Threat Vectors
+    if (bundle.recent_alerts) {
+        renderEventLog(bundle.recent_alerts);
+        renderThreatVectors(bundle.recent_alerts);
+        const dot = document.getElementById('notification-dot');
+        if (dot) dot.style.display = (bundle.recent_alerts.length > 0) ? 'block' : 'none';
+
+        // Also update vendor breakdown if in overview
+        updateVendorBreakdown(bundle.recent_alerts, vendorBreakdownChartMain, 'vendor-breakdown-chart-main');
+    }
+
+    // D. Update Business Insights & IPs
+    if (bundle.top_ips) {
+        renderTopSourcesList(bundle.top_ips);
+        if (topSourcesChartMain) {
+            updateBarChart(topSourcesChartMain, bundle.top_ips.map(s => s.ip || s.source), bundle.top_ips.map(s => s.count), 'top-sources-chart-main');
+        }
+    }
+
+    if (bundle.traffic && protocolChartMain) {
+        updatePieChart(protocolChartMain, bundle.traffic.map(p => p.protocol), bundle.traffic.map(p => p.count), 'protocol-chart-main');
+    }
+
+    if (bundle.business) {
+        const data = bundle.business;
+        if (businessHoursChartMain) updatePieChart(businessHoursChartMain, ['Business', 'After Hours'], [data.business_hours || 0, data.after_hours || 0], 'business-hours-chart-main');
+        if (weekendActivityChartMain) updatePieChart(weekendActivityChartMain, ['Weekdays', 'Weekends'], [data.weekdays || 0, data.weekends || 0], 'weekend-activity-chart-main');
+    }
 }
 
 async function fetchOverviewCharts() {
-    try {
-        const ipsRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/top-ips?tenant_id=${currentTenant}`);
-        if (ipsRes && ipsRes.ok) {
-            const sources = await ipsRes.json();
-            if (Array.isArray(sources) && sources.length > 0 && topSourcesChartMain) {
-                updateBarChart(topSourcesChartMain, sources.map(s => s.ip || s.source), sources.map(s => s.count), 'top-sources-chart-main');
-            }
-        }
-        const protoRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/traffic?tenant_id=${currentTenant}`);
-        if (protoRes && protoRes.ok) {
-            const data = await protoRes.json();
-            if (Array.isArray(data) && data.length > 0 && protocolChartMain) {
-                updatePieChart(protocolChartMain, data.map(p => p.protocol), data.map(p => p.count), 'protocol-chart-main');
-            }
-        }
-        const bizRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/business-insights?tenant_id=${currentTenant}`);
-        if (bizRes && bizRes.ok) {
-            const data = await bizRes.json();
-            if (businessHoursChartMain) updatePieChart(businessHoursChartMain, ['Business', 'After Hours'], [data.business_hours || 0, data.after_hours || 0], 'business-hours-chart-main');
-            if (weekendActivityChartMain) updatePieChart(weekendActivityChartMain, ['Weekdays', 'Weekends'], [data.weekdays || 0, data.weekends || 0], 'weekend-activity-chart-main');
-        }
-        const timelineRes = await apiFetch(`${API_BASE_URL}/api/v1/analytics/timeline?tenant_id=${currentTenant}&range=${currentTimeRange}`);
-        if (timelineRes && timelineRes.ok) {
-            const timeline = await timelineRes.json();
-            updateVolumeChart(timeline, volumeChartMain, 'volume-chart-main');
-        }
-        // Vendor Breakdown
-        const alertsRes = await apiFetch(`${API_BASE_URL}/api/v1/alerts?tenant_id=${currentTenant}&limit=100`);
-        if (alertsRes && alertsRes.ok) {
-            const alerts = await alertsRes.json();
-            updateVendorBreakdown(alerts, vendorBreakdownChartMain, 'vendor-breakdown-chart-main');
-        }
-    } catch (e) { console.error('[SIEM] overview charts error:', e); }
+    // This function is now deprecated in favor of fetchOverviewData (which uses the bundle)
+    // We keep the signature for safety but it does nothing.
 }
 
 function toggleMainBIChart(type) {
@@ -862,6 +869,12 @@ function switchView(view) {
     document.getElementById('view-title').textContent = viewData.title;
     document.getElementById('view-subtitle').textContent = viewData.subtitle;
 
+    // Sync section-title for views that follow the new standard
+    const sectionTitle = document.querySelector(`#${view}-view .section-title`);
+    if (sectionTitle) {
+        sectionTitle.textContent = viewData.title;
+    }
+
     document.querySelectorAll('.dashboard-view').forEach(v => v.classList.remove('active'));
     const el = document.getElementById(`${view}-view`);
     if (el) el.classList.add('active');
@@ -874,6 +887,7 @@ function switchView(view) {
     });
 
     if (view === 'profile') renderProfile();
+    if (view === 'api-keys') loadApiKeys();
     fetchData();
 }
 
@@ -885,7 +899,11 @@ function setChartRange(range) {
     fetchData();
 }
 
-function toggleApiStatus() { checkApiStatus(); }
+function toggleApiStatus() {
+    mockMode = !mockMode;
+    showToast(`System entering ${mockMode ? 'Mock' : 'Live'} Mode`, false);
+    checkApiStatus();
+}
 
 function downloadReport(id) {
     window.open(`${API_BASE_URL}/reports/${id}/download`, '_blank');
@@ -1504,6 +1522,16 @@ async function submitRegisterDevice(e) {
 
     try {
         setLoading(true);
+
+        if (mockMode) {
+            // Simulate success in mock mode
+            await new Promise(r => setTimeout(r, 800));
+            showToast('Device registered (Simulated/Mock Mode)', false);
+            closeRegisterDeviceModal();
+            renderAssets();
+            return;
+        }
+
         // Use standardized apiFetch with POST method
         const res = await apiFetch(`${API_BASE_URL}/api/v1/assets/managed?tenant_id=${currentTenant}`, {
             method: 'POST',
@@ -1547,5 +1575,148 @@ async function deleteManagedDevice(id) {
         showToast('Network error while unregistering device', true);
     } finally {
         setLoading(false);
+    }
+}
+// ============================================
+// API KEY MANAGEMENT
+// ============================================
+
+function openCreateKeyModal() {
+    document.getElementById('create-key-modal').style.display = 'flex';
+}
+
+function closeModal(id) {
+    document.getElementById(id).style.display = 'none';
+}
+
+async function handleCreateKey(e) {
+    if (e) e.preventDefault();
+    const name = document.getElementById('key-name').value;
+    const scopes = [];
+    if (document.getElementById('perm-ingest').checked) scopes.push('ingest');
+    if (document.getElementById('perm-read').checked) scopes.push('read');
+
+    try {
+        setLoading(true);
+        const res = await apiFetch(`${API_BASE_URL}/api/admin/tenants/${currentTenant}/api-keys`, {
+            method: 'POST',
+            body: JSON.stringify({ name, scopes })
+        });
+
+        if (res && res.ok) {
+            const data = await res.json();
+            closeModal('create-key-modal');
+            document.getElementById('create-key-form').reset();
+
+            // Show Reveal Modal
+            document.getElementById('generated-api-key').textContent = data.api_key;
+            document.getElementById('reveal-key-modal').style.display = 'flex';
+
+            loadApiKeys();
+            showToast('API Key generated successfully!', false);
+        } else {
+            showToast(`Error: ${res ? res.message : 'Failed to create key'}`, true);
+        }
+    } catch (e) {
+        console.error('Create API Key error:', e);
+        showToast('Network error while creating API key', true);
+    } finally {
+        setLoading(false);
+    }
+}
+
+async function loadApiKeys() {
+    try {
+        const res = await apiFetch(`${API_BASE_URL}/api/admin/tenants/${currentTenant}/api-keys`);
+        if (res && res.ok) {
+            const data = await res.json();
+            renderApiKeys(data.keys || []);
+            updateCurlExamples();
+        }
+    } catch (e) {
+        console.error('Load API Keys error:', e);
+    }
+}
+
+function renderApiKeys(keys) {
+    const tbody = document.getElementById('api-keys-table-body');
+    if (!tbody) return;
+
+    if (keys.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No API keys found. Generate one to get started.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = keys.map(key => `
+        <tr>
+            <td style="font-weight:600;">${key.name}</td>
+            <td class="mono" style="font-size:12px; color:var(--primary);">${key.prefix}...</td>
+            <td>
+                ${(key.scopes || []).map(s => `<span class="badge badge-low" style="font-size:10px; padding:2px 8px; margin-right:4px;">${s}</span>`).join('')}
+            </td>
+            <td style="color:var(--text-muted); font-size:12px;">${new Date(key.created_at).toLocaleDateString()}</td>
+            <td style="text-align:right;">
+                <button class="icon-btn" onclick="revokeApiKey('${key.id}')" title="Revoke Key" style="color:var(--critical); background:rgba(255,86,48,0.1); width:32px; height:32px; border-radius:8px;">
+                    <i data-lucide="trash-2" style="width:16px;"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+
+    lucide.createIcons();
+}
+
+async function revokeApiKey(keyId) {
+    if (!confirm('Are you sure you want to revoke this API key? Any systems using it will immediately stop working.')) return;
+
+    try {
+        setLoading(true);
+        const res = await apiFetch(`${API_BASE_URL}/api/admin/api-keys/${keyId}`, {
+            method: 'DELETE'
+        });
+
+        if (res && res.ok) {
+            showToast('API Key revoked successfully', false);
+            loadApiKeys();
+        } else {
+            showToast('Failed to revoke key', true);
+        }
+    } catch (e) {
+        console.error('Revoke error:', e);
+        showToast('Network error while revoking key', true);
+    } finally {
+        setLoading(false);
+    }
+}
+
+function copyGeneratedKey() {
+    const key = document.getElementById('generated-api-key').textContent;
+    navigator.clipboard.writeText(key).then(() => {
+        showToast('Key copied to clipboard!', false);
+    });
+}
+
+function updateCurlExamples() {
+    const singleEl = document.getElementById('curl-single-example');
+    const batchEl = document.getElementById('curl-batch-example');
+
+    if (singleEl) {
+        singleEl.textContent = `curl -X POST "${API_BASE_URL}/ingest/log" \\
+  -H "X-API-Key: YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "raw_log": "your firewall log here",
+    "tenant_id": "${currentTenant}"
+  }'`;
+    }
+
+    if (batchEl) {
+        batchEl.textContent = `curl -X POST "${API_BASE_URL}/ingest/batch" \\
+  -H "X-API-Key: YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "logs": [{"raw_log": "..."}, {"raw_log": "..."}],
+    "tenant_id": "${currentTenant}"
+  }'`;
     }
 }

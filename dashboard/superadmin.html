@@ -43,6 +43,9 @@
                 <i data-lucide="list-filter" style="width:18px;"></i> Audit Trail</a>
             <a href="#" class="nav-item" data-view="settings" onclick="SuperAdmin.switchView('settings', this)">
                 <i data-lucide="settings" style="width:18px;"></i> System Settings</a>
+            <a href="#" class="nav-item" data-view="api-inventory"
+                onclick="SuperAdmin.switchView('api-inventory', this)">
+                <i data-lucide="key" style="width:18px;"></i> API Inventory</a>
             <a href="#" class="nav-item" data-view="backup" onclick="SuperAdmin.switchView('backup', this)">
                 <i data-lucide="database" style="width:18px;"></i> Backup & Logs</a>
             <a href="#" class="nav-item" data-view="network" onclick="SuperAdmin.switchView('network', this)">
@@ -654,6 +657,52 @@
                         style="width:48px; height:48px; color:var(--text-disabled); margin-bottom:16px;"></i>
                     <p>Select a tenant to manage their network access allowlist.</p>
                 </div>
+            </div>
+        </section>
+        <!-- ============================================ -->
+        <!-- API INVENTORY VIEW                          -->
+        <!-- ============================================ -->
+        <section id="api-inventory-view" class="view">
+            <header class="view-header">
+                <div>
+                    <h1>API Key Inventory</h1>
+                    <p>Global oversight of all tenant API access credentials.</p>
+                </div>
+                <div class="header-actions">
+                    <div class="search-box">
+                        <i data-lucide="search" style="width:16px;"></i>
+                        <input type="text" id="api-search" placeholder="Search by name, prefix, or tenant..."
+                            oninput="SuperAdmin.filterApiKeys()">
+                    </div>
+                </div>
+            </header>
+
+            <div class="card table-card">
+                <div class="table-header-row">
+                    <h3>All Active Keys</h3>
+                    <div class="table-filters">
+                        <select id="api-tenant-filter" class="glass-input" onchange="SuperAdmin.loadApiInventory()">
+                            <option value="">All Tenants</option>
+                        </select>
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Key Name</th>
+                            <th>Tenant</th>
+                            <th>Prefix</th>
+                            <th>Permissions</th>
+                            <th>Created</th>
+                            <th style="text-align:right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="api-inventory-list">
+                        <tr>
+                            <td colspan="6" class="empty-state">Loading inventory...</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </section>
     </main>

@@ -1,0 +1,84 @@
+# =============================================================================
+# AfricAnalyzer — Repo2 Intelligence Analyzer — Development Stack
+# =============================================================================
+# Optimized for local iteration with hot-reloading and debug tools.
+# Usage: docker compose -f docker-compose.dev.yml up -d --build
+# =============================================================================
+
+name: intelligence-analyzer-dev
+
+services:
+  # ── PostgreSQL (Local Dev) ────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: siem-db-dev
+    restart: unless-stopped
+    ports:
+      - "5433:5432" # Use 5433 to avoid conflict with local postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-siem_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-siem_password}
+      POSTGRES_DB: ${POSTGRES_DB:-siem_db}
+    volumes:
+      - pg_dev_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    networks:
+      - siem-dev-network
+
+  # ── Intelligence Analyzer API ──────────────────────────────────────────────
+  analyzer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    container_name: siem-analyzer-dev
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-siem_user}:${POSTGRES_PASSWORD:-siem_password}@db:5432/${POSTGRES_DB:-siem_db}
+      - REDIS_URL=${REDIS_URL:-redis://afric-analyzer-redis-local:6379/0}
+      - DEV_MODE=true
+      - EXPOSE_DOCS=true
+    volumes:
+      - .:/app:rw # Full volume mount for instant sync
+      - ./logs:/app/logs:rw
+      - ./reports:/app/reports:rw
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - siem-dev-network
+      - afric-shared
+    # Run with reload enabled for instant feedback
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
+
+  # ── Consumer Worker ────────────────────────────────────────────────────────
+  consumer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    container_name: siem-consumer-dev
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-siem_user}:${POSTGRES_PASSWORD:-siem_password}@db:5432/${POSTGRES_DB:-siem_db}
+      - REDIS_URL=${REDIS_URL:-redis://afric-analyzer-redis-local:6379/0}
+      - BATCH_SIZE=50
+    volumes:
+      - .:/app:rw
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - siem-dev-network
+      - afric-shared
+    command: python -m src.services.redis_consumer
+
+networks:
+  siem-dev-network:
+    driver: bridge
+  afric-shared:
+    external: true
+    name: docker_afric-network # Matching Repo 1 network name
+
+volumes:
+  pg_dev_data:

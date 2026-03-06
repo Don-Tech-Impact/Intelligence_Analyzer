@@ -34,6 +34,7 @@
                             class="badge-pro">PRO</span></a></li>
                 <li><a href="#" onclick="switchView('analytics')"><i data-lucide="bar-chart-3"></i> Analytics</a></li>
                 <li><a href="#" onclick="switchView('assets')"><i data-lucide="server"></i> Assets</a></li>
+                <li><a href="#" onclick="switchView('api-keys')"><i data-lucide="key"></i> API Keys</a></li>
                 <li><a href="#" onclick="switchView('compliance')"><i data-lucide="file-check"></i> Compliance</a></li>
                 <li><a href="#" onclick="switchView('reports')"><i data-lucide="clipboard-list"></i> Reports</a></li>
                 <li><a href="#" onclick="switchView('profile')"><i data-lucide="user-circle"></i> Profile</a></li>
@@ -521,6 +522,79 @@
             </div>
 
             <!-- ============================================ -->
+            <!-- API KEYS MANAGEMENT VIEW                      -->
+            <!-- ============================================ -->
+            <div id="api-keys-view" class="dashboard-view">
+                <div class="api-keys-container">
+                    <div class="section-header"
+                        style="display:flex; justify-content:space-between; align-items:center;">
+                        <div class="header-left">
+                            <h3 style="font-size:1.5rem; font-weight:700;">API Key Management</h3>
+                            <p style="color:var(--text-muted);">Generate keys for automated log ingestion and data
+                                access.</p>
+                        </div>
+                        <button class="btn-primary" onclick="openCreateKeyModal()">
+                            <i data-lucide="plus"></i> Create New Key
+                        </button>
+                    </div>
+
+                    <div class="data-table-container mt-4" style="margin-top:2rem;">
+                        <table class="mono-table">
+                            <thead>
+                                <tr>
+                                    <th>Key Name</th>
+                                    <th>Prefix</th>
+                                    <th>Permissions</th>
+                                    <th>Created</th>
+                                    <th style="text-align:right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="api-keys-table-body">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="developer-docs"
+                        style="margin-top:3rem; padding:2rem; background:rgba(255,255,255,0.03); border-radius:16px;">
+                        <h4 style="display:flex; align-items:center; gap:10px; margin-bottom:1.5rem;">
+                            <i data-lucide="terminal" style="color:var(--primary);"></i> Developer Quick Start
+                        </h4>
+                        <div class="docs-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                            <div class="doc-card"
+                                style="padding:1.5rem; background:rgba(0,0,0,0.2); border-radius:12px;">
+                                <h5 style="margin-bottom:1rem; color:var(--primary);">Single Log Ingestion</h5>
+                                <pre class="code-block"
+                                    style="background:transparent; padding:0; font-size:12px; white-space:pre-wrap; word-break:break-all;"
+                                    id="curl-single-example">
+curl -X POST "${API_BASE_URL}/ingest/log" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "raw_log": "your firewall log here",
+    "tenant_id": "test_lab"
+  }'</pre>
+                            </div>
+                            <div class="doc-card"
+                                style="padding:1.5rem; background:rgba(0,0,0,0.2); border-radius:12px;">
+                                <h5 style="margin-bottom:1rem; color:var(--primary);">Batch Ingestion</h5>
+                                <pre class="code-block"
+                                    style="background:transparent; padding:0; font-size:12px; white-space:pre-wrap; word-break:break-all;"
+                                    id="curl-batch-example">
+curl -X POST "${API_BASE_URL}/ingest/batch" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "logs": [{"raw_log": "..."}, {"raw_log": "..."}],
+    "tenant_id": "test_lab"
+  }'</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================ -->
             <!-- LOGS (INCIDENTS) VIEW                        -->
             <!-- ============================================ -->
             <div id="logs-view" class="dashboard-view">
@@ -833,6 +907,69 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+    <!-- Create API Key Modal -->
+    <div id="create-key-modal" class="modal"
+        style="display:none; position:fixed; z-index:2000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.7); align-items:center; justify-content:center;">
+        <div class="modal-content glass-card" style="width:450px; padding:2rem;">
+            <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:1.5rem;">
+                <h3>Create API Key</h3>
+                <button onclick="closeModal('create-key-modal')"
+                    style="background:none; border:none; color:white; font-size:1.5rem; cursor:pointer;">&times;</button>
+            </div>
+            <form id="create-key-form" onsubmit="handleCreateKey(event)">
+                <div class="form-group" style="margin-bottom:1.5rem;">
+                    <label style="display:block; margin-bottom:0.5rem;">Key Name</label>
+                    <input type="text" id="key-name" class="glass-input" placeholder="e.g. Production Firewall"
+                        style="width:100%;" required>
+                </div>
+                <div class="form-group" style="margin-bottom:1.5rem;">
+                    <label style="display:block; margin-bottom:0.5rem;">Permissions</label>
+                    <div style="display:flex; gap:15px;">
+                        <label style="display:flex; align-items:center; gap:5px; font-size:0.9rem;"><input
+                                type="checkbox" id="perm-ingest" checked> Ingest Logs</label>
+                        <label style="display:flex; align-items:center; gap:5px; font-size:0.9rem;"><input
+                                type="checkbox" id="perm-read"> Read Data</label>
+                    </div>
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:10px;">
+                    <button type="button" class="btn-secondary" onclick="closeModal('create-key-modal')">Cancel</button>
+                    <button type="submit" class="btn-primary">Generate Key</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Reveal Key Modal (Show Once) -->
+    <div id="reveal-key-modal" class="modal"
+        style="display:none; position:fixed; z-index:2001; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.9); align-items:center; justify-content:center;">
+        <div class="modal-content glass-card" style="width:550px; padding:2.5rem; text-align:center;">
+            <div
+                style="width:60px; height:60px; background:rgba(0,167,111,0.1); border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 1.5rem; color:var(--primary);">
+                <i data-lucide="shield-check" style="width:32px; height:32px;"></i>
+            </div>
+            <h3 style="font-size:1.5rem; margin-bottom:0.5rem;">API Key Generated</h3>
+            <p style="color:var(--text-muted); margin-bottom:2rem;">Your new API key is ready. For security, we will
+                never show it again.</p>
+
+            <div
+                style="background:rgba(255,255,255,0.05); padding:1.5rem; border-radius:12px; display:flex; align-items:center; justify-content:center; gap:15px; border:1px dashed rgba(255,255,255,0.2); margin-bottom:2rem;">
+                <code id="generated-api-key"
+                    style="font-family:'JetBrains Mono', monospace; font-size:1rem; color:var(--primary); word-break:break-all;">ak_...</code>
+                <button onclick="copyGeneratedKey()" class="icon-btn"
+                    style="background:rgba(255,255,255,0.1); width:40px; height:40px; border-radius:8px;"><i
+                        data-lucide="copy" style="width:18px;"></i></button>
+            </div>
+
+            <div
+                style="background:rgba(255,86,48,0.1); padding:1rem; border-radius:8px; display:flex; align-items:center; gap:10px; color:#FF5630; font-size:0.85rem; margin-bottom:2rem; text-align:left;">
+                <i data-lucide="alert-triangle" style="width:20px; flex-shrink:0;"></i>
+                <span>Copy this key now. Once you close this window, you cannot retrieve it again.</span>
+            </div>
+
+            <button type="button" class="btn-primary" style="width:100%; padding:1rem;"
+                onclick="closeModal('reveal-key-modal')">I Have Safely Stored This Key</button>
         </div>
     </div>
 

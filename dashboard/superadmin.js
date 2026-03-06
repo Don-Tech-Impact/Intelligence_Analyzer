@@ -114,6 +114,9 @@ const SuperAdmin = {
             case 'network':
                 this.loadNetworkSecurity();
                 break;
+            case 'api-inventory':
+                this.loadApiInventory();
+                break;
         }
 
         lucide.createIcons();
@@ -174,46 +177,66 @@ const SuperAdmin = {
         }
     },
 
+    // ============================================
+    // DATA LOADING (Optimized for Weak Networks)
+    // ============================================
     async loadData() {
+        const cacheKey = 'superadmin_system_bundle';
+
+        // 1. Stale-While-Revalidate: Load from cache first
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            try {
+                const bundle = JSON.parse(cached);
+                this.renderBundle(bundle);
+            } catch (e) { localStorage.removeItem(cacheKey); }
+        }
+
+        // 2. Fetch new consolidated bundle in one round-trip
         try {
-            const response = await fetch(`${this.API_BASE}/api/admin/system/overview`, {
+            const response = await fetch(`${this.API_BASE}/api/admin/system/bundle`, {
                 headers: Auth.getAuthHeader()
             });
 
             if (response.status === 401 || response.status === 403) {
-                console.error("Auth Failure: Dashboard fetch rejected. Check SECRET_KEY sync.");
+                console.error("Auth Failure: Dashboard fetch rejected.");
                 const tbody = document.getElementById('tenant-list');
-                if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="empty-state" style="color:var(--error);">Access Denied: Backend rejected your token. Check .env SECRET_KEY.</td></tr>';
+                if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="empty-state" style="color:var(--error);">Access Denied: Backend rejected your token.</td></tr>';
                 return;
             }
 
             if (response.ok) {
                 const result = await response.json();
-                this.cachedOverview = result.data;
-                this.updateDashboardUI(result.data);
+                const bundle = result.data;
 
-                // Also fetch the REAL tenant list if possible
-                this.loadRealTenants();
+                // Store in cache
+                localStorage.setItem(cacheKey, JSON.stringify(bundle));
+
+                // Render fresh data
+                this.renderBundle(bundle);
             }
         } catch (e) {
-            console.error("Failed to load admin overview", e);
+            console.error("Failed to load system bundle", e);
+        }
+    },
+
+    renderBundle(bundle) {
+        if (!bundle) return;
+
+        // A. Update Stats & Charts
+        if (bundle.overview) {
+            this.cachedOverview = bundle.overview;
+            this.updateDashboardUI(bundle.overview);
+        }
+
+        // B. Update Tenant List
+        if (bundle.tenants) {
+            this.renderRealTenants(bundle.tenants);
         }
     },
 
     async loadRealTenants() {
-        try {
-            const res = await fetch(`${this.API_BASE}/api/admin/tenants`, {
-                headers: Auth.getAuthHeader()
-            });
-            if (res.ok) {
-                const data = await res.json();
-                // Repo 1 returns { tenants: [...] }
-                const tenants = data.tenants || [];
-                this.renderRealTenants(tenants);
-            }
-        } catch (e) {
-            console.warn("Failed to fetch real tenants from Repo 1", e);
-        }
+        // This is now handled by the system bundle in loadData()
     },
 
     renderRealTenants(tenants) {
@@ -431,6 +454,24 @@ const SuperAdmin = {
                             <div class="config-item"><span class="label">Compliance:</span><span class="value" style="color:var(--success); font-weight:600;">SOC2 Compliant</span></div>
                         </div>
                     </div>
+
+                    <div class="card detail-section full-width">
+                        <div class="section-header"><i data-lucide="key"></i> <h4>API Access Oversight</h4></div>
+                        <div id="tenant-keys-loading" class="empty-state">Loading keys...</div>
+                        <div id="tenant-keys-container" style="display:none;">
+                            <table class="nested-table">
+                                <thead>
+                                    <tr>
+                                        <th>Key Name</th>
+                                        <th>Prefix</th>
+                                        <th>Permissions</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tenant-keys-list"></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer" style="padding:24px 0 0; margin-top:12px; border-top:1px dashed var(--grey-200); display:flex; gap:12px; justify-content:flex-end;">
                     <button class="btn-secondary" onclick="SuperAdmin.loadUsers('${tenantId}'); SuperAdmin.switchView('users'); SuperAdmin.closeModal('tenant-detail-modal')">
@@ -442,6 +483,7 @@ const SuperAdmin = {
                 </div>
                 `;
                 lucide.createIcons();
+                this.loadTenantApiKeys(tenantId);
             }
         } catch (e) {
             console.error("ViewDetail error:", e);
@@ -980,7 +1022,134 @@ const SuperAdmin = {
         if (bytes === 0) return '0 B';
         const k = 1024, sizes = ['B', 'KB', 'MB', 'GB', 'TB'], i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
+    },
+    // ============================================
+    // API INVENTORY & OVERSIGHT
+    // ============================================
+    async loadApiInventory() {
+        const list = document.getElementById('api-inventory-list');
+        const filterTenant = document.getElementById('api-tenant-filter').value;
+
+        try {
+            // First time load: fill tenant filter
+            if (this.cachedOverview && document.getElementById('api-tenant-filter').options.length <= 1) {
+                const select = document.getElementById('api-tenant-filter');
+                this.cachedOverview.tenants.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.tenant_id;
+                    opt.textContent = t.name;
+                    select.appendChild(opt);
+                });
+            }
+
+            // Fetch from global proxy
+            // Note: If Repo 1 doesn't have a global /admin/api-keys, we might need to iterate
+            // But for now we use the proxy catch-all
+            const path = filterTenant ? `/admin/tenants/${filterTenant}/api-keys` : '/admin/api-keys';
+            const response = await fetch(`${this.API_BASE}/api/admin${path}`, {
+                headers: Auth.getAuthHeader()
+            });
+            const data = await response.json();
+            const keys = data.keys || data;
+            this.renderApiInventory(Array.isArray(keys) ? keys : []);
+        } catch (e) {
+            console.error("LoadApiInventory error:", e);
+            if (list) list.innerHTML = `<tr><td colspan="6" class="empty-state error">Failed to load API inventory.</td></tr>`;
+        }
+    },
+
+    renderApiInventory(keys) {
+        const list = document.getElementById('api-inventory-list');
+        if (!list) return;
+        if (!keys || keys.length === 0) {
+            list.innerHTML = `<tr><td colspan="6" class="empty-state">No active API keys found across the platform.</td></tr>`;
+            return;
+        }
+
+        list.innerHTML = keys.map(key => `
+            <tr>
+                <td><strong>${key.name}</strong></td>
+                <td><code class="tenant-tag">${key.tenant_id}</code></td>
+                <td><code>${key.prefix}***</code></td>
+                <td>
+                    <div class="scope-badges">
+                        ${key.scopes.map(s => `<span class="badge badge-scope">${s}</span>`).join('')}
+                    </div>
+                </td>
+                <td style="font-size:11px; color:var(--text-secondary);">${new Date(key.created_at).toLocaleDateString()}</td>
+                <td style="text-align:right;">
+                    <button class="btn-icon btn-danger-soft" title="Revoke Key" onclick="SuperAdmin.revokeApiKey('${key.id}', '${key.name}')">
+                        <i data-lucide="trash-2" style="width:14px;"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+        lucide.createIcons();
+    },
+
+    async loadTenantApiKeys(tenantId) {
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/tenants/${tenantId}/api-keys`, {
+                headers: Auth.getAuthHeader()
+            });
+            const data = await res.json();
+            const keys = data.keys || data;
+
+            const loading = document.getElementById('tenant-keys-loading');
+            const container = document.getElementById('tenant-keys-container');
+            const list = document.getElementById('tenant-keys-list');
+
+            if (loading) loading.style.display = 'none';
+            if (container) container.style.display = 'block';
+
+            if (!keys || !Array.isArray(keys) || keys.length === 0) {
+                if (list) list.innerHTML = `<tr><td colspan="4" class="empty-state" style="padding:16px;">No API keys found for this tenant.</td></tr>`;
+            } else {
+                if (list) list.innerHTML = keys.map(k => `
+                    <tr>
+                        <td>${k.name}</td>
+                        <td><code>${k.prefix}***</code></td>
+                        <td>${k.scopes.join(', ')}</td>
+                        <td style="font-size:11px; color:var(--text-secondary);">${new Date(k.created_at).toLocaleDateString()}</td>
+                    </tr>
+                `).join('');
+            }
+        } catch (e) {
+            console.error("LoadTenantApiKeys error:", e);
+        }
+    },
+
+    async revokeApiKey(id, name) {
+        if (!confirm(`Are you sure you want to revoke API key "${name}"? This action cannot be undone.`)) return;
+
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/api-keys/${id}`, {
+                method: 'DELETE',
+                headers: Auth.getAuthHeader()
+            });
+
+            if (res.ok) {
+                this.showToast(`API Key "${name}" revoked successfully.`, 'success');
+                this.loadApiInventory();
+            } else {
+                this.showToast(`Failed to revoke key.`, 'error');
+            }
+        } catch (e) {
+            console.error("Revoke error:", e);
+            this.showToast(`System error while revoking key.`, 'error');
+        }
+    },
+
+    filterApiKeys() {
+        const query = document.getElementById('api-search').value.toLowerCase();
+        const rows = document.querySelectorAll('#api-inventory-list tr');
+
+        rows.forEach(row => {
+            if (row.querySelector('.empty-state')) return;
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(query) ? '' : 'none';
+        });
+    },
 };
 
 document.addEventListener('DOMContentLoaded', () => SuperAdmin.init());

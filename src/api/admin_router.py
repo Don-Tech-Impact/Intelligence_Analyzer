@@ -336,7 +336,6 @@ def get_system_overview(
     ).order_by(
         func.count(NormalizedLog.id).desc()
     ).limit(20).all()
-
     top_tenants = [
         {"tenant_id": row[0], "log_count": row[1]}
         for row in tenant_volumes
@@ -363,6 +362,34 @@ def get_system_overview(
             "dead_letters": total_dead,
             "estimated_storage_bytes": total_logs * 500,
             "top_tenants_by_volume": top_tenants
+        },
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+@router.get("/system/bundle", dependencies=[Depends(verify_admin_or_superadmin)])
+async def get_system_bundle(db: Session = Depends(get_db)):
+    """
+    Consolidated system overview for SuperAdmins.
+    Combines stats with the basic tenant list to reduce round-trips.
+    """
+    # 1. Get local overview stats
+    overview = get_system_overview(db)
+    
+    # 2. Get remote tenant list from Repo 1
+    try:
+        # We call the proxy helper directly to get the latest tenant data
+        tenants_data = await list_tenants(page_size=50)
+        tenants = tenants_data.get("tenants", [])
+    except Exception as e:
+        logger.error(f"Failed to fetch tenants for bundle: {e}")
+        tenants = []
+        
+    return {
+        "status": "success",
+        "data": {
+            "overview": overview["data"],
+            "tenants": tenants
         },
         "timestamp": datetime.utcnow().isoformat()
     }

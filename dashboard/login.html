@@ -70,7 +70,7 @@
             <form id="login-form">
                 <div class="form-group">
                     <label for="email">Email or Username</label>
-                    required>
+                    <input type="text" id="email" class="input-field" placeholder="name@company.com" required>
                 </div>
 
                 <!-- Honeypot Field for Bot Detection -->
@@ -154,7 +154,7 @@
                 }
             } catch (err) {
                 console.error("Login Error:", err);
-                errorBox.innerHTML = `<strong>Connectivity Error</strong><br>Unable to reach the authentication proxy. Verify Repo 2 (Analyzer) is running on port 8000 ans naccess to Repo 1.`;
+                errorBox.innerHTML = `<strong>Connectivity Error</strong><br>Unable to reach the authentication proxy. Verify Repo 2 (Analyzer) is running on port 8000 and has access to Repo 1.`;
                 errorBox.style.display = 'block';
             } finally {
                 submitBtn.innerText = 'Sign In';

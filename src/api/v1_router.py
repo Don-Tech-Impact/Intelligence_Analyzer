@@ -82,6 +82,44 @@ def get_dashboard_summary(
     return ApiResponse(status="success", data=data)
 
 
+@router.get("/dashboard/bundle")
+def get_dashboard_bundle(
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """
+    Consolidated endpoint for all dashboard data.
+    Reduces network round-trips for slow connections.
+    """
+    summary = AnalyticsService.get_dashboard_summary(tenant_id, db)
+    timeline = AnalyticsService.get_timeline(tenant_id, db)
+    top_ips = AnalyticsService.get_top_ips(tenant_id, db)
+    traffic = AnalyticsService.get_traffic_analysis(tenant_id, db)
+    business = AnalyticsService.get_business_insights(tenant_id, db)
+    
+    # Recent alerts
+    alerts_query = db.query(Alert).filter(Alert.tenant_id == tenant_id)
+    recent_alerts = alerts_query.order_by(Alert.created_at.desc()).limit(10).all()
+    
+    return ApiResponse(status="success", data={
+        "summary": summary,
+        "timeline": timeline,
+        "top_ips": top_ips,
+        "traffic": traffic,
+        "business": business,
+        "recent_alerts": [a.to_dict() if hasattr(a, 'to_dict') else {
+            "id": a.id,
+            "tenant_id": a.tenant_id,
+            "alert_type": a.alert_type,
+            "severity": a.severity,
+            "status": a.status,
+            "description": a.description,
+            "source_ip": a.source_ip,
+            "created_at": a.created_at.isoformat() if a.created_at else None
+        } for a in recent_alerts]
+    })
+
+
 # ============================================
 # Log Endpoints
 # ============================================
