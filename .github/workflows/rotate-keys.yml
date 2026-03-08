@@ -1,0 +1,36 @@
+name: Rotate API Keys
+
+on:
+  workflow_dispatch:
+    inputs:
+      key_id:
+        description: 'The ID of the API Key to rotate'
+        required: true
+      reason:
+        description: 'Reason for rotation (e.g., Scheduled, Compromise)'
+        required: false
+        default: 'Manual Rotation'
+
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests python-dotenv
+
+      - name: Rotate API Key
+        env:
+          API_BASE_URL: ${{ secrets.PROD_API_BASE_URL }}
+          ADMIN_API_KEY: ${{ secrets.PROD_ADMIN_API_KEY }}
+        run: |
+          python scripts/rotate_key.py rotate "${{ github.event.inputs.key_id }}"

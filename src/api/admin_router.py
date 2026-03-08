@@ -727,6 +727,12 @@ async def revoke_api_key(key_id: str):
     return await _repo1_request("DELETE", f"/admin/api-keys/{key_id}")
 
 
+@router.post("/api-keys/{key_id}/rotate", dependencies=[Depends(verify_admin_or_superadmin)])
+async def rotate_api_key(key_id: str):
+    """Rotate an API key in Repo 1 (generate new secret)."""
+    return await _repo1_request("POST", f"/admin/api-keys/{key_id}/rotate")
+
+
 # ==========================================================================
 # Webhook configuration proxy → Repo 1
 # ==========================================================================

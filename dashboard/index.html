@@ -546,6 +546,7 @@
                                     <th>Prefix</th>
                                     <th>Permissions</th>
                                     <th>Created</th>
+                                    <th>Last Updated</th>
                                     <th style="text-align:right;">Actions</th>
                                 </tr>
                             </thead>
@@ -950,26 +951,23 @@ curl -X POST "${API_BASE_URL}/ingest/batch" \
                 <i data-lucide="shield-check" style="width:32px; height:32px;"></i>
             </div>
             <h3 style="font-size:1.5rem; margin-bottom:0.5rem;">API Key Generated</h3>
-            <p style="color:var(--text-muted); margin-bottom:2rem;">Your new API key is ready. For security, we will
-                never show it again.</p>
+            <p style="color:var(--text-muted); margin-bottom:2rem;">Your new API key is ready. For security, <strong
+                    style="color:var(--critical);">you will never be able to see it again</strong> after closing this
+                window.</p>
 
             <div
-                style="background:rgba(255,255,255,0.05); padding:1.5rem; border-radius:12px; display:flex; align-items:center; justify-content:center; gap:15px; border:1px dashed rgba(255,255,255,0.2); margin-bottom:2rem;">
+                style="background:rgba(255,255,255,0.05); padding:1.25rem; border-radius:12px; display:flex; align-items:center; justify-content:space-between; gap:15px; border:1px dashed rgba(255,255,255,0.2); margin-bottom:2rem;">
                 <code id="generated-api-key"
-                    style="font-family:'JetBrains Mono', monospace; font-size:1rem; color:var(--primary); word-break:break-all;">ak_...</code>
-                <button onclick="copyGeneratedKey()" class="icon-btn"
-                    style="background:rgba(255,255,255,0.1); width:40px; height:40px; border-radius:8px;"><i
-                        data-lucide="copy" style="width:18px;"></i></button>
+                    style="font-family:'JetBrains Mono', monospace; font-size:1rem; color:var(--primary); word-break:break-all; text-align:left;">ak_...</code>
+                <button onclick="copyGeneratedKey()" class="icon-btn" title="Copy to clipboard"
+                    style="background:var(--primary); color:black; width:40px; height:40px; border-radius:8px; flex-shrink:0;">
+                    <i data-lucide="copy" style="width:18px;"></i>
+                </button>
             </div>
 
-            <div
-                style="background:rgba(255,86,48,0.1); padding:1rem; border-radius:8px; display:flex; align-items:center; gap:10px; color:#FF5630; font-size:0.85rem; margin-bottom:2rem; text-align:left;">
-                <i data-lucide="alert-triangle" style="width:20px; flex-shrink:0;"></i>
-                <span>Copy this key now. Once you close this window, you cannot retrieve it again.</span>
-            </div>
-
-            <button type="button" class="btn-primary" style="width:100%; padding:1rem;"
-                onclick="closeModal('reveal-key-modal')">I Have Safely Stored This Key</button>
+            <button class="btn-primary" onclick="closeModal('reveal-key-modal')" style="width:100%; padding:1rem;">
+                I have saved this key
+            </button>
         </div>
     </div>
 

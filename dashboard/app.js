@@ -28,6 +28,7 @@ let currentView = 'overview';
 let currentTimeRange = '24h';
 let fetchInProgress = false;
 let previousStats = null;
+let mockMode = false;
 
 const VIEWS = {
     overview: { title: 'Afric-Analyzer', subtitle: 'Real-time threat monitoring and response' },
@@ -144,6 +145,12 @@ async function apiFetch(url, options = {}) {
 
 // ===== API Status Check =====
 async function checkApiStatus() {
+    // If user manually entered Mock Mode, don't perform network check
+    if (mockMode) {
+        setApiOnline(false);
+        return;
+    }
+
     try {
         const res = await fetch(`${API_BASE_URL}/health`, { signal: AbortSignal.timeout(3000) });
         setApiOnline(res.ok);
@@ -165,13 +172,29 @@ function setApiOnline(online) {
     const dot = document.getElementById('api-status-dot');
     const text = document.getElementById('api-status-text');
     const badge = document.getElementById('status-badge');
+
+    // Update Sidebar / Footer status
     if (dot) dot.className = online ? 'dot online' : 'dot';
-    if (text) text.textContent = online ? 'API Online · Live data' : 'API Offline · Using mock data';
+
+    if (text) {
+        if (mockMode) {
+            text.textContent = 'Mock Mode · Using local data';
+        } else {
+            text.textContent = online ? 'API Online · Live data' : 'API Offline · Using mock data';
+        }
+    }
+
+    // Update Header Badge
     if (badge) {
-        badge.className = online ? 'status-badge online' : 'status-badge offline';
-        badge.innerHTML = online
-            ? '<i data-lucide="wifi"></i><span>Online</span>'
-            : '<i data-lucide="wifi-off"></i><span>Offline</span>';
+        if (mockMode) {
+            badge.className = 'status-badge mock'; // New "mock" class for visual distinction
+            badge.innerHTML = '<i data-lucide="flask-conical"></i><span>Mock Mode</span>';
+        } else {
+            badge.className = online ? 'status-badge online' : 'status-badge offline';
+            badge.innerHTML = online
+                ? '<i data-lucide="wifi"></i><span>Online</span>'
+                : '<i data-lucide="wifi-off"></i><span>Offline</span>';
+        }
         lucide.createIcons();
     }
 }
@@ -1609,7 +1632,10 @@ async function handleCreateKey(e) {
             document.getElementById('create-key-form').reset();
 
             // Show Reveal Modal
-            document.getElementById('generated-api-key').textContent = data.api_key;
+            const keyEl = document.getElementById('generated-api-key');
+            keyEl.textContent = data.api_key;
+            keyEl.dataset.fullKey = data.api_key; // For copy function
+
             document.getElementById('reveal-key-modal').style.display = 'flex';
 
             loadApiKeys();
@@ -1626,12 +1652,19 @@ async function handleCreateKey(e) {
 }
 
 async function loadApiKeys() {
+    console.log(`[API Keys] Fetching keys for tenant: ${currentTenant}`);
     try {
         const res = await apiFetch(`${API_BASE_URL}/api/admin/tenants/${currentTenant}/api-keys`);
         if (res && res.ok) {
             const data = await res.json();
-            renderApiKeys(data.keys || []);
+            console.log(`[API Keys] Received data:`, data);
+
+            // Be extremely robust with data parsing
+            const keys = data.api_keys || data.keys || (Array.isArray(data) ? data : []);
+            renderApiKeys(keys);
             updateCurlExamples();
+        } else {
+            console.error('[API Keys] Fetch failed:', res);
         }
     } catch (e) {
         console.error('Load API Keys error:', e);
@@ -1642,28 +1675,129 @@ function renderApiKeys(keys) {
     const tbody = document.getElementById('api-keys-table-body');
     if (!tbody) return;
 
-    if (keys.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No API keys found. Generate one to get started.</td></tr>';
+    if (!keys || keys.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No API keys found. Access restricted to security hardware.</td></tr>';
         return;
     }
 
-    tbody.innerHTML = keys.map(key => `
+    tbody.innerHTML = keys.map(key => {
+        const prefix = key.key_prefix || (key.prefix ? (key.prefix + '...') : 'ak_••••');
+        const lastUpdated = key.updated_at ? new Date(key.updated_at).toLocaleString() : 'Never';
+        return `
         <tr>
             <td style="font-weight:600;">${key.name}</td>
-            <td class="mono" style="font-size:12px; color:var(--primary);">${key.prefix}...</td>
+            <td class="mono" style="font-size:12px; color:var(--primary); letter-spacing:1px;">
+                ${prefix}<span style="opacity:0.3;">••••</span>
+            </td>
             <td>
-                ${(key.scopes || []).map(s => `<span class="badge badge-low" style="font-size:10px; padding:2px 8px; margin-right:4px;">${s}</span>`).join('')}
+                ${(key.permissions ? Object.entries(key.permissions).filter(([_, v]) => v).map(([k]) => `<span class="badge badge-low" style="font-size:10px; padding:2px 8px; margin-right:4px;">${k}</span>`).join('') : '<span class="badge badge-low">ingest</span>')}
             </td>
             <td style="color:var(--text-muted); font-size:12px;">${new Date(key.created_at).toLocaleDateString()}</td>
-            <td style="text-align:right;">
+            <td style="color:var(--primary); font-size:12px; font-weight:500;">${lastUpdated}</td>
+            <td style="text-align:right; display:flex; gap:8px; justify-content:flex-end;">
+                <button class="icon-btn" onclick="rotateApiKey('${key.id}')" title="Regenerate Key (Rotate)" style="color:var(--primary); background:rgba(0,167,111,0.1); width:32px; height:32px; border-radius:8px;">
+                    <i data-lucide="refresh-cw" style="width:14px;"></i>
+                </button>
                 <button class="icon-btn" onclick="revokeApiKey('${key.id}')" title="Revoke Key" style="color:var(--critical); background:rgba(255,86,48,0.1); width:32px; height:32px; border-radius:8px;">
-                    <i data-lucide="trash-2" style="width:16px;"></i>
+                    <i data-lucide="trash-2" style="width:14px;"></i>
                 </button>
             </td>
         </tr>
-    `).join('');
+    `}).join('');
 
     lucide.createIcons();
+}
+
+async function copyGeneratedKey() {
+    const keyEl = document.getElementById('generated-api-key');
+    const key = keyEl.dataset.fullKey || keyEl.textContent;
+
+    if (!key || key === 'ak_...') {
+        showToast('No key to copy', true);
+        return;
+    }
+
+    try {
+        // Modern Clipboard API (Requires Secure Context: HTTPS or localhost)
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(key);
+            handleCopySuccess();
+        } else {
+            // Fallback for non-secure contexts
+            const textArea = document.createElement("textarea");
+            textArea.value = key;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            textArea.style.top = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+
+            if (successful) {
+                handleCopySuccess();
+            } else {
+                throw new Error('Fallback copy failed');
+            }
+        }
+    } catch (err) {
+        console.error('Copy failed:', err);
+        showToast('Failed to copy key', true);
+    }
+}
+
+function handleCopySuccess() {
+    showToast('API Key copied to clipboard!', false);
+
+    // Visual feedback on the button
+    const btn = document.querySelector('#reveal-key-modal .icon-btn');
+    if (!btn) return;
+
+    const icon = btn.querySelector('i');
+    if (!icon) return;
+
+    const originalIcon = icon.getAttribute('data-lucide');
+    icon.setAttribute('data-lucide', 'check');
+    lucide.createIcons();
+
+    setTimeout(() => {
+        icon.setAttribute('data-lucide', originalIcon);
+        lucide.createIcons();
+    }, 2000);
+}
+
+async function rotateApiKey(keyId) {
+    if (!confirm('Regenerating this key will immediately invalidate the old secret. New credentials will be shown only once. Continue?')) return;
+
+    try {
+        setLoading(true);
+        const res = await apiFetch(`${API_BASE_URL}/api/admin/api-keys/${keyId}/rotate`, {
+            method: 'POST'
+        });
+
+        if (res && res.ok) {
+            const data = await res.json();
+
+            // Show Reveal Modal with new key
+            const keyEl = document.getElementById('generated-api-key');
+            keyEl.textContent = data.api_key;
+            keyEl.dataset.fullKey = data.api_key;
+
+            document.getElementById('reveal-key-modal').style.display = 'flex';
+
+            loadApiKeys();
+            showToast('API Key rotated successfully', false);
+        } else {
+            showToast('Failed to rotate API Key', true);
+        }
+    } catch (e) {
+        console.error('Rotation error:', e);
+        showToast('Error rotating key', true);
+    } finally {
+        setLoading(false);
+    }
 }
 
 async function revokeApiKey(keyId) {
@@ -1689,12 +1823,6 @@ async function revokeApiKey(keyId) {
     }
 }
 
-function copyGeneratedKey() {
-    const key = document.getElementById('generated-api-key').textContent;
-    navigator.clipboard.writeText(key).then(() => {
-        showToast('Key copied to clipboard!', false);
-    });
-}
 
 function updateCurlExamples() {
     const singleEl = document.getElementById('curl-single-example');
