@@ -368,17 +368,18 @@
                     </div>
                     <div class="stat-card">
                         <div class="stat-header">
-                            <span class="label">Active/Online</span>
-                            <i data-lucide="zap" class="icon-green"></i>
+                            <span class="label">Primary Office IP</span>
+                            <i data-lucide="map-pin" class="icon-green"></i>
                         </div>
-                        <div class="stat-value" id="asset-count-online">0</div>
+                        <div class="stat-value" id="primary-ip-display"
+                            style="font-size: 1.1rem; font-family: 'JetBrains Mono';">Not Set</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-header">
-                            <span class="label">Critical Threats</span>
-                            <i data-lucide="alert-triangle" class="icon-orange"></i>
+                            <span class="label">Personal Devices</span>
+                            <i data-lucide="smartphone" class="icon-orange"></i>
                         </div>
-                        <div class="stat-value" id="asset-count-threats">0</div>
+                        <div class="stat-value" id="user-device-count">0</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-header">
@@ -389,10 +390,40 @@
                     </div>
                 </div>
 
+                <!-- NEW: User Registered Devices Section -->
+                <div class="data-table-container" style="margin-bottom: 2rem; border: 1px solid var(--primary-light);">
+                    <div class="table-header" style="background: rgba(0, 167, 111, 0.05);">
+                        <div class="header-left">
+                            <h4 style="font-size: 0.9rem; font-weight: 700; color: var(--primary);">My Registered
+                                Devices</h4>
+                            <p>Personal laptops, phones, or workstations allowed to send logs</p>
+                        </div>
+                        <button class="btn-primary btn-sm" onclick="openRegisterDeviceModal()">
+                            <i data-lucide="plus"></i> Register Personal Device
+                        </button>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Device Name</th>
+                                <th>IP Address</th>
+                                <th>Registration Date</th>
+                                <th style="text-align:right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="user-devices-body">
+                            <!-- Populated by JS -->
+                            <tr>
+                                <td colspan="4" class="empty-state">Loading your devices...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
                 <div class="data-table-container">
                     <div class="table-header" style="background: rgba(148, 163, 184, 0.03);">
                         <div class="header-left">
-                            <h4 style="font-size: 0.9rem; font-weight: 700;">Managed Security Devices</h4>
+                            <h4 style="font-size: 0.9rem; font-weight: 700;">Infrastructure Assets (Managed)</h4>
                         </div>
                     </div>
                     <table>

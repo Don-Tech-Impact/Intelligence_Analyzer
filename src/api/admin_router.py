@@ -698,6 +698,12 @@ async def remove_tenant_ip(tenant_id: str, ip_id: str):
     return await _repo1_request("DELETE", f"/admin/tenants/{tenant_id}/ips/{ip_id}")
 
 
+@router.post("/tenants/{tenant_id}/primary-ip", dependencies=[Depends(verify_admin_or_superadmin)])
+async def set_primary_ip(tenant_id: str, payload: dict):
+    """Set the primary office IP for a tenant in Repo 1."""
+    return await _repo1_request("POST", f"/admin/tenants/{tenant_id}/primary-ip", body=payload)
+
+
 # Keep legacy allowlist delete route for backward compatibility
 @router.delete("/allowlist/{tenant_id}/{ip:path}", dependencies=[Depends(verify_admin_or_superadmin)])
 async def remove_from_allowlist_legacy(tenant_id: str, ip: str):

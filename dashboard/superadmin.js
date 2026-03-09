@@ -446,6 +446,26 @@ const SuperAdmin = {
                     </div>
 
                     <div class="card detail-section full-width">
+                        <div class="section-header"><i data-lucide="shield-check"></i> <h4>Network Perimeter (Level 1 Security)</h4></div>
+                        <div style="padding:12px; background:rgba(0,167,111,0.05); border-radius:8px; display:flex; gap:16px; align-items:center;">
+                            <div style="flex:1;">
+                                <label style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Primary Office IP</label>
+                                <input type="text" id="tenant-primary-ip-input" class="glass-input" 
+                                       style="font-family:'JetBrains Mono'; margin-top:4px;" 
+                                       placeholder="e.g. 41.79.123.45" 
+                                       value="${t.primary_ip || t.office_ip || ''}">
+                            </div>
+                            <button class="btn-primary" onclick="SuperAdmin.setPrimaryIp('${tenantId}')" style="margin-top:18px;">
+                                <i data-lucide="save" style="width:14px;"></i> Set Primary IP
+                            </button>
+                        </div>
+                        <p style="font-size:11px; color:var(--text-muted); margin-top:8px;">
+                            <i data-lucide="info" style="width:12px; height:12px; vertical-align:middle;"></i> 
+                            This is the main campus/office IP that has permanent access for all users.
+                        </p>
+                    </div>
+
+                    <div class="card detail-section full-width">
                         <div class="section-header"><i data-lucide="settings-2"></i> <h4>Operational Configuration</h4></div>
                         <div class="config-grid-layout">
                             <div class="config-item"><span class="label">Business Hours:</span><span class="value">${usage.business_hours_start || t.business_hours_start || '09:00'} to ${usage.business_hours_end || t.business_hours_end || '17:00'}</span></div>
@@ -488,6 +508,36 @@ const SuperAdmin = {
         } catch (e) {
             console.error("ViewDetail error:", e);
             if (body) body.innerHTML = `<div class="empty-state error">Failed to load detailed intelligence for ${tenantId}.</div>`;
+        }
+    },
+
+    async setPrimaryIp(tenantId) {
+        const ipInput = document.getElementById('tenant-primary-ip-input');
+        const primaryIp = ipInput ? ipInput.value.trim() : '';
+
+        if (!primaryIp) {
+            alert("Please enter a valid IP address.");
+            return;
+        }
+
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/tenants/${tenantId}/primary-ip`, {
+                method: 'POST',
+                headers: { ...Auth.getAuthHeader(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ primary_ip: primaryIp })
+            });
+
+            if (res.ok) {
+                this.showToast(`Primary IP for ${tenantId} updated successfully.`, 'success');
+                // Optional: refresh details
+                this.viewTenantDetail(tenantId);
+            } else {
+                const err = await res.json();
+                alert(`Failed to update IP: ${err.detail || 'Unknown error'}`);
+            }
+        } catch (e) {
+            console.error("SetPrimaryIp error:", e);
+            alert("Error communicating with Admin API");
         }
     },
 

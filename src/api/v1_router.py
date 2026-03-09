@@ -14,6 +14,8 @@ from src.services.report_generator import ReportGenerator
 from src.models.schemas import ApiResponse
 from src.api.auth import verify_jwt
 from src.core.config import config as siem_config
+import httpx
+import os
 
 # Create V1 router (protected by JWT)
 # Create V1 router (protected by JWT)
@@ -579,6 +581,95 @@ def list_assets(
         **result,
         "timestamp": datetime.utcnow().isoformat()
     }
+
+
+# ============================================
+# User Device Management (Repo 1 Proxy)
+# ============================================
+
+@router.get("/assets/my-devices")
+async def get_my_devices(request: Request):
+    """Get registered devices for the current user from Repo 1."""
+    repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
+    auth_header = request.headers.get("Authorization")
+    
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            headers = {"Content-Type": "application/json"}
+            if auth_header:
+                headers["Authorization"] = auth_header
+                
+            response = await client.get(f"{repo1_url}/api/logs/my-devices", headers=headers)
+            return response.json()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Identity server unreachable: {e}")
+
+
+@router.post("/assets/devices")
+async def register_user_device(request: Request, payload: dict):
+    """Register a personal device in Repo 1."""
+    repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
+    auth_header = request.headers.get("Authorization")
+    
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            headers = {"Content-Type": "application/json"}
+            if auth_header:
+                headers["Authorization"] = auth_header
+                
+            response = await client.post(
+                f"{repo1_url}/api/logs/devices", 
+                json=payload, 
+                headers=headers
+            )
+            return response.json()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Identity server unreachable: {e}")
+
+
+@router.delete("/assets/devices/{ip}")
+async def remove_user_device(ip: str, request: Request):
+    """Remove a registered device from Repo 1."""
+    repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
+    auth_header = request.headers.get("Authorization")
+    
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            headers = {"Content-Type": "application/json"}
+            if auth_header:
+                headers["Authorization"] = auth_header
+                
+            response = await client.delete(f"{repo1_url}/api/logs/devices/{ip}", headers=headers)
+            return response.json()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Identity server unreachable: {e}")
+
+
+@router.get("/assets/primary-ip")
+async def get_primary_ip(request: Request):
+    """Get the primary office IP for the current tenant from Repo 1."""
+    repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
+    auth_header = request.headers.get("Authorization")
+    
+    # We need the tenant_id from the token to call the Repo 1 admin endpoint
+    from src.api.auth import decode_token_payload
+    token = auth_header.split(" ")[1] if auth_header and "Bearer " in auth_header else ""
+    payload = decode_token_payload(token)
+    tenant_id = payload.get("tenant_id") if payload else "default"
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            # Repo 1 doesn't have a public "get-primary-ip" for users yet, 
+            # so we use the admin endpoint with the analyzer's admin key
+            admin_key = os.getenv("ADMIN_KEY") or "changeme-admin-key"
+            headers = {"X-Admin-Key": admin_key}
+            
+            response = await client.get(f"{repo1_url}/admin/tenants/{tenant_id}", headers=headers)
+            data = response.json()
+            # Assuming Repo 1 returns tenant object with primary_ip field
+            return {"status": "success", "primary_ip": data.get("primary_ip") or data.get("office_ip") or "Not Set"}
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Identity server unreachable: {e}")
 
 
 @router.get("/assets/telemetry/{device_id}")

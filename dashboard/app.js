@@ -1411,23 +1411,51 @@ function closeReportModal() {
 async function renderAssets() {
     try {
         setLoading(true);
-        // 1. Fetch Managed and Discovered Assets
+
+        // 1. Fetch Primary IP & User Devices (Two-Level Security)
+        const primaryRes = await apiFetch(`${API_BASE_URL}/api/v1/assets/primary-ip`);
+        const userDevicesRes = await apiFetch(`${API_BASE_URL}/api/v1/assets/my-devices`);
+
+        // 2. Fetch Managed and Discovered Assets (Original Infrastructure)
         const managedRes = await apiFetch(`${API_BASE_URL}/api/v1/assets/managed?tenant_id=${currentTenant}`);
         const discoveredRes = await apiFetch(`${API_BASE_URL}/api/v1/assets/discovered?tenant_id=${currentTenant}`);
 
+        const primaryIp = (primaryRes && primaryRes.ok) ? (await primaryRes.json()).primary_ip : 'Not Set';
+        const userDevices = (userDevicesRes && userDevicesRes.ok) ? await userDevicesRes.json() : [];
         const managed = (managedRes && managedRes.ok) ? await managedRes.json() : [];
         const discovered = (discoveredRes && discoveredRes.ok) ? (await discoveredRes.json()).data : [];
 
-        // Update Stats
-        const totalCount = document.getElementById('asset-count-total');
-        const onlineCount = document.getElementById('asset-count-online');
-        const unmanagedCount = document.getElementById('asset-count-unmanaged');
+        // Update Stats & Primary IP Display
+        setEl('primary-ip-display', primaryIp);
+        setEl('user-device-count', userDevices.length);
+        setEl('asset-count-total', managed.length + userDevices.length);
+        setEl('asset-count-unmanaged', discovered.length);
 
-        if (totalCount) totalCount.textContent = managed.length;
-        if (onlineCount) onlineCount.textContent = managed.filter(d => d.is_online).length;
-        if (unmanagedCount) unmanagedCount.textContent = discovered.length;
+        // Render User Registered Devices
+        const userDevicesBody = document.getElementById('user-devices-body');
+        if (userDevicesBody) {
+            userDevicesBody.innerHTML = userDevices.length ? userDevices.map(d => `
+                <tr>
+                    <td>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <div class="avatar" style="background: rgba(0, 167, 111, 0.1); color: var(--primary);">
+                                <i data-lucide="smartphone" style="width:14px;height:14px;"></i>
+                            </div>
+                            <span style="font-weight:600;">${escapeHtml(d.device_name || 'My Device')}</span>
+                        </div>
+                    </td>
+                    <td><code>${escapeHtml(d.ip_address)}</code></td>
+                    <td style="font-size:0.75rem; color:var(--text-muted);">${formatTime(d.created_at)}</td>
+                    <td style="text-align:right;">
+                        <button class="btn-secondary" style="padding:4px 8px; font-size:11px;" onclick="removeUserDevice('${d.ip_address}')">
+                            <i data-lucide="trash-2" style="width:12px;height:12px;"></i> Remove
+                        </button>
+                    </td>
+                </tr>
+            `).join('') : '<tr><td colspan="4" class="empty-state">No personal devices registered.</td></tr>';
+        }
 
-        // Render Managed Table
+        // Render Managed Table (Infrastructure)
         const managedBody = document.getElementById('managed-assets-body');
         if (managedBody) {
             managedBody.innerHTML = managed.length ? managed.map(d => `
@@ -1458,7 +1486,7 @@ async function renderAssets() {
                         </button>
                     </td>
                 </tr>
-            `).join('') : '<tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-muted);">No managed devices. Start by registering one!</td></tr>';
+            `).join('') : '<tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-muted);">No managed infrastructure devices.</td></tr>';
         }
 
         // Render Discovered Table
@@ -1493,6 +1521,11 @@ async function renderAssets() {
         lucide.createIcons();
     } catch (e) { console.error('[SIEM] Asset rendering error:', e); }
     finally { setLoading(false); }
+}
+
+function setEl(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
 }
 
 function getCategoryIcon(cat) {
@@ -1536,33 +1569,29 @@ function prefillRegistration(ip, vendor, type) {
 async function submitRegisterDevice(e) {
     if (e) e.preventDefault();
     const payload = {
-        name: document.getElementById('reg-device-name').value,
-        ip_address: document.getElementById('reg-device-ip').value,
-        device_id: document.getElementById('reg-device-id').value,
-        category: document.getElementById('reg-device-category').value,
-        description: document.getElementById('reg-device-desc').value
+        device_name: document.getElementById('reg-device-name').value,
+        ip_address: document.getElementById('reg-device-ip').value
     };
 
     try {
         setLoading(true);
 
         if (mockMode) {
-            // Simulate success in mock mode
             await new Promise(r => setTimeout(r, 800));
-            showToast('Device registered (Simulated/Mock Mode)', false);
+            showToast('Device registered (Simulated)', false);
             closeRegisterDeviceModal();
             renderAssets();
             return;
         }
 
-        // Use standardized apiFetch with POST method
-        const res = await apiFetch(`${API_BASE_URL}/api/v1/assets/managed?tenant_id=${currentTenant}`, {
+        // Register personal device (Two-Level Security)
+        const res = await apiFetch(`${API_BASE_URL}/api/v1/assets/devices`, {
             method: 'POST',
             body: JSON.stringify(payload)
         });
 
         if (res && res.ok) {
-            showToast('Device registered and allowlisted successfully!', false);
+            showToast('Device registered successfully!', false);
             closeRegisterDeviceModal();
             renderAssets();
         } else {
@@ -1572,6 +1601,30 @@ async function submitRegisterDevice(e) {
     } catch (e) {
         console.error('Registration error:', e);
         showToast('Network error while registering device', true);
+    } finally {
+        setLoading(false);
+    }
+}
+
+async function removeUserDevice(ip) {
+    if (!confirm(`Are you sure you want to remove device with IP ${ip}? Access will be immediately revoked.`)) return;
+
+    try {
+        setLoading(true);
+        const res = await apiFetch(`${API_BASE_URL}/api/v1/assets/devices/${ip}`, {
+            method: 'DELETE'
+        });
+
+        if (res && res.ok) {
+            showToast('Device access revoked successfully', false);
+            renderAssets();
+        } else {
+            const msg = res ? res.message : 'Unknown error';
+            showToast(`Revocation failed: ${msg}`, true);
+        }
+    } catch (e) {
+        console.error('Removal error:', e);
+        showToast('Network error while removing device', true);
     } finally {
         setLoading(false);
     }
