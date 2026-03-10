@@ -747,8 +747,35 @@ async def list_api_keys(tenant_id: str):
 
 @router.get("/api-keys", dependencies=[Depends(verify_admin_or_superadmin)])
 async def list_all_api_keys():
-    """List all active API keys across the platform (Global Oversight)."""
-    return await _repo1_request("GET", "/admin/api-keys")
+    """List all active API keys across the platform (Aggregated from all tenants)."""
+    try:
+        # Fetch tenants first
+        tenants_data = await _repo1_request("GET", "/admin/tenants")
+        tenants = tenants_data.get("tenants", [])
+        
+        all_keys = []
+        # Aggregate keys from all tenants
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            repo1_base = _get_repo1_base()
+            headers = {"X-Admin-Key": _get_admin_key()}
+            
+            for t in tenants:
+                tid = t.get("tenant_id")
+                if not tid: continue
+                try:
+                    r = await client.get(f"{repo1_base}/admin/tenants/{tid}/api-keys", headers=headers)
+                    if r.status_code == 200:
+                        data = r.json()
+                        # Support both Repo 1 formats (api_keys or flat list)
+                        tenant_keys = data.get("api_keys", data if isinstance(data, list) else [])
+                        all_keys.extend(tenant_keys)
+                except Exception as e:
+                    logger.error(f"Failed to fetch keys for tenant {tid}: {e}")
+                    
+        return {"total": len(all_keys), "keys": all_keys}
+    except Exception as exc:
+        logger.error(f"Global key aggregation failed: {exc}")
+        return {"total": 0, "keys": [], "error": str(exc)}
 
 
 @router.delete("/api-keys/{key_id}", dependencies=[Depends(verify_admin_or_superadmin)])

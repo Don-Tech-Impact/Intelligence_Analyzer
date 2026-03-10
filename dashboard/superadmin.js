@@ -356,13 +356,14 @@ const SuperAdmin = {
                 const tenants = data.tenants || [];
 
                 // Standardize: Populate ALL tenant selects across the dashboard
-                const tenantSelects = ['user-tenant-filter', 'network-tenant-filter', 'gen-report-tenant', 'audit-tenant-filter'];
+                const tenantSelects = ['user-tenant-filter', 'network-tenant-filter', 'gen-report-tenant', 'audit-tenant-filter', 'api-tenant-filter'];
                 tenantSelects.forEach(id => {
                     const el = document.getElementById(id);
                     if (el) {
                         const currentVal = el.value;
-                        el.innerHTML = (id === 'gen-report-tenant' ? '<option value="default">Default (All)</option>' : '<option value="">Select Tenant...</option>') +
-                            tenants.map(t => `<option value="${t.tenant_id}">${t.name || t.tenant_id}</option>`).join('');
+                        const defaultOpt = id === 'gen-report-tenant' ? '<option value="default">Default (All)</option>' :
+                            (id === 'api-tenant-filter' ? '<option value="">All Tenants</option>' : '<option value="">Select Tenant...</option>');
+                        el.innerHTML = defaultOpt + tenants.map(t => `<option value="${t.tenant_id}">${t.name || t.tenant_id}</option>`).join('');
                         el.value = currentVal;
                     }
                 });
@@ -1282,31 +1283,22 @@ const SuperAdmin = {
     // ============================================
     async loadApiInventory() {
         const list = document.getElementById('api-inventory-list');
-        const filterTenant = document.getElementById('api-tenant-filter').value;
+        const filterTenant = document.getElementById('api-tenant-filter')?.value;
 
         try {
-            // First time load: fill tenant filter
-            if (this.cachedOverview && document.getElementById('api-tenant-filter').options.length <= 1) {
-                const select = document.getElementById('api-tenant-filter');
-                this.cachedOverview.tenants.forEach(t => {
-                    const opt = document.createElement('option');
-                    opt.value = t.tenant_id;
-                    opt.textContent = t.name;
-                    select.appendChild(opt);
-                });
-            }
-
-            // Fetch from global proxy
-            // Note: If Repo 1 doesn't have a global /admin/api-keys, we might need to iterate
-            // But for now we use the proxy catch-all
             // Fetch from global proxy or specific tenant
             const path = filterTenant ? `/tenants/${filterTenant}/api-keys` : '/api-keys';
             const response = await fetch(`${this.API_BASE}/api/admin${path}`, {
                 headers: Auth.getAuthHeader()
             });
             const data = await response.json();
-            const keys = data.keys || data;
-            this.renderApiInventory(Array.isArray(keys) ? keys : []);
+
+            // Handle various Repo 1 formats:
+            // 1. { "keys": [...] }
+            // 2. { "api_keys": [...] }
+            // 3. Raw array [...]
+            const keys = data.keys || data.api_keys || (Array.isArray(data) ? data : []);
+            this.renderApiInventory(keys);
         } catch (e) {
             console.error("LoadApiInventory error:", e);
             if (list) list.innerHTML = `<tr><td colspan="6" class="empty-state error">Failed to load API inventory.</td></tr>`;
@@ -1321,24 +1313,41 @@ const SuperAdmin = {
             return;
         }
 
-        list.innerHTML = keys.map(key => `
+        list.innerHTML = keys.map(key => {
+            // Normalize permissions/scopes
+            let scopes = [];
+            if (Array.isArray(key.scopes)) {
+                scopes = key.scopes;
+            } else if (key.permissions) {
+                // If Repo 1 returns an object like {"ingest": true, "read": false}
+                if (typeof key.permissions === 'object' && !Array.isArray(key.permissions)) {
+                    scopes = Object.entries(key.permissions)
+                        .filter(([_, enabled]) => enabled)
+                        .map(([name]) => name);
+                } else if (Array.isArray(key.permissions)) {
+                    scopes = key.permissions;
+                }
+            }
+            if (scopes.length === 0) scopes = ['standard'];
+
+            return `
             <tr>
-                <td><strong>${key.name}</strong></td>
-                <td><code class="tenant-tag">${key.tenant_id}</code></td>
-                <td><code>${key.prefix}***</code></td>
+                <td><strong>${key.name || 'Unnamed Key'}</strong></td>
+                <td><code class="tenant-tag">${key.tenant_id || 'System'}</code></td>
+                <td><code>${key.key_prefix || key.prefix || 'ak_...'}***</code></td>
                 <td>
                     <div class="scope-badges">
-                        ${key.scopes.map(s => `<span class="badge badge-scope">${s}</span>`).join('')}
+                        ${scopes.map(s => `<span class="badge badge-scope">${s}</span>`).join('')}
                     </div>
                 </td>
-                <td style="font-size:11px; color:var(--text-secondary);">${new Date(key.created_at).toLocaleDateString()}</td>
+                <td style="font-size:11px; color:var(--text-secondary);">${key.created_at ? new Date(key.created_at).toLocaleDateString() : '—'}</td>
                 <td style="text-align:right;">
                     <button class="btn-icon btn-danger-soft" title="Revoke Key" onclick="SuperAdmin.revokeApiKey('${key.id}', '${key.name}')">
                         <i data-lucide="trash-2" style="width:14px;"></i>
                     </button>
                 </td>
             </tr>
-        `).join('');
+        `}).join('');
         lucide.createIcons();
     },
 
