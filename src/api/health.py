@@ -60,6 +60,21 @@ def health_check():
         health["status"] = "degraded"
         health["components"]["redis"] = {"status": "unhealthy", "error": str(e)}
 
+    # Check Identity Provider (Repo 1)
+    try:
+        import httpx
+        repo1_url = (config.repo1_base_url or "http://host.docker.internal:8080").rstrip("/")
+        with httpx.Client(timeout=2.0) as client:
+            resp = client.get(f"{repo1_url}/health")
+            if resp.status_code == 200:
+                health["components"]["identity"] = {"status": "healthy"}
+            else:
+                health["status"] = "degraded"
+                health["components"]["identity"] = {"status": "unhealthy", "status_code": resp.status_code}
+    except Exception as e:
+        health["status"] = "degraded"
+        health["components"]["identity"] = {"status": "unhealthy", "error": str(e)}
+
     return health
 
 

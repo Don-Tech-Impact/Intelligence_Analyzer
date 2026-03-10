@@ -79,7 +79,7 @@
                     <p>Welcome back, Superadmin. Here is the global status.</p>
                 </div>
                 <div class="header-actions">
-                    <button class="btn-secondary" onclick="SuperAdmin.loadData()">
+                    <button class="btn-secondary" onclick="SuperAdmin.loadData(true)">
                         <i data-lucide="refresh-cw" style="width:16px;"></i> Refresh
                     </button>
                 </div>
@@ -269,6 +269,14 @@
                         <h4>Log Consumer</h4>
                         <span class="health-status" id="health-consumer-status">Checking...</span>
                         <div class="health-detail" id="health-consumer-detail">—</div>
+                    </div>
+                </div>
+                <div class="card health-card" id="health-identity">
+                    <div class="health-icon"><i data-lucide="user-check" style="width:28px;"></i></div>
+                    <div class="health-body">
+                        <h4>Identity Provider</h4>
+                        <span class="health-status" id="health-identity-status">Checking...</span>
+                        <div class="health-detail" id="health-identity-detail">—</div>
                     </div>
                 </div>
             </div>
@@ -574,6 +582,16 @@
             <div class="card table-card">
                 <div class="table-header-row">
                     <h3>System Logs</h3>
+                    <div class="table-filters">
+                        <select id="audit-tenant-filter" class="glass-input" onchange="SuperAdmin.loadAuditLogs(1)">
+                            <option value="">All Tenants</option>
+                        </select>
+                        <div class="pagination-controls mini">
+                            <button onclick="SuperAdmin.prevAuditPage()"><i data-lucide="chevron-left"></i></button>
+                            <span id="audit-page-num" style="margin:0 8px; font-weight:600;">1</span>
+                            <button onclick="SuperAdmin.nextAuditPage()"><i data-lucide="chevron-right"></i></button>
+                        </div>
+                    </div>
                 </div>
                 <table>
                     <thead>
@@ -581,7 +599,7 @@
                             <th>Timestamp</th>
                             <th>Action</th>
                             <th>User</th>
-                            <th>Target</th>
+                            <th>Tenant</th>
                             <th>Status</th>
                             <th>IP Address</th>
                         </tr>
@@ -717,31 +735,48 @@
             </div>
             <form onsubmit="SuperAdmin.addTenant(event)">
                 <div class="form-row">
-                    <label>Tenant ID</label>
-                    <input type="text" id="new-tenant-id" class="glass-input" placeholder="e.g. acme-corp" required>
-                </div>
-                <div class="form-row">
-                    <label>Display Name</label>
-                    <input type="text" id="new-tenant-name" class="glass-input" placeholder="e.g. Acme Corporation"
-                        required>
-                </div>
-                <div class="form-row">
-                    <label>Contact Email</label>
-                    <input type="email" id="new-tenant-email" class="glass-input" placeholder="admin@acme.com">
-                </div>
-                <div class="form-row">
                     <label>Company Description</label>
                     <textarea id="new-tenant-description" class="glass-input"
-                        placeholder="e.g. Enterprise security monitoring..." style="min-height:80px;"></textarea>
+                        placeholder="e.g. Enterprise security monitoring..." style="min-height:60px;"></textarea>
                 </div>
+
+                <div class="form-section-label">Configuration & Limits</div>
                 <div class="form-row" style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
                     <div>
-                        <label>Business Hours Start</label>
-                        <input type="time" id="new-tenant-hours-start" class="glass-input" value="09:00">
+                        <label>Compliance Standards</label>
+                        <input type="text" id="new-tenant-compliance" class="glass-input"
+                            placeholder="e.g. GDPR, ISO27001">
                     </div>
                     <div>
-                        <label>Business Hours End</label>
-                        <input type="time" id="new-tenant-hours-end" class="glass-input" value="17:00">
+                        <label>Tenant ID (URL Safe)</label>
+                        <input type="text" id="new-tenant-id" class="glass-input" placeholder="e.g. acme_corp" required>
+                    </div>
+                </div>
+
+                <div class="form-row" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+                    <div>
+                        <label>Req / Min</label>
+                        <input type="number" id="new-tenant-limit-rpm" class="glass-input" value="1000">
+                    </div>
+                    <div>
+                        <label>Logs / Hour</label>
+                        <input type="number" id="new-tenant-limit-lph" class="glass-input" value="50000">
+                    </div>
+                    <div>
+                        <label>Max Devices</label>
+                        <input type="number" id="new-tenant-limit-devices" class="glass-input" value="100">
+                    </div>
+                </div>
+
+                <div class="form-section-label">Default Business Hours</div>
+                <div class="form-row" style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                    <div>
+                        <label>Weekday Open</label>
+                        <input type="time" id="new-tenant-hours-start" class="glass-input" value="08:00">
+                    </div>
+                    <div>
+                        <label>Weekday Close</label>
+                        <input type="time" id="new-tenant-hours-end" class="glass-input" value="18:00">
                     </div>
                 </div>
                 <div class="form-row">
@@ -839,6 +874,50 @@
         </div>
     </div>
 
+    <!-- Edit User Modal -->
+    <div id="edit-user-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit User Privileges</h3>
+                <button class="modal-close" onclick="SuperAdmin.closeModal('edit-user-modal')">&times;</button>
+            </div>
+            <form onsubmit="SuperAdmin.updateUser(event)">
+                <input type="hidden" id="edit-user-id">
+                <div class="form-row">
+                    <label>Username</label>
+                    <input type="text" id="edit-user-username" class="glass-input" readonly>
+                </div>
+                <div class="form-row">
+                    <label>Email Address</label>
+                    <input type="email" id="edit-user-email" class="glass-input" required>
+                </div>
+                <div class="form-row">
+                    <label>Tenant Association</label>
+                    <select id="edit-user-tenant" class="glass-input">
+                        <option value="">System (Global)</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Account Role</label>
+                    <select id="edit-user-role" class="glass-input">
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                        <option value="superadmin">Superadmin</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>New Password (Leave blank to keep current)</label>
+                    <input type="password" id="edit-user-password" class="glass-input" placeholder="••••••••">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary"
+                        onclick="SuperAdmin.closeModal('edit-user-modal')">Cancel</button>
+                    <button type="submit" class="btn-primary">Update Account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Create User Modal -->
     <div id="add-user-modal" class="modal-overlay" style="display:none;">
         <div class="modal-content">
@@ -905,6 +984,50 @@
                     <button type="button" class="btn-secondary"
                         onclick="SuperAdmin.closeModal('add-ip-modal')">Cancel</button>
                     <button type="submit" class="btn-primary">Add Range</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Tenant Modal (Partial Updates) -->
+    <div id="edit-tenant-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Tenant Details</h3>
+                <button class="modal-close" onclick="SuperAdmin.closeModal('edit-tenant-modal')">&times;</button>
+            </div>
+            <form onsubmit="SuperAdmin.updateTenant(event)">
+                <input type="hidden" id="edit-tenant-id">
+                <div class="form-row">
+                    <label>Tenant ID</label>
+                    <input type="text" id="edit-tenant-slug" class="glass-input" readonly>
+                </div>
+                <div class="form-row">
+                    <label>Display Name</label>
+                    <input type="text" id="edit-tenant-name" class="glass-input" required>
+                </div>
+                <div class="form-row">
+                    <label>Description</label>
+                    <textarea id="edit-tenant-desc" class="glass-input" style="height:80px;"></textarea>
+                </div>
+                <div class="form-row">
+                    <label>Operational Status</label>
+                    <select id="edit-tenant-status" class="glass-input">
+                        <option value="active">Active</option>
+                        <option value="suspended">Suspended</option>
+                        <option value="deleted">Deleted</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Advanced Configuration (JSON)</label>
+                    <textarea id="edit-tenant-config" class="glass-input"
+                        style="height:120px; font-family:monospace; font-size:12px;"></textarea>
+                    <span class="input-hint">Map of rates, compliance, and hours.</span>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary"
+                        onclick="SuperAdmin.closeModal('edit-tenant-modal')">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Changes</button>
                 </div>
             </form>
         </div>

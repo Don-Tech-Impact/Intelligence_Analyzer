@@ -41,8 +41,8 @@ const VIEWS = {
     reports: { title: 'Report Archive', subtitle: 'Generated security summaries and audits' },
     profile: { title: 'User Profile', subtitle: 'Account details and security settings' },
     settings: { title: 'System Settings', subtitle: 'Analyzer thresholds and configuration' },
-    assets: { title: 'Asset Inventory', subtitle: 'Manage registered security devices and discover new assets' }
-    // 'api-keys': { title: 'API Key Management', subtitle: 'Generate and manage keys for automated ingestion' }
+    assets: { title: 'Asset Inventory', subtitle: 'Manage registered security devices and discover new assets' },
+    'api-keys': { title: 'API Key Management', subtitle: 'Generate and manage keys for automated ingestion' }
 };
 
 // ===== Chart Color Palette =====
@@ -117,7 +117,10 @@ async function apiFetch(url, options = {}) {
 
         if (response.status === 401 || response.status === 403) {
             console.warn("Authentication failed. Redirecting to login...");
-            Auth.logout();
+            showToast("Your session has expired. Please log in again.", true);
+            setTimeout(() => {
+                Auth.logout();
+            }, 1500);
             return null;
         }
 
@@ -135,10 +138,13 @@ async function apiFetch(url, options = {}) {
             }
             return { ok: true, data: body.data || body, json: async () => body.data || body };
         } else {
-            return { ok: false, status: response.status, message: body.message || body.detail || 'API Error', json: async () => body };
+            const errorMsg = body.message || body.detail || 'API Error';
+            showToast(errorMsg, true);
+            return { ok: false, status: response.status, message: errorMsg, json: async () => body };
         }
     } catch (e) {
         console.error('API fetch error:', e);
+        showToast("Unable to reach the security gateway. Check your connection.", true);
         return null;
     }
 }

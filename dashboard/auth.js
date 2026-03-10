@@ -89,7 +89,15 @@ const Auth = {
             return false;
         }
 
-        // DEBUG: Ignoring expiry check for now to solve redirect loop
+        // Check for expiration (exp is in seconds)
+        if (payload.exp) {
+            const now = Math.floor(Date.now() / 1000);
+            if (payload.exp < now) {
+                console.warn("Auth: Token has expired.");
+                return false;
+            }
+        }
+
         console.log("Auth: Token Payload detected:", payload);
         return true;
     },
@@ -109,10 +117,10 @@ const Auth = {
         }
 
         if (!loggedIn && !isLoginPage) {
-            console.warn("Auth: Not logged in. Redirecting to login in 2 seconds...");
-            setTimeout(() => {
-                window.location.href = 'login.html';
-            }, 2000);
+            console.warn("Auth: Not logged in. Redirecting to login...");
+            // Store that we were kicked out due to lack of auth
+            sessionStorage.setItem('auth_redirect_reason', 'session_expired');
+            window.location.href = 'login.html';
             return false;
         }
 

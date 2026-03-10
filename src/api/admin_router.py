@@ -651,6 +651,18 @@ async def create_user(payload: dict):
     return await _repo1_request("POST", "/admin/users", body=payload)
 
 
+@router.get("/users/{user_id}", dependencies=[Depends(verify_admin_or_superadmin)])
+async def get_user_detail(user_id: str):
+    """Get rich user metadata from Repo 1."""
+    return await _repo1_request("GET", f"/admin/users/{user_id}")
+
+
+@router.put("/users/{user_id}", dependencies=[Depends(verify_admin_or_superadmin)])
+async def update_user(user_id: str, payload: dict):
+    """Update user privileges/metadata in Repo 1."""
+    return await _repo1_request("PUT", f"/admin/users/{user_id}", body=payload)
+
+
 @router.delete("/users/{username}", dependencies=[Depends(verify_admin_or_superadmin)])
 async def delete_user(username: str):
     """Soft-delete a user by username in Repo 1."""
@@ -700,8 +712,14 @@ async def remove_tenant_ip(tenant_id: str, ip_id: str):
 
 @router.post("/tenants/{tenant_id}/primary-ip", dependencies=[Depends(verify_admin_or_superadmin)])
 async def set_primary_ip(tenant_id: str, payload: dict):
-    """Set the primary office IP for a tenant in Repo 1."""
+    """Set a single primary office IP for a tenant in Repo 1 (Backward Compatibility)."""
     return await _repo1_request("POST", f"/admin/tenants/{tenant_id}/primary-ip", body=payload)
+
+
+@router.post("/tenants/{tenant_id}/primary-ips", dependencies=[Depends(verify_admin_or_superadmin)])
+async def set_primary_ips(tenant_id: str, payload: list[str]):
+    """Set up to 3 primary office IPs for a tenant in Repo 1."""
+    return await _repo1_request("POST", f"/admin/tenants/{tenant_id}/primary-ips", body=payload)
 
 
 # Keep legacy allowlist delete route for backward compatibility
@@ -725,6 +743,12 @@ async def create_api_key(tenant_id: str, payload: dict):
 async def list_api_keys(tenant_id: str):
     """List all API keys for a tenant from Repo 1."""
     return await _repo1_request("GET", f"/admin/tenants/{tenant_id}/api-keys")
+
+
+@router.get("/api-keys", dependencies=[Depends(verify_admin_or_superadmin)])
+async def list_all_api_keys():
+    """List all active API keys across the platform (Global Oversight)."""
+    return await _repo1_request("GET", "/admin/api-keys")
 
 
 @router.delete("/api-keys/{key_id}", dependencies=[Depends(verify_admin_or_superadmin)])

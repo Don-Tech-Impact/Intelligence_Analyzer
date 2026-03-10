@@ -340,6 +340,11 @@ class Config:
     def tenants(self) -> list:
         return self.get('multi_tenant.tenants', [])
 
+    @property
+    def repo1_base_url(self) -> str:
+        """Base URL for Repo 1 (Identity Provider) admin API."""
+        return self.get('repo1_url') or self.get('repo1_base_url') or "http://host.docker.internal:8080"
+
 
 # Global configuration instance
 config = Config()

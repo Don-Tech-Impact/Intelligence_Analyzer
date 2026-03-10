@@ -1,6 +1,6 @@
 """V1 API Router for afric-analyzer frontend."""
 
-from fastapi import APIRouter, Depends, Query, HTTPException, status
+from fastapi import APIRouter, Depends, Query, HTTPException, status, Request
 from sqlalchemy import func, desc
 from sqlalchemy.orm import Session
 from typing import Optional

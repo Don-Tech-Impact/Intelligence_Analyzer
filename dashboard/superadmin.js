@@ -11,6 +11,7 @@ const SuperAdmin = {
     errorRateChart: null,
     cachedOverview: null,
     healthInterval: null,
+    auditPage: 1,
 
     formatBytes(bytes, decimals = 2) {
         if (!+bytes) return '0 Bytes';
@@ -180,19 +181,22 @@ const SuperAdmin = {
     // ============================================
     // DATA LOADING (Optimized for Weak Networks)
     // ============================================
-    async loadData() {
-        const cacheKey = 'superadmin_system_bundle';
-
-        // 1. Stale-While-Revalidate: Load from cache first
-        const cached = localStorage.getItem(cacheKey);
-        if (cached) {
-            try {
-                const bundle = JSON.parse(cached);
-                this.renderBundle(bundle);
-            } catch (e) { localStorage.removeItem(cacheKey); }
+    async loadData(force = false) {
+        if (force) {
+            localStorage.removeItem('superadmin_bundle');
+            this.showToast('Fetching fresh system bundle...', 'info');
         }
 
-        // 2. Fetch new consolidated bundle in one round-trip
+        const cached = localStorage.getItem('superadmin_bundle');
+        if (cached && !force) {
+            console.log("Loading dashboard from cache...");
+            try {
+                this.renderBundle(JSON.parse(cached));
+            } catch (e) {
+                localStorage.removeItem('superadmin_bundle');
+            }
+        }
+
         try {
             const response = await fetch(`${this.API_BASE}/api/admin/system/bundle`, {
                 headers: Auth.getAuthHeader()
@@ -210,13 +214,18 @@ const SuperAdmin = {
                 const bundle = result.data;
 
                 // Store in cache
-                localStorage.setItem(cacheKey, JSON.stringify(bundle));
+                localStorage.setItem('superadmin_bundle', JSON.stringify(bundle));
 
                 // Render fresh data
                 this.renderBundle(bundle);
+            } else {
+                throw new Error(`Server returned ${response.status}`);
             }
         } catch (e) {
             console.error("Failed to load system bundle", e);
+            const tbody = document.getElementById('tenant-list');
+            if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-state error"><i data-lucide="alert-triangle"></i> Control plane connection failed. ${e.message}</td></tr>`;
+            lucide.createIcons();
         }
     },
 
@@ -347,7 +356,7 @@ const SuperAdmin = {
                 const tenants = data.tenants || [];
 
                 // Standardize: Populate ALL tenant selects across the dashboard
-                const tenantSelects = ['user-tenant-filter', 'network-tenant-filter', 'gen-report-tenant'];
+                const tenantSelects = ['user-tenant-filter', 'network-tenant-filter', 'gen-report-tenant', 'audit-tenant-filter'];
                 tenantSelects.forEach(id => {
                     const el = document.getElementById(id);
                     if (el) {
@@ -407,137 +416,226 @@ const SuperAdmin = {
     },
 
     async viewTenantDetail(tenantId) {
+        const modal = document.getElementById('tenant-detail-modal');
+        const title = document.getElementById('tenant-detail-title');
         const body = document.getElementById('tenant-detail-body');
-        if (body) body.innerHTML = '<div class="empty-state">Fetching premium tenant intelligence...</div>';
-        document.getElementById('tenant-detail-modal').style.display = 'flex';
+
+        title.textContent = `Tenant: ${tenantId}`;
+        body.innerHTML = '<p class="empty-state">Fetching latest data from control plane...</p>';
+        modal.style.display = 'flex';
 
         try {
-            // Parallel fetch for metadata and usage stats
-            const [metaRes, usageRes] = await Promise.all([
+            const [tRes, uRes] = await Promise.all([
                 fetch(`${this.API_BASE}/api/admin/tenants/${tenantId}`, { headers: Auth.getAuthHeader() }),
                 fetch(`${this.API_BASE}/api/admin/tenants/${tenantId}/usage`, { headers: Auth.getAuthHeader() })
             ]);
 
-            const meta = metaRes.ok ? await metaRes.json() : {};
-            const usageEnvelope = usageRes.ok ? await usageRes.json() : {};
-            const usage = usageEnvelope.data || usageEnvelope;
-            const t = meta.tenant || meta;
-            const config = t.config || {};
+            if (!tRes.ok) throw new Error('Failed to fetch tenant details');
 
-            if (body) {
-                body.innerHTML = `
-                <div class="tenant-detail-grid">
-                    <div class="card detail-section">
-                        <div class="section-header"><i data-lucide="info"></i> <h4>Basic Information</h4></div>
-                        <div class="detail-row"><span class="label">Display Name:</span> <span class="value"><strong>${t.name || '—'}</strong></span></div>
-                        <div class="detail-row"><span class="label">Tenant ID:</span> <span class="value"><code>${t.tenant_id || tenantId}</code></span></div>
-                        <div class="detail-row"><span class="label">Contact Email:</span> <span class="value">${t.contact_email || config.contact_email ? `<a href="mailto:${t.contact_email || config.contact_email}">${t.contact_email || config.contact_email}</a>` : '—'}</span></div>
-                        <div class="detail-row"><span class="label">Status:</span> <span class="badge ${t.status === 'active' ? 'badge-active' : 'badge-inactive'}">${t.status || 'Active'}</span></div>
-                        <div class="detail-row" style="margin-top:12px;"><span class="label">Description:</span><p class="desc-text">${t.description || 'No description provided.'}</p></div>
-                    </div>
+            const tData = await tRes.json();
+            const uData = uRes.ok ? await uRes.json() : { stats: {} };
 
-                    <div class="card detail-section">
-                        <div class="section-header"><i data-lucide="bar-chart-3"></i> <h4>Analyzer Statistics</h4></div>
-                        <div class="detail-row"><span class="label">Total Logs Ingested:</span> <span class="value"><strong>${this.formatNumber(usage.logs?.total || usage.total_logs)}</strong></span></div>
-                        <div class="detail-row"><span class="label">Active Alerts:</span> <span class="value" style="color:var(--error); font-weight:700;">${this.formatNumber(usage.alerts?.active || usage.active_alerts)}</span></div>
-                        <div class="detail-row"><span class="label">Ingestion Rate:</span> <span class="value">${usage.ingestion_rate || usage.avg_eps || '0.0'} EPS</span></div>
-                        <div class="detail-row"><span class="label">Storage Used:</span> <span class="value">${this.formatBytes(usage.estimated_storage_bytes || usage.storage_bytes || 0)}</span></div>
-                        <div class="detail-row"><span class="label">Last Activity:</span> <span class="value">${usage.last_event ? new Date(usage.last_event).toLocaleString() : 'Never'}</span></div>
-                    </div>
+            // Normalize Repo 1 vs local mapping
+            const t = tData.data || tData;
+            const stats = uData.stats || uData;
 
-                    <div class="card detail-section full-width">
-                        <div class="section-header"><i data-lucide="shield-check"></i> <h4>Network Perimeter (Level 1 Security)</h4></div>
-                        <div style="padding:12px; background:rgba(0,167,111,0.05); border-radius:8px; display:flex; gap:16px; align-items:center;">
-                            <div style="flex:1;">
-                                <label style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Primary Office IP</label>
-                                <input type="text" id="tenant-primary-ip-input" class="glass-input" 
-                                       style="font-family:'JetBrains Mono'; margin-top:4px;" 
-                                       placeholder="e.g. 41.79.123.45" 
-                                       value="${t.primary_ip || t.office_ip || ''}">
-                            </div>
-                            <button class="btn-primary" onclick="SuperAdmin.setPrimaryIp('${tenantId}')" style="margin-top:18px;">
-                                <i data-lucide="save" style="width:14px;"></i> Set Primary IP
+            body.innerHTML = `
+                <div class="tenant-overview-grid">
+                    <div class="card detail-card">
+                        <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:12px;">
+                            <h4 style="margin:0; color:var(--text-primary);">Core Configuration</h4>
+                            <button class="btn-secondary btn-sm" onclick="SuperAdmin.showEditTenantModal('${tenantId}')">
+                                <i data-lucide="edit-3" style="width:14px;"></i> Edit
                             </button>
                         </div>
-                        <p style="font-size:11px; color:var(--text-muted); margin-top:8px;">
-                            <i data-lucide="info" style="width:12px; height:12px; vertical-align:middle;"></i> 
-                            This is the main campus/office IP that has permanent access for all users.
-                        </p>
+                        <div class="detail-row"><span>Status:</span> <span class="badge badge-${t.status || 'active'}">${t.status || 'Active'}</span></div>
+                        <div class="detail-row"><span>Created:</span> <span>${t.created_at ? new Date(t.created_at).toLocaleDateString() : '—'}</span></div>
+                        <div class="detail-row"><span>Description:</span> <span>${t.description || 'No description provided.'}</span></div>
                     </div>
+                    <div class="card detail-card">
+                        <h4>Usage Statistics</h4>
+                        <div class="detail-row"><span>Total Logs:</span> <strong>${stats.total_logs || 0}</strong></div>
+                        <div class="detail-row"><span>Active Alerts:</span> <strong style="color:var(--error);">${stats.active_alerts || 0}</strong></div>
+                        <div class="detail-row"><span>Managed Assets:</span> <strong>${stats.total_assets || 0}</strong></div>
+                    </div>
+                </div>
 
-                    <div class="card detail-section full-width">
-                        <div class="section-header"><i data-lucide="settings-2"></i> <h4>Operational Configuration</h4></div>
-                        <div class="config-grid-layout">
-                            <div class="config-item"><span class="label">Business Hours:</span><span class="value">${usage.business_hours_start || t.business_hours_start || '09:00'} to ${usage.business_hours_end || t.business_hours_end || '17:00'}</span></div>
-                            <div class="config-item"><span class="label">Timezone:</span><span class="value">UTC/GMT</span></div>
-                            <div class="config-item"><span class="label">Retention:</span><span class="value">90 Days</span></div>
-                            <div class="config-item"><span class="label">Compliance:</span><span class="value" style="color:var(--success); font-weight:600;">SOC2 Compliant</span></div>
+                <div class="detail-section" style="margin-top:20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <h4 style="margin:0;">Network Security (Primary IPs)</h4>
+                        <button class="btn-primary btn-sm" onclick="SuperAdmin.showAddIpModal()">
+                            <i data-lucide="plus" style="width:14px;"></i> Add Allowlist Range
+                        </button>
+                    </div>
+                    
+                    <div class="form-row" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:16px; background:var(--grey-50); padding:12px; border-radius:8px;">
+                        <div>
+                            <label style="font-size:11px; margin-bottom:4px; display:block;">Primary IP 1</label>
+                            <input type="text" id="primary-ip-1" class="glass-input" placeholder="e.g. 1.2.3.4">
+                        </div>
+                        <div>
+                            <label style="font-size:11px; margin-bottom:4px; display:block;">Primary IP 2</label>
+                            <input type="text" id="primary-ip-2" class="glass-input" placeholder="Optional">
+                        </div>
+                        <div>
+                            <label style="font-size:11px; margin-bottom:4px; display:block; padding-left: 4px;">Primary IP 3</label>
+                            <div style="display:flex; gap:8px;">
+                                <input type="text" id="primary-ip-3" class="glass-input" placeholder="Optional">
+                                <button class="btn-primary btn-sm" style="padding: 0 12px;" onclick="SuperAdmin.setPrimaryIps('${tenantId}')">Set</button>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="card detail-section full-width">
-                        <div class="section-header"><i data-lucide="key"></i> <h4>API Access Oversight</h4></div>
-                        <div id="tenant-keys-loading" class="empty-state">Loading keys...</div>
-                        <div id="tenant-keys-container" style="display:none;">
-                            <table class="nested-table">
-                                <thead>
-                                    <tr>
-                                        <th>Key Name</th>
-                                        <th>Prefix</th>
-                                        <th>Permissions</th>
-                                        <th>Created</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="tenant-keys-list"></tbody>
-                            </table>
-                        </div>
+                    <div id="tenant-ips-container">
+                        <p class="empty-state">Loading allowlist...</p>
                     </div>
                 </div>
-                <div class="modal-footer" style="padding:24px 0 0; margin-top:12px; border-top:1px dashed var(--grey-200); display:flex; gap:12px; justify-content:flex-end;">
-                    <button class="btn-secondary" onclick="SuperAdmin.loadUsers('${tenantId}'); SuperAdmin.switchView('users'); SuperAdmin.closeModal('tenant-detail-modal')">
-                        <i data-lucide="users" style="width:16px;"></i> Management Users
-                    </button>
-                    <button class="btn-primary" onclick="alert('Accessing dedicated portal for ${tenantId}...')">
-                        <i data-lucide="external-link" style="width:16px;"></i> Open Dashboard
-                    </button>
+
+                <div class="detail-section" style="margin-top:20px;">
+                    <h4>Recent API Keys</h4>
+                    <div id="tenant-keys-container" style="display:none;">
+                        <table class="data-table">
+                            <thead><tr><th>Name</th><th>Prefix</th><th>Scopes</th><th>Created</th></tr></thead>
+                            <tbody id="tenant-keys-list"></tbody>
+                        </table>
+                    </div>
+                    <div id="tenant-keys-loading" class="empty-state">Fetching keys...</div>
                 </div>
-                `;
-                lucide.createIcons();
-                this.loadTenantApiKeys(tenantId);
-            }
+            `;
+            lucide.createIcons();
+
+            // Load extra data pieces
+            this.loadTenantApiKeys(tenantId);
+            this.loadTenantAllowlistMini(tenantId);
+
         } catch (e) {
-            console.error("ViewDetail error:", e);
-            if (body) body.innerHTML = `<div class="empty-state error">Failed to load detailed intelligence for ${tenantId}.</div>`;
+            body.innerHTML = `<div class="empty-state error"><i data-lucide="alert-circle"></i><br>Error: ${e.message}</div>`;
+            lucide.createIcons();
         }
     },
 
-    async setPrimaryIp(tenantId) {
-        const ipInput = document.getElementById('tenant-primary-ip-input');
-        const primaryIp = ipInput ? ipInput.value.trim() : '';
+    async loadTenantAllowlistMini(tenantId) {
+        const container = document.getElementById('tenant-ips-container');
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/allowlist/${tenantId}`, { headers: Auth.getAuthHeader() });
+            const data = await res.json();
+            const ips = data.ips || data.entries || [];
 
-        if (!primaryIp) {
-            alert("Please enter a valid IP address.");
+            if (ips.length === 0) {
+                container.innerHTML = '<p class="empty-state">No primary IPs configured for this tenant.</p>';
+                return;
+            }
+
+            container.innerHTML = `
+                <table class="data-table">
+                    <thead><tr><th>IP / Range</th><th>Description</th><th>Added By</th><th>Action</th></tr></thead>
+                    <tbody>
+                        ${ips.map(ip => `
+                            <tr>
+                                <td><code>${ip.ip_range || ip}</code></td>
+                                <td>${ip.description || 'Primary Office'}</td>
+                                <td>${ip.added_by || 'System'}</td>
+                                <td style="text-align:right;">
+                                    <button class="btn-icon" style="color:var(--error);" onclick="SuperAdmin.removeIpRange('${tenantId}', '${ip.id || ip}')">
+                                        <i data-lucide="trash-2" style="width:14px;"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            lucide.createIcons();
+        } catch (e) {
+            container.innerHTML = '<p class="empty-state error">Failed to load IPs.</p>';
+        }
+    },
+
+    async showEditTenantModal(tenantId) {
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/tenants/${tenantId}`, { headers: Auth.getAuthHeader() });
+            const data = await res.json();
+            const t = data.data || data;
+
+            document.getElementById('edit-tenant-id').value = tenantId;
+            document.getElementById('edit-tenant-slug').value = tenantId;
+            document.getElementById('edit-tenant-name').value = t.name || '';
+            document.getElementById('edit-tenant-desc').value = t.description || '';
+            document.getElementById('edit-tenant-status').value = t.status || 'active';
+            document.getElementById('edit-tenant-config').value = JSON.stringify(t.config || {}, null, 2);
+
+            document.getElementById('edit-tenant-modal').style.display = 'flex';
+        } catch (e) {
+            this.showToast('Failed to fetch tenant for editing', 'error');
+        }
+    },
+
+    async updateTenant(e) {
+        e.preventDefault();
+        const tenantId = document.getElementById('edit-tenant-id').value;
+        const updates = {};
+
+        const name = document.getElementById('edit-tenant-name').value;
+        const description = document.getElementById('edit-tenant-desc').value;
+        const status = document.getElementById('edit-tenant-status').value;
+        const configRaw = document.getElementById('edit-tenant-config').value;
+
+        // Collect partial changes (in a real app we'd compare with original, for now we send what's in modal)
+        if (name) updates.name = name;
+        if (description) updates.description = description;
+        if (status) updates.status = status;
+
+        try {
+            if (configRaw) updates.config = JSON.parse(configRaw);
+        } catch (err) {
+            alert('Invalid JSON in Configuration field');
             return;
         }
 
         try {
-            const res = await fetch(`${this.API_BASE}/api/admin/tenants/${tenantId}/primary-ip`, {
-                method: 'POST',
+            const res = await fetch(`${this.API_BASE}/api/admin/tenants/${tenantId}`, {
+                method: 'PUT',
                 headers: { ...Auth.getAuthHeader(), 'Content-Type': 'application/json' },
-                body: JSON.stringify({ primary_ip: primaryIp })
+                body: JSON.stringify(updates)
             });
 
             if (res.ok) {
-                this.showToast(`Primary IP for ${tenantId} updated successfully.`, 'success');
-                // Optional: refresh details
+                this.showToast(`Tenant "${tenantId}" updated successfully`, 'success');
+                this.closeModal('edit-tenant-modal');
+                this.loadData(true); // Refresh list
+                if (document.getElementById('tenant-detail-modal').style.display === 'flex') {
+                    this.viewTenantDetail(tenantId); // Refresh detail view if open
+                }
+            } else {
+                const err = await res.json();
+                alert(`Update failed: ${err.detail || 'Unknown error'}`);
+            }
+        } catch (e) {
+            this.showToast('Failed to connect to backend', 'error');
+        }
+    },
+
+    async setPrimaryIps(tenantId) {
+        const ip1 = document.getElementById('primary-ip-1')?.value || '';
+        const ip2 = document.getElementById('primary-ip-2')?.value || '';
+        const ip3 = document.getElementById('primary-ip-3')?.value || '';
+        const ips = [ip1, ip2, ip3].filter(ip => ip.trim() !== '');
+
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/tenants/${tenantId}/primary-ips`, {
+                method: 'POST',
+                headers: { ...Auth.getAuthHeader(), 'Content-Type': 'application/json' },
+                body: JSON.stringify(ips)
+            });
+            if (res.ok) {
+                this.showToast('Primary IPs updated successfully', 'success');
                 this.viewTenantDetail(tenantId);
             } else {
                 const err = await res.json();
-                alert(`Failed to update IP: ${err.detail || 'Unknown error'}`);
+                alert(`Error: ${err.detail || 'Failed to update IPs'}`);
             }
         } catch (e) {
-            console.error("SetPrimaryIp error:", e);
-            alert("Error communicating with Admin API");
+            alert('Failed to connect to backend API');
         }
     },
 
@@ -556,8 +654,10 @@ const SuperAdmin = {
     },
 
     // ============================================
-    // USER MANAGEMENT
-    // ============================================
+    showAddUserModal() {
+        document.getElementById('add-user-modal').style.display = 'flex';
+    },
+
     async loadUsers() {
         const tbody = document.getElementById('users-list');
         if (!tbody) return;
@@ -579,12 +679,17 @@ const SuperAdmin = {
                         <td>${u.tenant_id || 'System'}</td>
                         <td>${u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}</td>
                         <td style="text-align:right;">
-                            <button class="btn-secondary btn-sm" onclick="SuperAdmin.editUser('${u.id}')">
-                                <i data-lucide="edit-2" style="width:14px;"></i> Edit
-                            </button>
+                            <div style="display:flex; gap:8px; justify-content:flex-end;">
+                                <button class="btn-secondary btn-sm" onclick="SuperAdmin.editUser('${u.username}')">
+                                    <i data-lucide="edit-2" style="width:14px;"></i> Edit
+                                </button>
+                                <button class="btn-secondary btn-sm" style="color:var(--error);" onclick="SuperAdmin.deleteUser('${u.username}')">
+                                    <i data-lucide="trash-2" style="width:14px;"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
-    `).join('');
+                `).join('');
                 lucide.createIcons();
             }
         } catch (e) {
@@ -603,7 +708,7 @@ const SuperAdmin = {
         };
 
         try {
-            const res = await fetch(`${this.API_BASE} /api/admin / users`, {
+            const res = await fetch(`${this.API_BASE}/api/admin/users`, {
                 method: 'POST',
                 headers: { ...Auth.getAuthHeader(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -620,24 +725,114 @@ const SuperAdmin = {
             alert('Identity service unreachable');
         }
     },
+    async editUser(username) {
+        const modal = document.getElementById('edit-user-modal');
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/users?username=${username}`, {
+                headers: Auth.getAuthHeader()
+            });
+            const data = await res.json();
+            const user = (Array.isArray(data) ? data[0] : (data.users ? data.users[0] : data)) || {};
 
-    showAddUserModal() {
-        document.getElementById('add-user-modal').style.display = 'flex';
+            document.getElementById('edit-user-id').value = username;
+            document.getElementById('edit-user-username').value = user.username || username;
+            document.getElementById('edit-user-email').value = user.email || '';
+            document.getElementById('edit-user-role').value = user.role || 'user';
+            document.getElementById('edit-user-tenant').value = user.tenant_id || '';
+            document.getElementById('edit-user-password').value = '';
+
+            modal.style.display = 'flex';
+        } catch (e) {
+            console.error("EditUser error:", e);
+            this.showToast('Failed to load user details', 'error');
+        }
     },
 
-    async loadAuditLogs() {
+    async updateUser(e) {
+        e.preventDefault();
+        const userId = document.getElementById('edit-user-id').value;
+        const payload = {
+            email: document.getElementById('edit-user-email').value,
+            role: document.getElementById('edit-user-role').value,
+            tenant_id: document.getElementById('edit-user-tenant').value || null
+        };
+
+        const newPass = document.getElementById('edit-user-password').value;
+        if (newPass) payload.password = newPass;
+
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/users/${userId}`, {
+                method: 'PUT',
+                headers: { ...Auth.getAuthHeader(), 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                this.closeModal('edit-user-modal');
+                this.loadUsers();
+                this.showToast('User preferences updated.', 'success');
+            } else {
+                const err = await res.json();
+                alert(`Update failed: ${err.detail || 'Unknown error'}`);
+            }
+        } catch (e) {
+            alert('Identity service unreachable');
+        }
+    },
+
+    async deleteUser(username) {
+        if (!confirm(`Are you sure you want to PERMANENTLY delete user "${username}"? This cannot be undone.`)) return;
+
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/users/${username}`, {
+                method: 'DELETE',
+                headers: Auth.getAuthHeader()
+            });
+
+            if (res.ok) {
+                this.showToast(`User ${username} deleted.`, 'success');
+                this.loadUsers();
+            } else {
+                const err = await res.json();
+                alert(`Deletion failed: ${err.detail || 'Access denied'}`);
+            }
+        } catch (e) {
+            console.error("DeleteUser error:", e);
+        }
+    },
+
+    async prevAuditPage() { if (this.auditPage > 1) this.loadAuditLogs(this.auditPage - 1); },
+    async nextAuditPage() { this.loadAuditLogs(this.auditPage + 1); },
+
+    async loadAuditLogs(page = 1) {
+        this.auditPage = page;
         const tbody = document.getElementById('audit-list');
+        const tenantId = document.getElementById('audit-tenant-filter')?.value;
+        const pageNum = document.getElementById('audit-page-num');
+        if (pageNum) pageNum.textContent = page;
+
         if (!tbody) return;
         tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Fetching global audit trail...</td></tr>';
 
         try {
-            const res = await fetch(`${this.API_BASE}/api/admin/audit-log`, {
-                headers: Auth.getAuthHeader()
-            });
+            // First time load: fill tenant filter
+            if (this.cachedOverview && document.getElementById('audit-tenant-filter').options.length <= 1) {
+                const select = document.getElementById('audit-tenant-filter');
+                this.cachedOverview.tenants.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.tenant_id;
+                    opt.textContent = t.name || t.tenant_id;
+                    select.appendChild(opt);
+                });
+            }
+
+            let url = `${this.API_BASE}/api/admin/audit-log?page=${page}&page_size=20`;
+            if (tenantId) url += `&tenant_id=${tenantId}`;
+
+            const res = await fetch(url, { headers: Auth.getAuthHeader() });
             if (res.ok) {
                 const data = await res.json();
-                const logs = data.logs || data.audit_log || [];
-                if (logs.length === 0) {
+                const logs = data.logs || data;
+                if (!logs || logs.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No audit events recorded.</td></tr>';
                     return;
                 }
@@ -645,15 +840,16 @@ const SuperAdmin = {
                     <tr>
                         <td>${new Date(l.timestamp).toLocaleString()}</td>
                         <td><strong>${l.action}</strong></td>
-                        <td>${l.username || l.user || 'system'}</td>
+                        <td>${l.user || 'system'}</td>
                         <td>${l.tenant_id || 'Global'}</td>
                         <td><span class="badge badge-active">${l.status || 'SUCCESS'}</span></td>
                         <td>${l.ip_address || '—'}</td>
                     </tr>
                 `).join('');
+                lucide.createIcons();
             }
         } catch (e) {
-            tbody.innerHTML = '<tr><td colspan="6" class="empty-state error">Failed to load system audit trail.</td></tr>';
+            if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="empty-state error">Failed to load system audit trail.</td></tr>';
         }
     },
 
@@ -694,6 +890,14 @@ const SuperAdmin = {
                 this.setHealthCard('health-consumer', 'healthy', 'Running', 'Processing logs from Redis');
             } else {
                 this.setHealthCard('health-consumer', 'down', 'Unknown', 'Processing interrupted');
+            }
+
+            const idStatus = healthData.components?.identity?.status;
+            if (idStatus === 'healthy') {
+                this.setHealthCard('health-identity', 'healthy', 'Connected', 'Repo 1 API is reachable');
+            } else {
+                const idErr = healthData.components?.identity?.error || `HTTP ${healthData.components?.identity?.status_code || 'Err'}`;
+                this.setHealthCard('health-identity', 'down', 'Unreachable', idErr);
             }
 
             this.addSystemEvent('success', `Health check OK — API: ${overallStatus}`);
@@ -1001,30 +1205,30 @@ const SuperAdmin = {
 
     async addTenant(e) {
         e.preventDefault();
-        const tid = document.getElementById('new-tenant-id').value;
-        const name = document.getElementById('new-tenant-name').value;
-        const email = document.getElementById('new-tenant-email').value;
-        const description = document.getElementById('new-tenant-description').value;
-        const hoursStart = document.getElementById('new-tenant-hours-start').value;
-        const hoursEnd = document.getElementById('new-tenant-hours-end').value;
-        const createAdmin = document.getElementById('new-tenant-create-admin').checked;
-
         const payload = {
-            tenant_id: tid,
-            name: name,
-            description: description,
-            config: { business_hours: { start: hoursStart, end: hoursEnd }, contact_email: email },
-            create_admin_user: createAdmin
+            tenant_id: document.getElementById('new-tenant-id').value,
+            name: document.getElementById('new-tenant-name').value,
+            description: document.getElementById('new-tenant-description').value,
+            config: {
+                contact_email: document.getElementById('new-tenant-email').value,
+                compliance: document.getElementById('new-tenant-compliance').value.split(',').map(s => s.trim()),
+                rate_limits: {
+                    rpm: parseInt(document.getElementById('new-tenant-limit-rpm').value),
+                    lph: parseInt(document.getElementById('new-tenant-limit-lph').value),
+                    max_devices: parseInt(document.getElementById('new-tenant-limit-devices').value)
+                },
+                business_hours: {
+                    start: document.getElementById('new-tenant-hours-start').value,
+                    end: document.getElementById('new-tenant-hours-end').value
+                }
+            },
+            create_admin_user: document.getElementById('new-tenant-create-admin').checked
         };
 
-        if (createAdmin) {
+        if (payload.create_admin_user) {
             payload.admin_username = document.getElementById('new-tenant-admin-user').value;
             payload.admin_email = document.getElementById('new-tenant-admin-email').value;
             payload.admin_password = document.getElementById('new-tenant-admin-pass').value;
-            if (!payload.admin_username || !payload.admin_password) {
-                alert("Admin username and password are required.");
-                return;
-            }
         }
 
         try {
@@ -1036,12 +1240,12 @@ const SuperAdmin = {
             if (res.ok) {
                 this.closeModal('add-tenant-modal');
                 this.loadTenantsView();
-                this.showToast('Tenant created successfully', 'success');
+                this.showToast('Premium tenant provisioned successfully.', 'success');
             } else {
                 const err = await res.json();
-                alert(`Error: ${err.detail || 'Failed to create tenant'}`);
+                alert(`Provisioning error: ${err.detail || 'Service rejected request'}`);
             }
-        } catch (e) { alert('Failed to connect to backend API'); }
+        } catch (e) { alert('Admin control plane unreachable'); }
     },
 
     // ============================================
@@ -1095,7 +1299,8 @@ const SuperAdmin = {
             // Fetch from global proxy
             // Note: If Repo 1 doesn't have a global /admin/api-keys, we might need to iterate
             // But for now we use the proxy catch-all
-            const path = filterTenant ? `/admin/tenants/${filterTenant}/api-keys` : '/admin/api-keys';
+            // Fetch from global proxy or specific tenant
+            const path = filterTenant ? `/tenants/${filterTenant}/api-keys` : '/api-keys';
             const response = await fetch(`${this.API_BASE}/api/admin${path}`, {
                 headers: Auth.getAuthHeader()
             });
