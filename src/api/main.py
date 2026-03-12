@@ -158,6 +158,11 @@ async def add_security_headers(request: Request, call_next):
     if not user_agent:
         is_bot = True
 
+    # Allow local testing even if UA is bot-like
+    client_host = request.client.host if request.client else ""
+    if client_host in ("127.0.0.1", "::1"):
+        is_bot = False
+
     if is_bot:
         # Return a generic 403 or 404 to discourage further probing
         # We add a small tarpit delay to slow down automated scanners

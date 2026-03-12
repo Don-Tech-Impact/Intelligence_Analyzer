@@ -485,8 +485,8 @@ header {
 .stat-card:hover {
     transform: translateY(-8px);
     box-shadow: var(--shadow-elevated);
-    border-color: rgba(0, 167, 111, 0.4);
-    background: rgba(30, 41, 59, 0.85);
+    border-color: var(--primary);
+    background: var(--bg-hover);
 }
 
 .stat-card::after {
@@ -649,8 +649,9 @@ header {
 }
 
 .chart-container:hover {
-    border-color: rgba(255, 255, 255, 0.1);
-    background: rgba(30, 41, 59, 0.85);
+    border-color: var(--border-default);
+    background: var(--bg-hover);
+    box-shadow: var(--shadow-card);
 }
 
 .chart-header {
@@ -1529,7 +1530,7 @@ header {
 
 .stream-console {
     flex: 1;
-    background: #020617;
+    background: #FFFFFF;
     margin: 1.25rem;
     border-radius: var(--radius-lg);
     padding: 1.25rem;
@@ -1537,9 +1538,9 @@ header {
     font-size: 0.75rem;
     line-height: 1.6;
     overflow-y: auto;
-    border: 1px solid rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-default);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
     max-height: 100%;
-    /* Ensure it respects parent height */
 }
 
 .stream-line {
@@ -1550,18 +1551,18 @@ header {
 }
 
 .stream-ts {
-    color: #64748B;
+    color: var(--text-muted);
     min-width: 80px;
 }
 
 .stream-vendor {
-    color: var(--accent-blue);
-    font-weight: 600;
+    color: var(--primary);
+    font-weight: 700;
     min-width: 70px;
 }
 
 .stream-msg {
-    color: #CBD5E1;
+    color: var(--text-primary);
     word-break: break-all;
 }
 
@@ -2008,56 +2009,39 @@ tr.severity-low td:first-child {
 }
 
 /* ========================================== */
-/* LOG STREAM                                 */
+/* LOG STREAM REFINEMENT                      */
 /* ========================================== */
-.stream-console {
-    background: #010409;
-    border-top: 1px solid var(--border-default);
-    height: 560px;
-    overflow-y: auto;
-    font-family: 'JetBrains Mono', monospace;
-    padding: 0.75rem 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-}
-
 .log-line {
     font-size: 0.75rem;
     line-height: 1.5;
-    padding: 3px 6px;
-    border-radius: 2px;
+    padding: 6px 10px;
+    border-radius: 4px;
     display: flex;
     gap: 0.75rem;
-    border-left: 2px solid transparent;
+    border-left: 3px solid transparent;
+    transition: background 0.2s;
+    background: rgba(241, 245, 249, 0.5);
+    margin-bottom: 2px;
 }
 
 .log-line:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(226, 232, 240, 0.8);
 }
 
-.ts {
+.log-line .ts {
     color: var(--text-muted);
     min-width: 80px;
     font-size: 0.6875rem;
 }
 
-.vnd {
-    color: var(--accent-teal);
-    font-weight: 600;
+.log-line .vnd {
+    color: var(--primary);
+    font-weight: 700;
     min-width: 70px;
 }
 
-.dev {
-    color: var(--text-muted);
-    min-width: 60px;
-}
-
-.msg {
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+.log-line .msg {
+    color: var(--text-primary);
 }
 
 .log-line.critical {
@@ -2067,10 +2051,12 @@ tr.severity-low td:first-child {
 
 .log-line.high {
     border-left-color: var(--severity-high);
+    background: rgba(245, 158, 11, 0.04);
 }
 
 .log-line.medium {
     border-left-color: var(--severity-medium);
+    background: rgba(59, 130, 246, 0.04);
 }
 
 /* ========================================== */

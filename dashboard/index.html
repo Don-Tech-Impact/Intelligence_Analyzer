@@ -153,9 +153,9 @@
                                         <i data-lucide="check-circle-2"></i>
                                         <span class="checklist-item-title">Cloud Provider Connected</span>
                                     </div>
-                                    <button class="btn-sm btn-secondary">View</button>
+                                    <button class="btn-sm btn-secondary" onclick="showToast('Infrastructure details managed by Repo1 Orchestrator', false)">Managed</button>
                                 </div>
-                                <p>Infrastructure monitoring is active. Collecting logs from 3 regions. Automated evidence collection is running every 24 hours.</p>
+                                <p>Infrastructure monitoring is active. Collecting logs from 3 regions. Automated evidence collection is running every 24 hours. <span class="badge badge-low" style="font-size: 10px;">V1 Verified</span></p>
                             </div>
                         </div>
 
@@ -178,7 +178,7 @@
                                         <i data-lucide="circle"></i>
                                         <span class="checklist-item-title">Establish Monitoring Controls</span>
                                     </div>
-                                    <button class="btn-sm btn-primary" onclick="switchView('compliance')">Configure</button>
+                                    <button class="btn-sm btn-primary" onclick="completeOnboardingStep(3); switchView('compliance')">Configure</button>
                                 </div>
                                 <p>Review framework requirements and work with your team to establish continuous monitoring of internal controls.</p>
                             </div>
@@ -203,7 +203,7 @@
                                         <i data-lucide="circle"></i>
                                         <span class="checklist-item-title">Setup Alert Lifecycles</span>
                                     </div>
-                                    <button class="btn-sm btn-primary">Setup</button>
+                                    <button class="btn-sm btn-primary" onclick="completeOnboardingStep(4)">Setup</button>
                                 </div>
                                 <p>Define exactly who gets notified when a critical breach pattern is detected. Integration with Slack and PagerDuty recommended.</p>
                             </div>

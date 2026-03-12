@@ -486,7 +486,7 @@ async def register_device(
     Also automatically adds the IP to the Repo 1 allowlist.
     """
     try:
-        name = payload.get("name")
+        name = payload.get("name") or payload.get("device_name")
         ip = payload.get("ip_address")
         if not name or not ip:
             raise HTTPException(status_code=400, detail="Name and IP Address are required")

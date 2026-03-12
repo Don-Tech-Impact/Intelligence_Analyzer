@@ -75,7 +75,7 @@ def get_auth_token():
     response = test_endpoint(
         "POST /auth/login (get token)",
         "POST",
-        f"{BASE_URL}/auth/login",
+        f"{BASE_URL}/api/admin/proxy/login",
         200,
         data={"username": "admin", "password": "admin123"}
     )

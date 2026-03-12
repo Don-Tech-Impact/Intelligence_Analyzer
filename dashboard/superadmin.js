@@ -4,7 +4,9 @@
  */
 
 const SuperAdmin = {
-    API_BASE: window.location.origin,
+    API_BASE: (window.location.origin === 'null' || window.location.protocol === 'file:')
+        ? 'http://localhost:8000'
+        : window.location.origin,
     tenantsChart: null,
     alertsChart: null,
     systemLoadChart: null,
@@ -1292,6 +1294,13 @@ const SuperAdmin = {
             const response = await fetch(`${this.API_BASE}/api/admin${path}`, {
                 headers: Auth.getAuthHeader()
             });
+            if (!response.ok) {
+                console.error(`[Admin API] ${path} failed:`, response.status);
+                const err = await response.json().catch(() => ({}));
+                console.error('[Admin API] Error detail:', err);
+                if (list) list.innerHTML = `<tr><td colspan="6" class="empty-state error">Fetch failed: ${err.detail || response.statusText}</td></tr>`;
+                return;
+            }
             const data = await response.json();
 
             // Handle various Repo 1 formats:

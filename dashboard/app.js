@@ -56,8 +56,8 @@ const COLORS = {
     medium: '#00B8D9',
     low: '#22C55E',
     muted: '#64748B',
-    grid: 'rgba(148, 163, 184, 0.1)',
-    text: '#94A3B8',
+    grid: 'rgba(148, 163, 184, 0.2)',
+    text: '#475569',
     green: '#22C55E',
     orange: '#F59E0B'
 };
@@ -138,6 +138,8 @@ async function apiFetch(url, options = {}) {
             }
             return { ok: true, data: body.data || body, json: async () => body.data || body };
         } else {
+            console.error(`[API] ${options.method || 'GET'} ${url} failed with status: ${response.status}`);
+            console.error('[API] Error Detail:', body);
             const errorMsg = body.message || body.detail || 'API Error';
             showToast(errorMsg, true);
             return { ok: false, status: response.status, message: errorMsg, json: async () => body };
@@ -948,7 +950,7 @@ const CHART_DEFAULTS = {
         animations: { enabled: true, speed: 400, dynamicAnimation: { speed: 300 } }
     },
     grid: { borderColor: COLORS.grid, strokeDashArray: 3 },
-    tooltip: { theme: 'dark', style: { fontSize: '13px' } },
+    tooltip: { theme: 'light', style: { fontSize: '13px' } },
     markers: { size: 4, strokeWidth: 2, hover: { size: 6 } }
 };
 
@@ -1014,13 +1016,13 @@ function createBarChart(selector, color) {
     if (!el) return null;
     const chart = new ApexCharts(el, {
         series: [{ data: [] }],
-        chart: { type: 'bar', height: 210, toolbar: { show: false }, foreColor: COLORS.text, fontFamily: 'Inter', background: 'transparent' },
-        plotOptions: { bar: { borderRadius: 4, horizontal: true, barHeight: '55%' } },
+        chart: { type: 'bar', height: 280, toolbar: { show: false }, foreColor: COLORS.text, fontFamily: 'Inter', background: 'transparent' },
+        plotOptions: { bar: { borderRadius: 4, horizontal: true, barHeight: '65%' } },
         colors: [color],
         grid: { borderColor: COLORS.grid, strokeDashArray: 3 },
         xaxis: { categories: [], labels: { style: { fontSize: '11px', fontWeight: 600 } } },
         yaxis: { labels: { style: { fontSize: '11px', fontWeight: 600 } } },
-        dataLabels: { enabled: false },
+        dataLabels: { enabled: true, style: { fontSize: '10px' } },
         tooltip: { theme: 'dark' }
     });
     chart.render();
@@ -1032,7 +1034,7 @@ function createDonutSmall(selector) {
     if (!el) return null;
     const chart = new ApexCharts(el, {
         series: [],
-        chart: { type: 'donut', height: 180, foreColor: COLORS.text, fontFamily: 'Inter', background: 'transparent' },
+        chart: { type: 'donut', height: 240, foreColor: COLORS.text, fontFamily: 'Inter', background: 'transparent' },
         labels: [],
         colors: [COLORS.teal, COLORS.primary, COLORS.indigo, COLORS.high, COLORS.low],
         stroke: { show: false },
@@ -1042,7 +1044,7 @@ function createDonutSmall(selector) {
                     size: '72%',
                     labels: {
                         show: true,
-                        value: { fontSize: '18px', fontWeight: 700, color: '#F1F5F9' },
+                        value: { fontSize: '18px', fontWeight: 700, color: COLORS.text },
                         total: { show: true, label: 'Total', color: COLORS.text, fontSize: '10px' }
                     }
                 }
@@ -1576,7 +1578,9 @@ async function submitRegisterDevice(e) {
     if (e) e.preventDefault();
     const payload = {
         device_name: document.getElementById('reg-device-name').value,
-        ip_address: document.getElementById('reg-device-ip').value
+        ip_address: document.getElementById('reg-device-ip').value,
+        category: document.getElementById('reg-device-category').value,
+        device_id: document.getElementById('reg-device-ip').value // Using IP as device_id for alignment
     };
 
     try {
@@ -1590,8 +1594,8 @@ async function submitRegisterDevice(e) {
             return;
         }
 
-        // Register personal device (Two-Level Security)
-        const res = await apiFetch(`${API_BASE_URL}/api/v1/assets/devices`, {
+        // Register managed device (V1 SIEM)
+        const res = await apiFetch(`${API_BASE_URL}/api/v1/assets/managed`, {
             method: 'POST',
             body: JSON.stringify(payload)
         });
@@ -1939,4 +1943,43 @@ function toggleAccordion(element) {
         }
     }
     lucide.createIcons();
+}
+
+/**
+ * V1 Support: Mark onboarding steps as completed in the UI
+ */
+function completeOnboardingStep(stepId) {
+    const selector = `.accordion-item:nth-child(${stepId})`;
+    const item = document.querySelector(selector);
+    if (!item) return;
+
+    item.classList.add('completed');
+    item.classList.remove('active');
+    
+    // Update the check icon and button if they exist
+    const icon = item.querySelector('.checklist-item-info i');
+    if (icon) icon.setAttribute('data-lucide', 'check-circle-2');
+    
+    const btn = item.querySelector('button');
+    if (btn) {
+        btn.textContent = 'View';
+        btn.className = 'btn-sm btn-secondary';
+    }
+
+    // Refresh icons
+    lucide.createIcons();
+    
+    // Update global progress
+    updateOnboardingProgress();
+    showToast(`Security Control ${stepId} Verified`, false);
+}
+
+function updateOnboardingProgress() {
+    const total = document.querySelectorAll('.accordion-item').length;
+    const completed = document.querySelectorAll('.accordion-item.completed').length;
+    const countEl = document.getElementById('onboarding-step-count');
+    const fillEl = document.querySelector('.progress-bar-fill');
+    
+    if (countEl) countEl.textContent = `${completed} of ${total} completed`;
+    if (fillEl) fillEl.style.width = `${(completed / total) * 100}%`;
 }
