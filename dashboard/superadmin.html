@@ -7,7 +7,7 @@
     <title>SuperAdmin | Afric-Analyzer</title>
     <meta name="description" content="Afric-Analyzer SuperAdmin — Global system management and monitoring">
     <link rel="stylesheet" href="superadmin.css">
-    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap"
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
     <script src="lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
@@ -734,10 +734,27 @@
                 <button class="modal-close" onclick="SuperAdmin.closeModal('add-tenant-modal')">&times;</button>
             </div>
             <form onsubmit="SuperAdmin.addTenant(event)">
+                <div class="form-row" style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                    <div>
+                        <label>Company/Legal Name</label>
+                        <input type="text" id="new-tenant-name" class="glass-input" placeholder="e.g. Acme Corp Industries" required>
+                    </div>
+                    <div>
+                        <label>Contact Email</label>
+                        <input type="email" id="new-tenant-email" class="glass-input" placeholder="e.g. billing@acme.com" required>
+                    </div>
+                </div>
+
                 <div class="form-row">
                     <label>Company Description</label>
                     <textarea id="new-tenant-description" class="glass-input"
                         placeholder="e.g. Enterprise security monitoring..." style="min-height:60px;"></textarea>
+                </div>
+
+                <div class="form-row">
+                    <label>Primary Office IPs (Up to 3, comma separated)</label>
+                    <input type="text" id="new-tenant-primary-ips" class="glass-input" placeholder="e.g. 1.1.1.1, 2.2.2.2">
+                    <span class="input-hint">Authoritative Level 1 IPs for this legal entity.</span>
                 </div>
 
                 <div class="form-section-label">Configuration & Limits</div>

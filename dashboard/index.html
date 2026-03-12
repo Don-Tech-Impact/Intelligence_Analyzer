@@ -7,7 +7,7 @@
     <title>Afric-Analyzer | Security Operations Center</title>
     <meta name="description" content="Afric-Analyzer — Real-time threat monitoring and security intelligence">
     <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Public+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="ai-assistant.css">
     <script src="lucide.min.js"></script>
@@ -92,11 +92,126 @@
             </header>
 
             <div id="overview-view" class="dashboard-view active">
-                <!-- AI Insight Strip (Relocated to Top) -->
-                <div class="insights-pill" id="overview-insights-pill">
-                    <i data-lucide="sparkles"></i>
-                    <span id="ai-insight-text-overview">Analyzing signals...</span>
+                
+                <!-- Drata-Style Onboarding Section -->
+                <div class="onboarding-section">
+                    <div class="onboarding-header">
+                        <div class="header-info">
+                            <h2>Security Controls Checklist</h2>
+                            <p>Complete these high-priority items to establish your security baseline.</p>
+                        </div>
+                        <div class="onboarding-progress">
+                            <span id="onboarding-step-count">2 of 4 completed</span>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill" style="width: 50%;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="accordion-stack">
+                        <!-- Step 1 -->
+                        <div class="accordion-item completed">
+                            <div class="accordion-trigger" onclick="toggleAccordion(this)">
+                                <div class="trigger-left">
+                                    <div class="step-number">1</div>
+                                    <div class="category-icon"><i data-lucide="map-pin"></i></div>
+                                    <div class="step-label">
+                                        <span class="step-title">Network Authorization</span>
+                                        <span class="step-desc">Establish primary office and data center IP perimeters.</span>
+                                    </div>
+                                </div>
+                                <i data-lucide="chevron-down" class="chevron"></i>
+                            </div>
+                            <div class="accordion-content">
+                                <div class="checklist-item done">
+                                    <div class="checklist-item-info">
+                                        <i data-lucide="check-circle-2"></i>
+                                        <span class="checklist-item-title">Primary Office IP Registered</span>
+                                    </div>
+                                    <button class="btn-sm btn-secondary" onclick="switchView('assets')">Manage</button>
+                                </div>
+                                <p>Your authoritative IPs are now registered and being used for high-fidelity log enrichment. This ensures all internal traffic is correctly attributed.</p>
+                            </div>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="accordion-item completed">
+                            <div class="accordion-trigger" onclick="toggleAccordion(this)">
+                                <div class="trigger-left">
+                                    <div class="step-number">2</div>
+                                    <div class="category-icon"><i data-lucide="cloud"></i></div>
+                                    <div class="step-label">
+                                        <span class="step-title">Infrastructure Integration</span>
+                                        <span class="step-desc">Automate event collection from AWS, Azure, or GCP.</span>
+                                    </div>
+                                </div>
+                                <i data-lucide="chevron-down" class="chevron"></i>
+                            </div>
+                            <div class="accordion-content">
+                                <div class="checklist-item done">
+                                    <div class="checklist-item-info">
+                                        <i data-lucide="check-circle-2"></i>
+                                        <span class="checklist-item-title">Cloud Provider Connected</span>
+                                    </div>
+                                    <button class="btn-sm btn-secondary">View</button>
+                                </div>
+                                <p>Infrastructure monitoring is active. Collecting logs from 3 regions. Automated evidence collection is running every 24 hours.</p>
+                            </div>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="accordion-item active">
+                            <div class="accordion-trigger" onclick="toggleAccordion(this)">
+                                <div class="trigger-left">
+                                    <div class="step-number">3</div>
+                                    <div class="category-icon"><i data-lucide="file-check"></i></div>
+                                    <div class="step-label">
+                                        <span class="step-title">Compliance Frameworks</span>
+                                        <span class="step-desc">Set up requirements for SOC2 / ISO27001 models.</span>
+                                    </div>
+                                </div>
+                                <i data-lucide="chevron-up" class="chevron"></i>
+                            </div>
+                            <div class="accordion-content" style="display: block;">
+                                <div class="checklist-item">
+                                    <div class="checklist-item-info">
+                                        <i data-lucide="circle"></i>
+                                        <span class="checklist-item-title">Establish Monitoring Controls</span>
+                                    </div>
+                                    <button class="btn-sm btn-primary" onclick="switchView('compliance')">Configure</button>
+                                </div>
+                                <p>Review framework requirements and work with your team to establish continuous monitoring of internal controls.</p>
+                            </div>
+                        </div>
+
+                        <!-- Step 4 -->
+                        <div class="accordion-item">
+                            <div class="accordion-trigger" onclick="toggleAccordion(this)">
+                                <div class="trigger-left">
+                                    <div class="step-number">4</div>
+                                    <div class="category-icon"><i data-lucide="bell"></i></div>
+                                    <div class="step-label">
+                                        <span class="step-title">Incident Response</span>
+                                        <span class="step-desc">Set up notification channels for high-criticality threats.</span>
+                                    </div>
+                                </div>
+                                <i data-lucide="chevron-down" class="chevron"></i>
+                            </div>
+                            <div class="accordion-content">
+                                <div class="checklist-item">
+                                    <div class="checklist-item-info">
+                                        <i data-lucide="circle"></i>
+                                        <span class="checklist-item-title">Setup Alert Lifecycles</span>
+                                    </div>
+                                    <button class="btn-sm btn-primary">Setup</button>
+                                </div>
+                                <p>Define exactly who gets notified when a critical breach pattern is detected. Integration with Slack and PagerDuty recommended.</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+
+                <!-- AI Insight Strip (Relocated below onboarding) -->
                 <!-- Stats Row -->
                 <div class="stats-grid">
                     <div class="stat-card">

@@ -1907,3 +1907,36 @@ function updateCurlExamples() {
   }'`;
     }
 }
+/**
+ * Toggle dashboard onboarding accordions (Drata-Style)
+ */
+function toggleAccordion(element) {
+    const item = element.closest('.accordion-item');
+    const items = document.querySelectorAll('.accordion-item');
+    
+    // Switch chevron for the clicked item
+    const chevron = element.querySelector('.chevron');
+    
+    if (item.classList.contains('active')) {
+        item.classList.remove('active');
+        item.querySelector('.accordion-content').style.display = 'none';
+        if (chevron) {
+            chevron.setAttribute('data-lucide', 'chevron-down');
+        }
+    } else {
+        // Close others
+        items.forEach(i => {
+            i.classList.remove('active');
+            i.querySelector('.accordion-content').style.display = 'none';
+            const c = i.querySelector('.chevron');
+            if (c) c.setAttribute('data-lucide', 'chevron-down');
+        });
+        
+        item.classList.add('active');
+        item.querySelector('.accordion-content').style.display = 'block';
+        if (chevron) {
+            chevron.setAttribute('data-lucide', 'chevron-up');
+        }
+    }
+    lucide.createIcons();
+}

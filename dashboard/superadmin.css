@@ -5,57 +5,46 @@
 
 /* ===== Design Tokens ===== */
 :root {
-    /* Primary — Minimals Green */
-    --primary: #00A76F;
-    --primary-lighter: #C8FAD6;
-    --primary-light: #5BE49B;
-    --primary-dark: #007867;
-    --primary-darker: #004B50;
+    /* Drata-Style Alignment */
+    --primary: #2563EB;
+    --primary-lighter: #DBEAFE;
+    --primary-light: #60A5FA;
+    --primary-dark: #1E40AF;
+    --primary-darker: #1E3A8A;
     --primary-contrast: #FFFFFF;
 
-    /* Secondary */
-    --secondary: #8E33FF;
-    --secondary-lighter: #EFD6FF;
-    --secondary-light: #C684FF;
+    /* Semantic */
+    --success: #16A34A;
+    --warning: #D97706;
+    --error: #DC2626;
+    --info: #0284C7;
 
-    /* Semantic Colors */
-    --info: #00B8D9;
-    --info-lighter: #CAFDF5;
-    --success: #22C55E;
-    --success-lighter: #D3FCD2;
-    --warning: #FFAB00;
-    --warning-lighter: #FFF5CC;
-    --error: #FF5630;
-    --error-lighter: #FFE9D5;
-
-    /* Background */
-    --bg-default: #F4F6F8;
+    /* Backgrounds */
+    --bg-default: #F9FAFB;
     --bg-paper: #FFFFFF;
-    --bg-neutral: #F4F6F8;
+    --bg-neutral: #F3F4F6;
 
     /* Text */
-    --text-primary: #1C252E;
-    --text-secondary: #637381;
-    --text-disabled: #919EAB;
+    --text-primary: #111827;
+    --text-secondary: #4B5563;
+    --text-disabled: #9CA3AF;
 
-    /* Grey Scale */
-    --grey-50: #FCFDFD;
-    --grey-100: #F5F5F5;
-    --grey-200: #EEEEEE;
-    --grey-300: #E0E0E0;
-    --grey-400: #BDBDBD;
-    --grey-500: #919EAB;
-    --grey-600: #637381;
-    --grey-700: #454F5B;
-    --grey-800: #1C252E;
-    --grey-900: #141A21;
+    /* Grey Palette */
+    --grey-50: #F9FAFB;
+    --grey-100: #F3F4F6;
+    --grey-200: #E5E7EB;
+    --grey-300: #D1D5DB;
+    --grey-400: #9CA3AF;
+    --grey-500: #6B7280;
+    --grey-600: #4B5563;
+    --grey-700: #374151;
+    --grey-800: #1F2937;
+    --grey-900: #111827;
 
-    /* Shadows — Minimals-style soft elevation */
-    --shadow-card: 0 0 2px rgba(145, 158, 171, 0.2), 0 12px 24px -4px rgba(145, 158, 171, 0.12);
-    --shadow-dropdown: 0 0 2px rgba(145, 158, 171, 0.24), 0 20px 40px -4px rgba(145, 158, 171, 0.24);
-    --shadow-dialog: -40px 40px 80px -8px rgba(145, 158, 171, 0.24);
-    --shadow-z1: 0 1px 2px rgba(145, 158, 171, 0.16);
-    --shadow-z8: 0 8px 16px rgba(145, 158, 171, 0.16);
+    /* Elevation */
+    --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 1px 1px 2px 0 rgba(0, 0, 0, 0.06);
+    --shadow-dropdown: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-dialog: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 
     /* Radii */
     --radius-xs: 6px;
@@ -78,7 +67,7 @@
 }
 
 body {
-    font-family: 'Public Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: 'Inter', 'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background-color: var(--bg-default);
     color: var(--text-primary);
     display: flex;
@@ -94,10 +83,10 @@ body {
    SIDEBAR — White/light with green active indicator
    =================================================================== */
 .sidebar {
-    width: 280px;
-    min-width: 280px;
+    width: 260px;
+    min-width: 260px;
     background: var(--bg-paper);
-    border-right: 1px dashed var(--grey-200);
+    border-right: 1px solid var(--grey-200);
     display: flex;
     flex-direction: column;
     padding: 24px 16px;

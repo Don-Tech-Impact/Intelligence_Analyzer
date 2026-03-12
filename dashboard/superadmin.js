@@ -1210,13 +1210,14 @@ const SuperAdmin = {
             tenant_id: document.getElementById('new-tenant-id').value,
             name: document.getElementById('new-tenant-name').value,
             description: document.getElementById('new-tenant-description').value,
+            primary_ips: document.getElementById('new-tenant-primary-ips').value.split(',').map(s => s.trim()).filter(Boolean),
             config: {
                 contact_email: document.getElementById('new-tenant-email').value,
-                compliance: document.getElementById('new-tenant-compliance').value.split(',').map(s => s.trim()),
+                compliance: document.getElementById('new-tenant-compliance').value.split(',').map(s => s.trim()).filter(Boolean),
                 rate_limits: {
-                    rpm: parseInt(document.getElementById('new-tenant-limit-rpm').value),
-                    lph: parseInt(document.getElementById('new-tenant-limit-lph').value),
-                    max_devices: parseInt(document.getElementById('new-tenant-limit-devices').value)
+                    rpm: parseInt(document.getElementById('new-tenant-limit-rpm').value) || 1000,
+                    lph: parseInt(document.getElementById('new-tenant-limit-lph').value) || 50000,
+                    max_devices: parseInt(document.getElementById('new-tenant-limit-devices').value) || 100
                 },
                 business_hours: {
                     start: document.getElementById('new-tenant-hours-start').value,
@@ -1367,16 +1368,24 @@ const SuperAdmin = {
             if (container) container.style.display = 'block';
 
             if (!keys || !Array.isArray(keys) || keys.length === 0) {
-                if (list) list.innerHTML = `<tr><td colspan="4" class="empty-state" style="padding:16px;">No API keys found for this tenant.</td></tr>`;
+                if (list) list.innerHTML = `<tr><td colspan="5" class="empty-state" style="padding:16px;">No API keys found for this tenant.</td></tr>`;
             } else {
-                if (list) list.innerHTML = keys.map(k => `
+                if (list) list.innerHTML = keys.map(k => {
+                    const scopes = Array.isArray(k.scopes) ? k.scopes.join(', ') : (k.permissions ? Object.keys(k.permissions).filter(p => k.permissions[p]).join(', ') : 'none');
+                    return `
                     <tr>
-                        <td>${k.name}</td>
-                        <td><code>${k.prefix}***</code></td>
-                        <td>${k.scopes.join(', ')}</td>
+                        <td><strong>${k.name}</strong></td>
+                        <td><code>${k.key_prefix || k.prefix}***</code></td>
+                        <td><div class="scope-badges">${scopes}</div></td>
                         <td style="font-size:11px; color:var(--text-secondary);">${new Date(k.created_at).toLocaleDateString()}</td>
+                        <td style="text-align:right;">
+                            <button class="btn-icon btn-danger-soft" title="Revoke Key" onclick="SuperAdmin.revokeApiKey('${k.id}', '${k.name}')">
+                                <i data-lucide="trash-2" style="width:14px;"></i>
+                            </button>
+                        </td>
                     </tr>
-                `).join('');
+                `}).join('');
+                lucide.createIcons();
             }
         } catch (e) {
             console.error("LoadTenantApiKeys error:", e);

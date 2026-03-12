@@ -1,14 +1,14 @@
 /* login.css - Minimal White UI Design System (Minimals.cc inspired) */
 :root {
-    --primary: #212B36;
-    --primary-hover: #454F5B;
-    --secondary: #00A76F;
+    --primary: #111827;
+    --primary-hover: #1F2937;
+    --secondary: #2563EB;
     --bg-white: #FFFFFF;
     --bg-light: #F9FAFB;
-    --border: #DFE3E8;
-    --text-primary: #212B36;
-    --text-secondary: #637381;
-    --text-disabled: #919EAB;
+    --border: #E5E7EB;
+    --text-primary: #111827;
+    --text-secondary: #4B5563;
+    --text-disabled: #9CA3AF;
 }
 
 * {
