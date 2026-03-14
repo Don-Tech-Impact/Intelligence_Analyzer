@@ -12,6 +12,14 @@
     <link rel="stylesheet" href="ai-assistant.css">
     <script src="lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <script>
+        // Flicker Prevention: Ensure dismissed checklist NEVER paints
+        (function() {
+            if (localStorage.getItem('checklist_dismissed') === 'true') {
+                document.write('<style>.onboarding-section { display: none !important; }</style>');
+            }
+        })();
+    </script>
 </head>
 
 <body>

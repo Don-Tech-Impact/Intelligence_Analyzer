@@ -466,7 +466,7 @@ const SuperAdmin = {
                 <div class="detail-section" style="margin-top:20px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                         <h4 style="margin:0;">Network Security (Primary IPs)</h4>
-                        <button class="btn-primary btn-sm" onclick="SuperAdmin.showAddIpModal()">
+                        <button class="btn-primary btn-sm" onclick="SuperAdmin.showAddIpModal('${tenantId}')">
                             <i data-lucide="plus" style="width:14px;"></i> Add Allowlist Range
                         </button>
                     </div>
@@ -1023,13 +1023,32 @@ const SuperAdmin = {
         }
     },
 
-    showAddIpModal() {
+    showAddIpModal(tenantId) {
+        if (tenantId) {
+            this.currentAddIpTenant = tenantId;
+        } else {
+            this.currentAddIpTenant = null;
+        }
         document.getElementById('add-ip-modal').style.display = 'flex';
     },
 
     async addIpRange(e) {
         e.preventDefault();
-        const tenantId = document.getElementById('network-tenant-filter').value;
+        const filterEl = document.getElementById('network-tenant-filter');
+        const tenantId = this.currentAddIpTenant || (filterEl ? filterEl.value : '');
+        
+        if (!tenantId) {
+            alert('Error: No tenant selected for IP range addition.');
+            return;
+        }
+
+        const btn = e.target.querySelector('button[type="submit"]');
+        const originalText = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="spinner-border spinner-border-sm"></i> Adding...';
+        }
+
         const ip_range = document.getElementById('new-ip-range').value;
         const description = document.getElementById('new-ip-desc').value;
 
@@ -1051,6 +1070,11 @@ const SuperAdmin = {
             }
         } catch (e) {
             alert('Failed to connect to backend API');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
         }
     },
 
@@ -1235,6 +1259,13 @@ const SuperAdmin = {
             payload.admin_password = document.getElementById('new-tenant-admin-pass').value;
         }
 
+        const btn = e.target.querySelector('button[type="submit"]');
+        const originalText = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="spinner-border spinner-border-sm"></i> Creating...';
+        }
+
         try {
             const res = await fetch(`${this.API_BASE}/api/admin/tenants`, {
                 method: 'POST',
@@ -1249,7 +1280,14 @@ const SuperAdmin = {
                 const err = await res.json();
                 alert(`Provisioning error: ${err.detail || 'Service rejected request'}`);
             }
-        } catch (e) { alert('Admin control plane unreachable'); }
+        } catch (e) { 
+            alert('Admin control plane unreachable'); 
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
     },
 
     // ============================================
@@ -1313,6 +1351,107 @@ const SuperAdmin = {
             console.error("LoadApiInventory error:", e);
             if (list) list.innerHTML = `<tr><td colspan="6" class="empty-state error">Failed to load API inventory.</td></tr>`;
         }
+    },
+
+    openCreateKeyModal() {
+        const modal = document.getElementById('create-api-key-modal');
+        const select = document.getElementById('new-key-tenant');
+        
+        // Populate tenant select if we have cached tenants
+        if (select && this.cachedOverview && this.cachedOverview.top_tenants_by_volume) {
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">Select Tenant...</option>' + 
+                this.cachedOverview.top_tenants_by_volume.map(t => 
+                    `<option value="${t.tenant_id}">${t.tenant_id}</option>`
+                ).join('');
+            select.value = currentVal;
+        }
+
+        if (modal) {
+            modal.style.display = 'flex';
+            if (window.lucide) window.lucide.createIcons();
+        }
+    },
+
+    async handleCreateKey(e) {
+        e.preventDefault();
+        const tenantId = document.getElementById('new-key-tenant').value;
+        const name = document.getElementById('new-key-name').value;
+        const scopes = Array.from(document.querySelectorAll('input[name="scope"]:checked')).map(cb => cb.value);
+
+        if (!tenantId) {
+            alert('Please select a target tenant.');
+            return;
+        }
+
+        const btn = e.target.querySelector('button[type="submit"]');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="spinner"></i> Generating...';
+
+        try {
+            const response = await fetch(`${this.API_BASE}/api/admin/tenants/${tenantId}/api-keys`, {
+                method: 'POST',
+                headers: {
+                    ...Auth.getAuthHeader(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ name, scopes })
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                const secret = result.key || result.secret || result.api_key;
+
+                this.closeModal('create-api-key-modal');
+                
+                // Show Reveal Modal
+                const revealModal = document.getElementById('reveal-key-modal');
+                const secretText = document.getElementById('generated-secret-text');
+                if (revealModal && secretText) {
+                    secretText.textContent = secret;
+                    revealModal.style.display = 'flex';
+                    if (window.lucide) window.lucide.createIcons();
+                }
+
+                this.showToast('API Key generated successfully', 'success');
+                this.loadApiInventory();
+                
+                // Reset form
+                e.target.reset();
+            } else {
+                const err = await response.json();
+                alert(`Generation failed: ${err.detail || 'Unknown error'}`);
+            }
+        } catch (err) {
+            console.error("CreateKey error:", err);
+            alert('Service unreachable. Check backend status.');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    },
+
+    copyGeneratedKey() {
+        const secret = document.getElementById('generated-secret-text').textContent;
+        const status = document.getElementById('copy-status');
+        
+        const textArea = document.createElement("textarea");
+        textArea.value = secret;
+        document.body.appendChild(textArea);
+        textArea.select();
+        
+        try {
+            document.execCommand('copy');
+            if (status) {
+                status.style.opacity = '1';
+                setTimeout(() => { status.style.opacity = '0'; }, 2000);
+            }
+        } catch (err) {
+            console.error('Copy failed', err);
+        }
+        
+        document.body.removeChild(textArea);
     },
 
     renderApiInventory(keys) {

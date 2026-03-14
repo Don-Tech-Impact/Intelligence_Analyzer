@@ -692,6 +692,9 @@
                         <input type="text" id="api-search" placeholder="Search by name, prefix, or tenant..."
                             oninput="SuperAdmin.filterApiKeys()">
                     </div>
+                    <button class="btn-primary" onclick="SuperAdmin.openCreateKeyModal()">
+                        <i data-lucide="plus" style="width:18px;"></i> Create API Key
+                    </button>
                 </div>
             </header>
 
@@ -1047,6 +1050,70 @@
                     <button type="submit" class="btn-primary">Save Changes</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Create API Key Modal -->
+    <div id="create-api-key-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Generate Global API Key</h3>
+                <button class="modal-close" onclick="SuperAdmin.closeModal('create-api-key-modal')">&times;</button>
+            </div>
+            <form onsubmit="SuperAdmin.handleCreateKey(event)">
+                <div class="form-row">
+                    <label>Target Tenant</label>
+                    <select id="new-key-tenant" class="glass-input" required>
+                        <option value="">Select Tenant...</option>
+                    </select>
+                    <span class="input-hint">The key will be bound to this data isolation bubble.</span>
+                </div>
+                <div class="form-row">
+                    <label>Friendly Name / Label</label>
+                    <input type="text" id="new-key-name" class="glass-input" placeholder="e.g. Production Ingestion Hook" required>
+                </div>
+                <div class="form-row">
+                    <label>Permissions (Scopes)</label>
+                    <div class="scope-selector">
+                        <label class="checkbox-item"><input type="checkbox" name="scope" value="ingest" checked> Ingest Logs</label>
+                        <label class="checkbox-item"><input type="checkbox" name="scope" value="read"> Read Analytics</label>
+                        <label class="checkbox-item"><input type="checkbox" name="scope" value="admin"> Admin Operations</label>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="SuperAdmin.closeModal('create-api-key-modal')">Cancel</button>
+                    <button type="submit" class="btn-primary">Generate Secret</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Reveal Key Modal (Security High Priority) -->
+    <div id="reveal-key-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width:450px;">
+            <div class="modal-header" style="border:none; padding-bottom:0;">
+                <div style="width:40px; height:40px; background:#E6FFFA; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#00A76F; margin:0 auto 16px;">
+                    <i data-lucide="shield-check"></i>
+                </div>
+                <h3 style="text-align:center; width:100%;">Key Successfully Generated</h3>
+            </div>
+            <div style="padding:0 24px 24px; text-align:center;">
+                <p style="color:var(--text-secondary); font-size:14px; margin-bottom:20px;">
+                    This is the **only time** you will see this secret. Copy it now and store it in a secure vault.
+                </p>
+                <div class="secret-reveal-box" id="generated-secret-box" onclick="SuperAdmin.copyGeneratedKey()" title="Click to copy">
+                    <span id="generated-secret-text">ak_test_...</span>
+                    <i data-lucide="copy" style="width:16px;"></i>
+                </div>
+                <div id="copy-status" style="font-size:12px; height:18px; color:var(--primary); margin-top:8px; opacity:0; transition:opacity 0.2s;">
+                    Copied to clipboard!
+                </div>
+            </div>
+            <div class="form-actions" style="background:transparent; padding-top:0;">
+                <button type="button" class="btn-primary" style="width:100%;" onclick="SuperAdmin.closeModal('reveal-key-modal')">
+                    I have saved the key
+                </button>
+            </div>
         </div>
     </div>
 

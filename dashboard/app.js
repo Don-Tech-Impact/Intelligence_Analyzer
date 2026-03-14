@@ -30,12 +30,12 @@ window.openModal = function(modalId) {
 }
 
 window.closeModal = function(modalId) {
+    console.log('[Modal] Closing:', modalId);
     const modal = document.getElementById(modalId);
     if (modal) {
-        modal.style.opacity = '0';
+        modal.classList.remove('active');
         setTimeout(() => {
             modal.style.display = 'none';
-            modal.classList.remove('active');
         }, 300);
     }
 }
@@ -119,6 +119,13 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(fetchData, 15000);
     setInterval(fetchStreamData, 8000);
     setInterval(checkApiStatus, 30000);
+    
+    // Permanently remove checklist if dismissed
+    if (localStorage.getItem('checklist_dismissed') === 'true') {
+        const onboardingSection = document.querySelector('.onboarding-section');
+        if (onboardingSection) onboardingSection.remove();
+    }
+
     lucide.createIcons();
 });
 
@@ -1490,15 +1497,20 @@ async function renderAssets() {
         const discoveredRes = await apiFetch(`${API_BASE_URL}/api/v1/assets/discovered?tenant_id=${currentTenant}`);
 
         const primaryIp = (primaryRes && primaryRes.ok) ? (await primaryRes.json()).primary_ip : 'Not Set';
-        const userDevices = (userDevicesRes && userDevicesRes.ok) ? await userDevicesRes.json() : [];
-        const managed = (managedRes && managedRes.ok) ? await managedRes.json() : [];
-        const discovered = (discoveredRes && discoveredRes.ok) ? (await discoveredRes.json()).data : [];
+        const userDevicesData = (userDevicesRes && userDevicesRes.ok) ? await userDevicesRes.json() : [];
+        const managedData = (managedRes && managedRes.ok) ? await managedRes.json() : [];
+        const discoveredData = (discoveredRes && discoveredRes.ok) ? (await discoveredRes.json()).data : [];
+
+        // Support both array and {data: []} formats
+        const userDevices = Array.isArray(userDevicesData) ? userDevicesData : (userDevicesData.data || []);
+        const managed = Array.isArray(managedData) ? managedData : (managedData.data || []);
+        const discovered = Array.isArray(discoveredData) ? discoveredData : (discoveredData.data || []);
 
         // Update Stats & Primary IP Display
         setEl('primary-ip-display', primaryIp);
         setEl('user-device-count', userDevices.length);
-        setEl('asset-count-total', managed.length + userDevices.length);
-        setEl('asset-count-unmanaged', discovered.length);
+        setEl('asset-count-total', (managed.length || 0) + (userDevices.length || 0));
+        setEl('asset-count-unmanaged', discovered.length || 0);
 
         // Render User Registered Devices
         const userDevicesBody = document.getElementById('user-devices-body');
@@ -1612,16 +1624,11 @@ function getCategoryIcon(cat) {
 }
 
 function openRegisterDeviceModal() {
-    const modal = document.getElementById('register-device-modal');
-    if (modal) {
-        modal.style.display = 'flex';
-        lucide.createIcons();
-    }
+    openModal('register-device-modal');
 }
 
 function closeRegisterDeviceModal() {
-    const modal = document.getElementById('register-device-modal');
-    if (modal) modal.style.display = 'none';
+    closeModal('register-device-modal');
     const form = document.getElementById('register-device-form');
     if (form) form.reset();
 }
@@ -1731,7 +1738,7 @@ async function deleteManagedDevice(id) {
 // ============================================
 
 function openCreateKeyModal() {
-    document.getElementById('create-key-modal').style.display = 'flex';
+    openModal('create-key-modal');
 }
 
 function closeModal(id) {
@@ -1762,7 +1769,7 @@ async function handleCreateKey(e) {
             keyEl.textContent = data.api_key;
             keyEl.dataset.fullKey = data.api_key; // For copy function
 
-            document.getElementById('reveal-key-modal').style.display = 'flex';
+            openModal('reveal-key-modal');
 
             loadApiKeys();
             showToast('API Key generated successfully!', false);
@@ -1911,7 +1918,7 @@ async function rotateApiKey(keyId) {
             keyEl.textContent = data.api_key;
             keyEl.dataset.fullKey = data.api_key;
 
-            document.getElementById('reveal-key-modal').style.display = 'flex';
+            openModal('reveal-key-modal');
 
             loadApiKeys();
             showToast('API Key rotated successfully', false);
@@ -2050,15 +2057,16 @@ function updateOnboardingProgress() {
     if (countEl) countEl.textContent = `${completed} of ${total} completed`;
     if (fillEl) fillEl.style.width = `${(completed / total) * 100}%`;
 
-    // Auto-hide when all checks are completed
+    // Permanently remove when all checks are completed
     if (completed === total && total > 0) {
         const onboardingSection = document.querySelector('.onboarding-section');
         if (onboardingSection && !onboardingSection.classList.contains('fade-out')) {
-            console.log('[Onboarding] All steps completed. Hiding checklist...');
+            console.log('[Onboarding] All steps completed. Removing checklist...');
+            localStorage.setItem('checklist_dismissed', 'true');
             setTimeout(() => {
                 onboardingSection.classList.add('fade-out');
                 setTimeout(() => {
-                    onboardingSection.classList.add('hidden-element');
+                    onboardingSection.remove(); // Physically delete from DOM
                     showToast("Security Baseline Established. Checklist Dismissed.", false);
                 }, 500); // Match CSS transition time
             }, 1000); // Brief delay to let the user see the 100% state
