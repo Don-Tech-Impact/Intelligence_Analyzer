@@ -24,10 +24,6 @@ const Auth = {
      * Clear the JWT and redirect to login page with confirmation.
      */
     logout() {
-        if (!confirm("Are you sure you want to log out? This will clear your session and redirect you to the login page.")) {
-            return;
-        }
-
         console.log("Auth: Logging out. Clearing all authentication data...");
 
         // Clear JWT
@@ -150,7 +146,7 @@ const Auth = {
         if (userType === 'tenant_user') {
             console.log("Auth: Redirecting to standard.dashboard (Tenant View)");
             window.location.href = 'index.html';
-        } else if (role === 'superadmin' || isAdmin || username === 'superadmin') {
+        } else if (role === 'superadmin' || isAdmin || username === 'superadmin' || username === 'admin') {
             console.log("Auth: Redirecting to superadmin.panel (Global View)");
             window.location.href = 'superadmin.html';
         } else {

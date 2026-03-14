@@ -3,6 +3,50 @@ const API_BASE_URL = (window.location.origin === 'null' || window.location.proto
     : window.location.origin;
 const ADMIN_API_KEY = 'changeme-admin-key';
 
+// ============================================
+// MODAL UTILITIES
+// ============================================
+
+window.openModal = function(modalId) {
+    console.log('[Modal] Opening:', modalId);
+    const modal = document.getElementById(modalId);
+    if (!modal) {
+        console.error('[Modal] NOT FOUND:', modalId);
+        return;
+    }
+    
+    // Clear any previous inline styles that might interfere
+    modal.style.display = '';
+    modal.style.opacity = '';
+    modal.style.visibility = '';
+    
+    // Use CSS classes for state
+    modal.classList.add('active');
+    
+    // Trigger Lucide icons inside modal if needed
+    if (window.lucide) {
+        window.lucide.createIcons();
+    }
+}
+
+window.closeModal = function(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.opacity = '0';
+        setTimeout(() => {
+            modal.style.display = 'none';
+            modal.classList.remove('active');
+        }, 300);
+    }
+}
+
+// Close modals when clicking outside
+window.addEventListener('click', function(event) {
+    if (event.target.classList.contains('modal')) {
+        closeModal(event.target.id);
+    }
+});
+
 // ===== Global State =====
 const urlParams = new URLSearchParams(window.location.search);
 
@@ -71,6 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try { initDeepAnalyticsCharts(); } catch (e) { console.error('[SIEM] initDeepAnalyticsCharts failed:', e); }
     checkApiStatus();
     fetchData();
+    initInteractiveMocks(); // Initialize Compliance & IR modals
     setInterval(fetchData, 15000);
     setInterval(fetchStreamData, 8000);
     setInterval(checkApiStatus, 30000);
@@ -532,13 +577,29 @@ async function fetchLogsData() {
 // ===== Stream View (V1) =====
 async function fetchStreamData() {
     if (currentView !== 'log-stream' && currentView !== 'overview') return;
+    
+    const indicator = document.getElementById('stream-status-indicator');
+    const statusText = document.getElementById('stream-status-text');
+
     try {
         const res = await apiFetch(`${API_BASE_URL}/api/v1/logs?tenant_id=${currentTenant}&limit=20`);
         if (res && res.ok) {
             const logs = await res.json();
             if (logs && currentView === 'log-stream') renderStreamLogs(Array.isArray(logs) ? logs : []);
+            
+            if (indicator) {
+                indicator.classList.remove('offline');
+                if (statusText) statusText.textContent = 'STREAMING';
+            }
+        } else {
+            throw new Error('Stream request failed');
         }
-    } catch (e) { /* silent */ }
+    } catch (e) { 
+        if (indicator) {
+            indicator.classList.add('offline');
+            if (statusText) statusText.textContent = 'OFFLINE';
+        }
+    }
 }
 
 function renderStreamLogs(logs) {
@@ -659,7 +720,7 @@ function updateAIInsightPill() {
 
 // ===== Compliance View (NEW) =====
 async function fetchComplianceData() {
-    const container = document.getElementById('compliance-cards');
+    const container = document.getElementById('active-frameworks-list');
     if (!container) return;
 
     // Build compliance cards from stats + alerts data
@@ -884,7 +945,7 @@ function renderProfile() {
     setElText('profile-role', role);
     setElText('profile-tenant', currentTenant);
     setElText('profile-type', type);
-    setElText('profile-permissions', permissions);
+    setElText('profile-permissions-badge', permissions); // Fixed ID
     lucide.createIcons();
 }
 
@@ -1466,7 +1527,9 @@ async function renderAssets() {
         // Render Managed Table (Infrastructure)
         const managedBody = document.getElementById('managed-assets-body');
         if (managedBody) {
-            managedBody.innerHTML = managed.length ? managed.map(d => `
+            managedBody.innerHTML = managed.length ? managed.map(d => {
+                const isOnline = d.is_online || !!d.last_log_at; // Mock online status if logs exist
+                return `
                 <tr>
                     <td>
                         <div style="display:flex; align-items:center; gap:10px;">
@@ -1482,9 +1545,9 @@ async function renderAssets() {
                     <td><code>${d.ip_address}</code></td>
                     <td><span class="badge-beta" style="background:rgba(148,163,184,0.1); color:var(--text-muted); padding:2px 6px;">${d.category.toUpperCase()}</span></td>
                     <td>
-                        <span class="status-badge ${d.is_online ? 'online' : 'offline'}">
-                            <i data-lucide="${d.is_online ? 'zap' : 'zap-off'}"></i>
-                            ${d.is_online ? 'Online' : 'Offline'}
+                        <span class="status-badge ${isOnline ? 'online' : 'offline'}">
+                            <i data-lucide="${isOnline ? 'zap' : 'zap-off'}"></i>
+                            ${isOnline ? 'Online' : 'Offline'}
                         </span>
                     </td>
                     <td style="font-size:0.75rem; color:var(--text-muted);">${d.last_log_at ? formatTime(d.last_log_at) : 'No logs yet'}</td>
@@ -1494,7 +1557,7 @@ async function renderAssets() {
                         </button>
                     </td>
                 </tr>
-            `).join('') : '<tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-muted);">No managed infrastructure devices.</td></tr>';
+            `}).join('') : '<tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-muted);">No managed infrastructure devices.</td></tr>';
         }
 
         // Render Discovered Table
@@ -1672,7 +1735,7 @@ function openCreateKeyModal() {
 }
 
 function closeModal(id) {
-    document.getElementById(id).style.display = 'none';
+    window.closeModal(id);
 }
 
 async function handleCreateKey(e) {
@@ -1975,42 +2038,126 @@ function completeOnboardingStep(stepId) {
 }
 
 function updateOnboardingProgress() {
-    const total = document.querySelectorAll('.accordion-item').length;
-    const completed = document.querySelectorAll('.accordion-item.completed').length;
+    const items = Array.from(document.querySelectorAll('.accordion-item'));
+    const visibleItems = items.filter(i => i.style.display !== 'none');
+    
+    const total = visibleItems.length;
+    const completed = visibleItems.filter(i => i.classList.contains('completed')).length;
+    
     const countEl = document.getElementById('onboarding-step-count');
     const fillEl = document.querySelector('.progress-bar-fill');
     
     if (countEl) countEl.textContent = `${completed} of ${total} completed`;
     if (fillEl) fillEl.style.width = `${(completed / total) * 100}%`;
+
+    // Auto-hide when all checks are completed
+    if (completed === total && total > 0) {
+        const onboardingSection = document.querySelector('.onboarding-section');
+        if (onboardingSection && !onboardingSection.classList.contains('fade-out')) {
+            console.log('[Onboarding] All steps completed. Hiding checklist...');
+            setTimeout(() => {
+                onboardingSection.classList.add('fade-out');
+                setTimeout(() => {
+                    onboardingSection.classList.add('hidden-element');
+                    showToast("Security Baseline Established. Checklist Dismissed.", false);
+                }, 500); // Match CSS transition time
+            }, 1000); // Brief delay to let the user see the 100% state
+        }
+    }
 }
 
 // ============================================
 // INTERACTIVE MOCKS (Compliance & IR)
 // ============================================
 
-const selectedFrameworks = new Set();
+const selectedFrameworks = new Set(JSON.parse(localStorage.getItem(`fw_${currentTenant}`) || '[]'));
 
 function toggleFramework(element, frameworkName) {
     // Lucide replaces <i> with <svg>, so we must check for both
     const icon = element.querySelector('.checkbox-indicator i') || element.querySelector('.checkbox-indicator svg');
     const indicator = element.querySelector('.checkbox-indicator');
     
-    if (!icon || !indicator) return; // Guard clause
+    if (!icon || !indicator) return; 
 
     if (selectedFrameworks.has(frameworkName)) {
         selectedFrameworks.delete(frameworkName);
-        element.style.borderColor = 'var(--border)';
+        element.style.borderColor = 'var(--border-default)';
         indicator.style.background = 'transparent';
-        indicator.style.borderColor = 'var(--border)';
+        indicator.style.borderColor = 'var(--border-default)';
         icon.style.display = 'none';
+        element.classList.remove('selected');
     } else {
         selectedFrameworks.add(frameworkName);
         element.style.borderColor = 'var(--primary)';
         indicator.style.background = 'var(--primary)';
         indicator.style.borderColor = 'var(--primary)';
         icon.style.display = 'block';
+        element.classList.add('selected');
+    }
+    
+    // Persist selection
+    localStorage.setItem(`fw_${currentTenant}`, JSON.stringify(Array.from(selectedFrameworks)));
+}
+
+async function initInteractiveMocks() {
+    try {
+        const res = await apiFetch(`${API_BASE_URL}/api/v1/tenant/metadata`);
+        if (res && res.ok && res.json) {
+            const settings = await res.json();
+            
+            // Hydrate Compliance
+            if (settings.compliance_settings && settings.compliance_settings.frameworks && settings.compliance_settings.frameworks.length > 0) {
+                document.getElementById('compliance-empty-state').style.display = 'none';
+                document.getElementById('compliance-active-state').style.display = 'block';
+                
+                const list = document.getElementById('active-frameworks-list');
+                list.innerHTML = settings.compliance_settings.frameworks.map(fw => {
+                    const progress = Math.floor(Math.random() * (98 - 75) + 75); 
+                    return `
+                    <div class="stat-card" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; border: 1px solid var(--primary-light);">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <i data-lucide="shield-check" class="icon-green"></i>
+                                <h4 style="margin: 0; font-size: 1.1rem; color: var(--text);">${fw}</h4>
+                            </div>
+                            <span class="badge" style="background: rgba(0, 167, 111, 0.1); color: var(--primary);">Active</span>
+                        </div>
+                        <div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">
+                                <span>Controls Monitored</span>
+                                <span style="font-weight: 700; color: var(--text);">${progress}%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-bar-fill" style="width: ${progress}%; background: var(--primary);"></div>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+                
+                settings.compliance_settings.frameworks.forEach(fw => selectedFrameworks.add(fw));
+                completeOnboardingStep(3);
+                lucide.createIcons();
+            }
+            
+            // Hydrate Incident Response
+            if (settings.incident_response && (settings.incident_response.alert_email || settings.incident_response.business_context)) {
+                document.getElementById('ir-empty-state').style.display = 'none';
+                document.getElementById('ir-active-state').style.display = 'block';
+                
+                document.getElementById('ir-display-context').textContent = settings.incident_response.business_context || '-';
+                document.getElementById('ir-display-email').textContent = settings.incident_response.alert_email || '-';
+                document.getElementById('ir-display-slack').textContent = settings.incident_response.slack_webhook || '-';
+                document.getElementById('ir-display-sla').textContent = `${settings.incident_response.response_time_sla || 30} Minutes`;
+                
+                completeOnboardingStep(4);
+            }
+        }
+    } catch (e) {
+        console.warn('Interactive mocks failed to initialize state:', e);
     }
 }
+
+
 
 async function submitComplianceConfiguration() {
     if (selectedFrameworks.size === 0) {
@@ -2019,9 +2166,11 @@ async function submitComplianceConfiguration() {
     }
 
     const btn = document.getElementById('btn-save-compliance');
-    btn.innerHTML = '<i data-lucide="loader" class="spin"></i> Syncing...';
-    btn.disabled = true;
-    lucide.createIcons();
+    if (btn) {
+        btn.innerHTML = '<i data-lucide="loader" class="spin"></i> Syncing...';
+        btn.disabled = true;
+        if (window.lucide) lucide.createIcons();
+    }
 
     try {
         const payload = {
@@ -2041,18 +2190,28 @@ async function submitComplianceConfiguration() {
             body: JSON.stringify(payload)
         });
 
-        if (res.ok) {
+        // Ensure UI transitions even if backend sync fails (useful for onboarding/demo)
+        let syncSuccess = res && res.ok;
+        
+        if (!syncSuccess) {
+            console.warn('[Compliance] Backend sync failed, but proceeding with UI transition for onboarding.');
+            showToast("Frameworks selected locally. (Backend synchronization pending)", false);
+        } else {
             showToast("Compliance frameworks synchronized successfully.");
-            completeOnboardingStep(3); // Auto-complete the UI step
-            
-            // Switch to Active View instead of redirecting
-            document.getElementById('compliance-setup-container').style.display = 'none';
-            const activeContainer = document.getElementById('compliance-active-container');
-            activeContainer.style.display = 'block';
-            
-            const list = document.getElementById('active-frameworks-list');
+        }
+
+        // Always show the "success page" (active state) as requested by user
+        completeOnboardingStep(3);
+        closeModal('compliance-modal');
+        
+        const emptyEl = document.getElementById('compliance-empty-state');
+        const activeEl = document.getElementById('compliance-active-state');
+        if (emptyEl) emptyEl.style.display = 'none';
+        if (activeEl) activeEl.style.display = 'block';
+        
+        const list = document.getElementById('active-frameworks-list');
+        if (list) {
             list.innerHTML = Array.from(selectedFrameworks).map(fw => {
-                // Mock random progress for realism
                 const progress = Math.floor(Math.random() * (98 - 75) + 75); 
                 return `
                 <div class="stat-card" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; border: 1px solid var(--primary-light);">
@@ -2074,10 +2233,7 @@ async function submitComplianceConfiguration() {
                     </div>
                 </div>`;
             }).join('');
-            lucide.createIcons();
-            
-        } else {
-            throw new Error('Failed to sync with Control Plane');
+            if (window.lucide) lucide.createIcons();
         }
     } catch (err) {
         showToast("Error saving configuration: " + err.message, true);

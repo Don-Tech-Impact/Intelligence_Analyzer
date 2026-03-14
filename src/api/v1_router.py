@@ -845,3 +845,25 @@ async def update_tenant_metadata(request: Request, tenant_id: str = Depends(get_
         except httpx.RequestError as e:
             logger.error(f"Failed to proxy metadata update to Repo 1: {e}")
             raise HTTPException(status_code=502, detail="Control plane unreachable")
+
+@router.get("/tenant/metadata")
+async def get_tenant_metadata(tenant_id: str = Depends(get_tenant_id)):
+    """
+    Proxies a request to Repo 1 to fetch the tenant's current settings/metadata.
+    """
+    repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
+    admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY") or "changeme-admin-key"
+    
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            headers = {"X-Admin-Key": admin_key}
+            res = await client.get(
+                f"{repo1_url}/admin/tenants/{tenant_id}",
+                headers=headers
+            )
+            data = res.json()
+            settings = data.get("settings", {}) if isinstance(data, dict) else {}
+            return ApiResponse(status="success", data=settings)
+        except httpx.RequestError as e:
+            logger.error(f"Failed to fetch metadata from Repo 1: {e}")
+            raise HTTPException(status_code=502, detail="Control plane unreachable")
