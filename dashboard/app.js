@@ -1991,9 +1991,12 @@ function updateOnboardingProgress() {
 const selectedFrameworks = new Set();
 
 function toggleFramework(element, frameworkName) {
-    const icon = element.querySelector('.checkbox-indicator i');
+    // Lucide replaces <i> with <svg>, so we must check for both
+    const icon = element.querySelector('.checkbox-indicator i') || element.querySelector('.checkbox-indicator svg');
     const indicator = element.querySelector('.checkbox-indicator');
     
+    if (!icon || !indicator) return; // Guard clause
+
     if (selectedFrameworks.has(frameworkName)) {
         selectedFrameworks.delete(frameworkName);
         element.style.borderColor = 'var(--border)';
@@ -2041,7 +2044,38 @@ async function submitComplianceConfiguration() {
         if (res.ok) {
             showToast("Compliance frameworks synchronized successfully.");
             completeOnboardingStep(3); // Auto-complete the UI step
-            setTimeout(() => switchView('overview'), 1500);
+            
+            // Switch to Active View instead of redirecting
+            document.getElementById('compliance-setup-container').style.display = 'none';
+            const activeContainer = document.getElementById('compliance-active-container');
+            activeContainer.style.display = 'block';
+            
+            const list = document.getElementById('active-frameworks-list');
+            list.innerHTML = Array.from(selectedFrameworks).map(fw => {
+                // Mock random progress for realism
+                const progress = Math.floor(Math.random() * (98 - 75) + 75); 
+                return `
+                <div class="stat-card" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; border: 1px solid var(--primary-light);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="shield-check" class="icon-green"></i>
+                            <h4 style="margin: 0; font-size: 1.1rem; color: var(--text);">${fw}</h4>
+                        </div>
+                        <span class="badge" style="background: rgba(0, 167, 111, 0.1); color: var(--primary);">Active</span>
+                    </div>
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">
+                            <span>Controls Monitored</span>
+                            <span style="font-weight: 700; color: var(--text);">${progress}%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-bar-fill" style="width: ${progress}%; background: var(--primary);"></div>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+            lucide.createIcons();
+            
         } else {
             throw new Error('Failed to sync with Control Plane');
         }
@@ -2055,9 +2089,15 @@ async function submitComplianceConfiguration() {
     }
 }
 
+function editComplianceConfiguration() {
+    document.getElementById('compliance-active-container').style.display = 'none';
+    document.getElementById('compliance-setup-container').style.display = 'block';
+}
+
 async function submitIRConfiguration(event) {
     event.preventDefault();
     
+    const context = document.getElementById('ir-context').value;
     const email = document.getElementById('ir-email').value;
     const slack = document.getElementById('ir-slack').value;
     const sla = document.getElementById('ir-sla').value;
@@ -2071,6 +2111,7 @@ async function submitIRConfiguration(event) {
         const payload = {
             metadata: {
                 incident_response: {
+                    business_context: context || null,
                     alert_email: email,
                     slack_webhook: slack || null,
                     response_time_sla: parseInt(sla)
@@ -2090,14 +2131,22 @@ async function submitIRConfiguration(event) {
         if (res.ok) {
             showToast("Incident Response activated globally.");
             completeOnboardingStep(4); // Auto-complete the UI step
-            setTimeout(() => switchView('overview'), 1500);
+            
+            // Keep user on the page and show success (disable inputs to indicate active state)
+            btn.innerHTML = '<i data-lucide="check-circle"></i> Configuration Active';
+            btn.classList.add('btn-success');
+            document.getElementById('ir-context').disabled = true;
+            document.getElementById('ir-email').disabled = true;
+            document.getElementById('ir-slack').disabled = true;
+            document.getElementById('ir-sla').disabled = true;
+            
         } else {
             throw new Error('Failed to sync with Control Plane');
         }
     } catch (err) {
         showToast("Error saving configuration: " + err.message, true);
         console.error(err);
-    } finally {
+        
         btn.innerHTML = '<i data-lucide="check-circle"></i> Activate Incident Response';
         btn.disabled = false;
         lucide.createIcons();

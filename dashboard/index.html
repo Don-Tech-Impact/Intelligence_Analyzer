@@ -629,7 +629,9 @@
                     </div>
                 </div>
 
-                <div class="compliance-selector-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                <!-- Setup Container -->
+                <div id="compliance-setup-container">
+                    <div class="compliance-selector-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
                     <!-- SOC 2 -->
                     <div class="framework-card" style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; display: flex; align-items: flex-start; gap: 1rem; cursor: pointer; transition: all 0.2s;" onclick="toggleFramework(this, 'SOC 2')">
                         <div class="checkbox-indicator" style="width: 24px; height: 24px; border-radius: 6px; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;">
@@ -686,10 +688,31 @@
                     </div>
                 </div>
 
-                <div style="display: flex; justify-content: flex-end; padding-top: 1rem; border-top: 1px solid var(--border);">
+                <div id="compliance-setup-actions" style="display: flex; justify-content: flex-end; padding-top: 1rem; border-top: 1px solid var(--border);">
                     <button class="btn-primary" onclick="submitComplianceConfiguration()" id="btn-save-compliance">
                         <i data-lucide="save"></i> Save Frameworks Integration
                     </button>
+                </div>
+                </div> <!-- End Setup Container -->
+
+                <!-- Active View Container (Hidden by default) -->
+                <div id="compliance-active-container" style="display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 2rem;">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <i data-lucide="check-circle" class="icon-green" style="width: 32px; height: 32px;"></i>
+                            <div>
+                                <h4 style="margin: 0; font-size: 1.25rem; color: var(--text);">Continuous Monitoring Active</h4>
+                                <p style="margin: 0; color: var(--text-muted);">Your infrastructure is being continuously analyzed against these frameworks.</p>
+                            </div>
+                        </div>
+                        <button class="btn-secondary" onclick="editComplianceConfiguration()">
+                            <i data-lucide="settings"></i> Modify Selection
+                        </button>
+                    </div>
+                    
+                    <div id="active-frameworks-list" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                        <!-- Progress Cards populated by JS -->
+                    </div>
                 </div>
             </div>
 
@@ -704,6 +727,15 @@
                     </div>
 
                     <form id="ir-settings-form" onsubmit="submitIRConfiguration(event)">
+                        <div class="form-group" style="margin-bottom: 1.5rem;">
+                            <label>Target Application / Business Context</label>
+                            <div class="input-wrapper">
+                                <i data-lucide="briefcase" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); width: 18px;"></i>
+                                <input type="text" id="ir-context" class="glass-input" placeholder="e.g. Core Banking API, E-Commerce Frontend" style="padding-left: 3rem;">
+                                <span class="help-text">Tie incident alerts directly to the impacted business logic or application.</span>
+                            </div>
+                        </div>
+
                         <div class="form-group" style="margin-bottom: 1.5rem;">
                             <label>Primary Alert Email</label>
                             <div class="input-wrapper">

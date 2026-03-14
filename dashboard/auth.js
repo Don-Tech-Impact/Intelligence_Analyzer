@@ -98,7 +98,7 @@ const Auth = {
             }
         }
 
-        console.log("Auth: Token Payload detected:", payload);
+        // We do not print the token payload to the console for security reasons.
         return true;
     },
 
