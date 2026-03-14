@@ -1,6 +1,6 @@
 """V1 API Router for afric-analyzer frontend."""
 
-from fastapi import APIRouter, Depends, Query, HTTPException, status, Request
+from fastapi import APIRouter, Depends, Query, HTTPException, status, Request, Response
 from sqlalchemy import func, desc
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -803,3 +803,45 @@ def update_config(new_config: dict, tenant_id: str = Depends(get_tenant_id)):
         return ApiResponse(status="success", message="Configuration updated successfully")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================
+# Interactive Mocks: Metadata Proxy
+# ============================================
+
+@router.patch("/tenant/metadata")
+async def update_tenant_metadata(request: Request, tenant_id: str = Depends(get_tenant_id)):
+    """
+    Proxies metadata updates (Compliance, Incident Response, Onboarding) 
+    from the dashboard directly to Repo 1's deep merge endpoint.
+    """
+    repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
+    admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY") or "changeme-admin-key"
+    
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            # We use the X-Admin-Key to bypass user auth on Repo 1 since 
+            # Repo 2 has already verified the user via get_tenant_id
+            headers = {
+                "Content-Type": "application/json",
+                "X-Admin-Key": admin_key
+            }
+            
+            res = await client.patch(
+                f"{repo1_url}/admin/tenants/{tenant_id}/metadata",
+                headers=headers,
+                json=body
+            )
+            
+            return Response(
+                content=res.content,
+                status_code=res.status_code,
+                headers={"Content-Type": "application/json"}
+            )
+        except httpx.RequestError as e:
+            logger.error(f"Failed to proxy metadata update to Repo 1: {e}")
+            raise HTTPException(status_code=502, detail="Control plane unreachable")

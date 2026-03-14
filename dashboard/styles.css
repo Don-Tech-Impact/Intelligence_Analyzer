@@ -1546,19 +1546,35 @@ header {
 .stream-line {
     display: flex;
     gap: 12px;
-    padding: 4px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border-default);
+    transition: background 0.2s;
 }
+
+.stream-line:hover {
+    background: var(--bg-hover);
+}
+
+.stream-line.critical { border-left: 3px solid var(--severity-critical); }
+.stream-line.high { border-left: 3px solid var(--severity-high); }
+.stream-line.medium { border-left: 3px solid var(--severity-medium); }
+.stream-line.low { border-left: 3px solid var(--severity-low); }
 
 .stream-ts {
     color: var(--text-muted);
     min-width: 80px;
+    font-size: 0.7rem;
 }
 
 .stream-vendor {
     color: var(--primary);
     font-weight: 700;
-    min-width: 70px;
+    min-width: 80px;
+}
+
+.stream-dev {
+    color: var(--text-muted);
+    min-width: 100px;
 }
 
 .stream-msg {

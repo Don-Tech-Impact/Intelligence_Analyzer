@@ -619,11 +619,127 @@
             </div>
 
             <!-- ============================================ -->
-            <!-- COMPLIANCE VIEW (NEW)                        -->
+            <!-- COMPLIANCE VIEW (Interactive Mock)           -->
             <!-- ============================================ -->
             <div id="compliance-view" class="dashboard-view">
-                <div class="compliance-grid" id="compliance-cards">
-                    <!-- Populated by JS -->
+                <div class="section-header" style="margin-bottom: 2rem;">
+                    <div class="header-left">
+                        <h3 style="font-size:1.5rem; font-weight:700;">Compliance Frameworks</h3>
+                        <p style="color:var(--text-muted);">Select the compliance frameworks you are currently using or want to use to initialize automated continuous monitoring.</p>
+                    </div>
+                </div>
+
+                <div class="compliance-selector-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                    <!-- SOC 2 -->
+                    <div class="framework-card" style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; display: flex; align-items: flex-start; gap: 1rem; cursor: pointer; transition: all 0.2s;" onclick="toggleFramework(this, 'SOC 2')">
+                        <div class="checkbox-indicator" style="width: 24px; height: 24px; border-radius: 6px; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;">
+                            <i data-lucide="check" style="width: 16px; height: 16px; color: white; display: none;"></i>
+                        </div>
+                        <div>
+                            <h4 style="margin:0 0 0.5rem 0; font-size: 1.1rem; color: var(--text);">SOC 2 Type II</h4>
+                            <p style="margin:0; font-size: 0.9rem; color: var(--text-muted);">Security, Availability, and Confidentiality continuous monitoring.</p>
+                        </div>
+                    </div>
+
+                    <!-- ISO 27001 -->
+                    <div class="framework-card" style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; display: flex; align-items: flex-start; gap: 1rem; cursor: pointer; transition: all 0.2s;" onclick="toggleFramework(this, 'ISO27001')">
+                        <div class="checkbox-indicator" style="width: 24px; height: 24px; border-radius: 6px; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;">
+                            <i data-lucide="check" style="width: 16px; height: 16px; color: white; display: none;"></i>
+                        </div>
+                        <div>
+                            <h4 style="margin:0 0 0.5rem 0; font-size: 1.1rem; color: var(--text);">ISO 27001</h4>
+                            <p style="margin:0; font-size: 0.9rem; color: var(--text-muted);">Information Security Management System (ISMS) compliance.</p>
+                        </div>
+                    </div>
+
+                    <!-- GDPR -->
+                    <div class="framework-card" style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; display: flex; align-items: flex-start; gap: 1rem; cursor: pointer; transition: all 0.2s;" onclick="toggleFramework(this, 'GDPR')">
+                        <div class="checkbox-indicator" style="width: 24px; height: 24px; border-radius: 6px; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;">
+                            <i data-lucide="check" style="width: 16px; height: 16px; color: white; display: none;"></i>
+                        </div>
+                        <div>
+                            <h4 style="margin:0 0 0.5rem 0; font-size: 1.1rem; color: var(--text);">GDPR / NDPR</h4>
+                            <p style="margin:0; font-size: 0.9rem; color: var(--text-muted);">Data privacy and cross-border protection requirements.</p>
+                        </div>
+                    </div>
+                    
+                    <!-- HIPAA -->
+                    <div class="framework-card" style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; display: flex; align-items: flex-start; gap: 1rem; cursor: pointer; transition: all 0.2s;" onclick="toggleFramework(this, 'HIPAA')">
+                        <div class="checkbox-indicator" style="width: 24px; height: 24px; border-radius: 6px; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;">
+                            <i data-lucide="check" style="width: 16px; height: 16px; color: white; display: none;"></i>
+                        </div>
+                        <div>
+                            <h4 style="margin:0 0 0.5rem 0; font-size: 1.1rem; color: var(--text);">HIPAA</h4>
+                            <p style="margin:0; font-size: 0.9rem; color: var(--text-muted);">Health Insurance Portability and Accountability Act.</p>
+                        </div>
+                    </div>
+
+                    <!-- PCI-DSS -->
+                    <div class="framework-card" style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; display: flex; align-items: flex-start; gap: 1rem; cursor: pointer; transition: all 0.2s;" onclick="toggleFramework(this, 'PCI-DSS')">
+                        <div class="checkbox-indicator" style="width: 24px; height: 24px; border-radius: 6px; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;">
+                            <i data-lucide="check" style="width: 16px; height: 16px; color: white; display: none;"></i>
+                        </div>
+                        <div>
+                            <h4 style="margin:0 0 0.5rem 0; font-size: 1.1rem; color: var(--text);">PCI-DSS</h4>
+                            <p style="margin:0; font-size: 0.9rem; color: var(--text-muted);">Payment Card Industry Data Security Standard.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; padding-top: 1rem; border-top: 1px solid var(--border);">
+                    <button class="btn-primary" onclick="submitComplianceConfiguration()" id="btn-save-compliance">
+                        <i data-lucide="save"></i> Save Frameworks Integration
+                    </button>
+                </div>
+            </div>
+
+            <!-- ============================================ -->
+            <!-- INCIDENT RESPONSE VIEW (Interactive Mock)    -->
+            <!-- ============================================ -->
+            <div id="incident-view" class="dashboard-view">
+                <div class="settings-container">
+                    <div class="section-header" style="margin-bottom: 2rem;">
+                        <h3 style="font-size:1.5rem; font-weight:700;">Incident Response Configuration</h3>
+                        <p style="color:var(--text-muted);">Define how your team is notified when critical security threats are detected.</p>
+                    </div>
+
+                    <form id="ir-settings-form" onsubmit="submitIRConfiguration(event)">
+                        <div class="form-group" style="margin-bottom: 1.5rem;">
+                            <label>Primary Alert Email</label>
+                            <div class="input-wrapper">
+                                <i data-lucide="mail" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); width: 18px;"></i>
+                                <input type="email" id="ir-email" class="glass-input" placeholder="security@company.com" required style="padding-left: 3rem;">
+                                <span class="help-text">High-severity alerts will be dispatched here immediately.</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 1.5rem;">
+                            <label>Slack Webhook URL (Optional)</label>
+                            <div class="input-wrapper">
+                                <i data-lucide="slack" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); width: 18px;"></i>
+                                <input type="url" id="ir-slack" class="glass-input" placeholder="https://hooks.slack.com/services/..." style="padding-left: 3rem;">
+                                <span class="help-text">Post real-time alerts into a dedicated #security-alerts channel.</span>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group" style="margin-bottom: 1.5rem;">
+                            <label>SLA Response Time target</label>
+                            <div class="input-wrapper">
+                                <i data-lucide="clock" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); width: 18px;"></i>
+                                <select id="ir-sla" class="glass-input" style="padding-left: 3rem;">
+                                    <option value="15">15 Minutes (Critical)</option>
+                                    <option value="30" selected>30 Minutes (Standard)</option>
+                                    <option value="60">1 Hour (Relaxed)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div style="margin-top:2rem; display:flex; justify-content:flex-end;">
+                            <button type="submit" class="btn-primary" id="btn-save-ir">
+                                <i data-lucide="check-circle"></i> Activate Incident Response
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
 

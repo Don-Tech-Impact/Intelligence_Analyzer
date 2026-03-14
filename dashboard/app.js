@@ -546,11 +546,11 @@ function renderStreamLogs(logs) {
     if (!container || !logs) return;
     container.innerHTML = logs.map(log => {
         const sev = (log.severity || '').toLowerCase();
-        return `<div class="log-line ${sev}">
-            <span class="ts">${formatTime(log.timestamp)}</span>
-            <span class="vnd">${escapeHtml(log.vendor || '')}</span>
-            <span class="dev">${escapeHtml(log.device_type || '')}</span>
-            <span class="msg">${escapeHtml(log.message || log.raw_log || '')}</span>
+        return `<div class="stream-line ${sev}">
+            <span class="stream-ts">${formatTime(log.timestamp)}</span>
+            <span class="stream-vendor">${escapeHtml(log.vendor || '')}</span>
+            <span class="stream-dev">${escapeHtml(log.device_type || '')}</span>
+            <span class="stream-msg">${escapeHtml(log.message || log.raw_log || '')}</span>
         </div>`;
     }).join('');
 }
@@ -1982,4 +1982,124 @@ function updateOnboardingProgress() {
     
     if (countEl) countEl.textContent = `${completed} of ${total} completed`;
     if (fillEl) fillEl.style.width = `${(completed / total) * 100}%`;
+}
+
+// ============================================
+// INTERACTIVE MOCKS (Compliance & IR)
+// ============================================
+
+const selectedFrameworks = new Set();
+
+function toggleFramework(element, frameworkName) {
+    const icon = element.querySelector('.checkbox-indicator i');
+    const indicator = element.querySelector('.checkbox-indicator');
+    
+    if (selectedFrameworks.has(frameworkName)) {
+        selectedFrameworks.delete(frameworkName);
+        element.style.borderColor = 'var(--border)';
+        indicator.style.background = 'transparent';
+        indicator.style.borderColor = 'var(--border)';
+        icon.style.display = 'none';
+    } else {
+        selectedFrameworks.add(frameworkName);
+        element.style.borderColor = 'var(--primary)';
+        indicator.style.background = 'var(--primary)';
+        indicator.style.borderColor = 'var(--primary)';
+        icon.style.display = 'block';
+    }
+}
+
+async function submitComplianceConfiguration() {
+    if (selectedFrameworks.size === 0) {
+        showToast("Please select at least one framework.", true);
+        return;
+    }
+
+    const btn = document.getElementById('btn-save-compliance');
+    btn.innerHTML = '<i data-lucide="loader" class="spin"></i> Syncing...';
+    btn.disabled = true;
+    lucide.createIcons();
+
+    try {
+        const payload = {
+            metadata: {
+                compliance_settings: {
+                    frameworks: Array.from(selectedFrameworks)
+                },
+                onboarding: {
+                    steps_completed: ["basic_info", "primary_ips", "compliance_setup"],
+                    current_step: 4
+                }
+            }
+        };
+
+        const res = await apiFetch(`${API_BASE_URL}/api/v1/tenant/metadata`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            showToast("Compliance frameworks synchronized successfully.");
+            completeOnboardingStep(3); // Auto-complete the UI step
+            setTimeout(() => switchView('overview'), 1500);
+        } else {
+            throw new Error('Failed to sync with Control Plane');
+        }
+    } catch (err) {
+        showToast("Error saving configuration: " + err.message, true);
+        console.error(err);
+    } finally {
+        btn.innerHTML = '<i data-lucide="save"></i> Save Frameworks Integration';
+        btn.disabled = false;
+        lucide.createIcons();
+    }
+}
+
+async function submitIRConfiguration(event) {
+    event.preventDefault();
+    
+    const email = document.getElementById('ir-email').value;
+    const slack = document.getElementById('ir-slack').value;
+    const sla = document.getElementById('ir-sla').value;
+
+    const btn = document.getElementById('btn-save-ir');
+    btn.innerHTML = '<i data-lucide="loader" class="spin"></i> Activating...';
+    btn.disabled = true;
+    lucide.createIcons();
+
+    try {
+        const payload = {
+            metadata: {
+                incident_response: {
+                    alert_email: email,
+                    slack_webhook: slack || null,
+                    response_time_sla: parseInt(sla)
+                },
+                onboarding: {
+                    steps_completed: ["basic_info", "primary_ips", "compliance_setup", "incident_response"],
+                    current_step: 5
+                }
+            }
+        };
+
+        const res = await apiFetch(`${API_BASE_URL}/api/v1/tenant/metadata`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            showToast("Incident Response activated globally.");
+            completeOnboardingStep(4); // Auto-complete the UI step
+            setTimeout(() => switchView('overview'), 1500);
+        } else {
+            throw new Error('Failed to sync with Control Plane');
+        }
+    } catch (err) {
+        showToast("Error saving configuration: " + err.message, true);
+        console.error(err);
+    } finally {
+        btn.innerHTML = '<i data-lucide="check-circle"></i> Activate Incident Response';
+        btn.disabled = false;
+        lucide.createIcons();
+    }
 }
