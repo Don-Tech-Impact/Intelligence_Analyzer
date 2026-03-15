@@ -1,6 +1,7 @@
 const API_BASE_URL = (window.location.origin === 'null' || window.location.protocol === 'file:')
     ? 'http://localhost:8000'
     : window.location.origin;
+const REPO1_BASE_URL = 'http://localhost:8080';
 const ADMIN_API_KEY = 'changeme-admin-key';
 
 // ============================================
@@ -988,6 +989,11 @@ function switchView(view) {
     if (view === 'profile') renderProfile();
     if (view === 'api-keys') loadApiKeys();
     fetchData();
+
+    // Fix ApexCharts rendering bug when container goes from display:none to block
+    setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+    }, 100);
 }
 
 function setChartRange(range) {
@@ -2210,7 +2216,6 @@ async function submitComplianceConfiguration() {
 
         // Always show the "success page" (active state) as requested by user
         completeOnboardingStep(3);
-        closeModal('compliance-modal');
         
         const emptyEl = document.getElementById('compliance-empty-state');
         const activeEl = document.getElementById('compliance-active-state');
@@ -2287,13 +2292,39 @@ async function submitIRConfiguration(event) {
             }
         };
 
+        // 1. Save to local SIEM dashboard DB
         const res = await apiFetch(`${API_BASE_URL}/api/v1/tenant/metadata`, {
             method: 'PATCH',
             body: JSON.stringify(payload)
         });
 
+        // 2. Sync Configuration to Backend Repo 1
+        let repo1Sync = false;
+        try {
+            const configPayload = {
+               business_context: context || null,
+               alert_email: email,
+               slack_webhook: slack || null,
+               response_time_sla: parseInt(sla),
+               enabled_channels: ["email"]
+            };
+            if (slack) configPayload.enabled_channels.push("slack");
+
+            const r1Res = await apiFetch(`${REPO1_BASE_URL}/api/incidents/config/${currentTenant}`, {
+                method: 'PUT',
+                body: JSON.stringify(configPayload)
+            });
+            if (r1Res && r1Res.ok) repo1Sync = true;
+        } catch(e) {
+            console.error('[IR Sync] Failed to sync config to Repo 1:', e);
+        }
+
         if (res.ok) {
-            showToast("Incident Response activated globally.");
+            if (repo1Sync) {
+                showToast("Incident Response activated globally.");
+            } else {
+                showToast("Incident Response saved locally (Repo 1 sync failed).");
+            }
             completeOnboardingStep(4); // Auto-complete the UI step
             
             // Keep user on the page and show success (disable inputs to indicate active state)
@@ -2314,5 +2345,28 @@ async function submitIRConfiguration(event) {
         btn.innerHTML = '<i data-lucide="check-circle"></i> Activate Incident Response';
         btn.disabled = false;
         lucide.createIcons();
+    }
+}
+
+async function testIncidentAlert() {
+    const email = document.getElementById('ir-email').value;
+    if (!email) {
+        showToast("Please enter a primary alert email to test.", true);
+        return;
+    }
+    try {
+        const res = await apiFetch(`${REPO1_BASE_URL}/api/incidents/test/${currentTenant}`, {
+            method: 'POST',
+            body: JSON.stringify({ channel: 'email', message: "Test Alert from Security Dashboard" })
+        });
+        if (res && res.ok) {
+            showToast("Test alert triggered successfully.");
+        } else {
+            const data = await res.json();
+            throw new Error(data.detail || 'Test delivery failed');
+        }
+    } catch (err) {
+        showToast("Error triggering test alert: " + err.message, true);
+        console.error(err);
     }
 }

@@ -1772,9 +1772,9 @@ tr.severity-low td:first-child {
     border: 1px solid var(--border-default);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-elevated);
-    max-width: 90%;
+    max-width: 500px;
     max-height: 90vh;
-    padding: 2.5rem;
+    padding: 1.5rem;
     position: relative;
     width: 100%;
     transform: scale(0.95);

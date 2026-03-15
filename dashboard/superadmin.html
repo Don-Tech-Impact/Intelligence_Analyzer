@@ -136,7 +136,29 @@
                 </div>
             </div>
 
-            <div class="card table-card">
+            <div class="card table-card" style="margin-top:24px;">
+                <div class="table-header-row">
+                    <h3>Global Active Incidents</h3>
+                    <span class="table-subtitle">Real-time alerts across all tenants from Control Plane</span>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tenant</th>
+                            <th>Title/Description</th>
+                            <th>Severity</th>
+                            <th>Time Detected</th>
+                        </tr>
+                    </thead>
+                    <tbody id="global-incidents-list">
+                        <tr>
+                            <td colspan="4" class="empty-state">Loading active incidents...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card table-card" style="margin-top:24px;">
                 <div class="table-header-row">
                     <h3>Managed Tenants</h3>
                     <span class="table-subtitle">Top tenants by volume</span>

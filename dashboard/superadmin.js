@@ -7,6 +7,7 @@ const SuperAdmin = {
     API_BASE: (window.location.origin === 'null' || window.location.protocol === 'file:')
         ? 'http://localhost:8000'
         : window.location.origin,
+    REPO1_BASE: 'http://localhost:8080',
     tenantsChart: null,
     alertsChart: null,
     systemLoadChart: null,
@@ -244,6 +245,9 @@ const SuperAdmin = {
         if (bundle.tenants) {
             this.renderRealTenants(bundle.tenants);
         }
+        
+        // C. Update Global Alerts from Repo 1
+        this.loadGlobalAlerts();
     },
 
     async loadRealTenants() {
@@ -334,6 +338,41 @@ const SuperAdmin = {
                 `).join('');
                 lucide.createIcons();
             }
+        }
+    },
+
+    async loadGlobalAlerts() {
+        const tbody = document.getElementById('global-incidents-list');
+        if (!tbody) return;
+        
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/incidents/active`, {
+                headers: Auth.getAuthHeader()
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (!data.active_incidents || data.active_incidents.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No active incidents across tenants.</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = data.active_incidents.map(inc => `
+                    <tr>
+                        <td><strong>${inc.tenant_id}</strong></td>
+                        <td>
+                            <div style="font-weight: 500;">${inc.type || 'Security Alert'}</div>
+                            <div style="font-size: 11px; color: var(--text-muted);">${inc.description}</div>
+                        </td>
+                        <td><span class="badge ${inc.severity === 'critical' || inc.severity === 'high' ? 'badge-danger' : 'badge-warning'}">${inc.severity}</span></td>
+                        <td>${new Date(inc.created_at).toLocaleString()}</td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="4" class="empty-state error">Failed to load active incidents.</td></tr>';
+            }
+        } catch(e) {
+            console.error("Global alerts load error processing:", e);
+            tbody.innerHTML = '<tr><td colspan="4" class="empty-state error">Control plane disconnected.</td></tr>';
         }
     },
 
@@ -1373,6 +1412,67 @@ const SuperAdmin = {
         }
     },
 
+    async loadAuditLogs(page = 1) {
+        const tbody = document.getElementById('audit-list');
+        const countSpan = document.getElementById('audit-count');
+        const filterVal = document.getElementById('audit-filter') ? document.getElementById('audit-filter').value : '';
+        const limit = 20;
+
+        if (!tbody) {
+            console.warn('[Audit] #audit-list tbody not found in DOM.');
+            return;
+        }
+
+        try {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Loading audit logs...</td></tr>';
+            
+            // Build query params
+            const params = new URLSearchParams({
+                limit: limit,
+                offset: (page - 1) * limit
+            });
+            if (filterVal) params.append('action', filterVal);
+
+            const res = await fetch(`${this.API_BASE}/api/admin/audit?${params.toString()}`, {
+                headers: Auth.getAuthHeader()
+            });
+
+            if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+
+            const data = await res.json();
+            const logs = data.logs || data; // Handle direct array or wrapped object
+
+            if (countSpan) countSpan.textContent = `Showing page ${page}`;
+
+            if (!Array.isArray(logs) || logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No audit logs found.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = logs.map(log => {
+                const badgeClass = log.status === 'success' ? 'badge-active' : (log.status === 'failed' ? 'badge-danger' : 'badge-warning');
+                return `
+                <tr>
+                    <td>
+                        <div style="font-weight: 500;">${log.action || 'unknown_action'}</div>
+                        <div style="font-size: 11px; color: var(--text-muted);">${new Date(log.timestamp || log.created_at).toLocaleString()}</div>
+                    </td>
+                    <td>${log.user_id || log.username || 'System'}</td>
+                    <td>${log.target_resource || '-'}</td>
+                    <td><span class="badge ${badgeClass}">${log.status || 'unknown'}</span></td>
+                    <td><div style="font-size: 11px; color: var(--text-muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${log.details || ''}">${log.details || '-'}</div></td>
+                </tr>
+            `}).join('');
+            
+            if (window.lucide) window.lucide.createIcons();
+
+        } catch (e) {
+            console.error("Audit load error:", e);
+            tbody.innerHTML = `<tr><td colspan="5" class="empty-state error"><i data-lucide="alert-triangle"></i> Failed to load audit trail: ${e.message}</td></tr>`;
+            if (window.lucide) window.lucide.createIcons();
+        }
+    },
+
     async handleCreateKey(e) {
         e.preventDefault();
         const tenantId = document.getElementById('new-key-tenant').value;
@@ -1571,6 +1671,65 @@ const SuperAdmin = {
             row.style.display = text.includes(query) ? '' : 'none';
         });
     },
+
+    async loadHealth() {
+        // Status updates for components
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/health/detailed`, {
+                headers: Auth.getAuthHeader()
+            });
+            
+            if (res.ok) {
+                const health = await res.json();
+                const components = health.components || {};
+                
+                // Map the health components to UI IDs
+                const mapComponentToUI = (compName, uiPrefix) => {
+                    const comp = components[compName];
+                    const sEl = document.getElementById(`health-${uiPrefix}-status`);
+                    const dEl = document.getElementById(`health-${uiPrefix}-detail`);
+                    if (sEl && comp) {
+                        sEl.textContent = comp.status === 'healthy' ? 'Operational' : 'Degraded';
+                        sEl.className = `health-status ${comp.status === 'healthy' ? 'online' : 'offline'}`;
+                        dEl.textContent = comp.details || `Latency: ${comp.latency_ms || 0}ms`;
+                    }
+                };
+                
+                mapComponentToUI('database', 'db');
+                mapComponentToUI('redis', 'redis');
+                mapComponentToUI('api', 'api');
+                mapComponentToUI('elastic', 'consumer');
+                mapComponentToUI('system', 'identity'); // Arbitrary fallback if exact not matched
+                
+                // Fetch internal queues if redis is healthy
+                try {
+                    const qRes = await fetch(`${this.API_BASE}/api/admin/queues/status`, {
+                        headers: Auth.getAuthHeader()
+                    });
+                    if (qRes.ok) {
+                        const qData = await qRes.json();
+                        const rDetail = document.getElementById('health-redis-detail');
+                        if (rDetail && qData.queues) {
+                            rDetail.textContent += ` | Logs: ${qData.queues.raw_logs} | DLQ: ${qData.queues.dead_queue}`;
+                        }
+                    }
+                } catch(qe) { console.error("Queue fetch failed", qe); }
+                
+            } else {
+                throw new Error("Failed health check");
+            }
+        } catch (e) {
+            console.error("Health check failed", e);
+            const errStatus = (id) => {
+                const sEl = document.getElementById(`health-${id}-status`);
+                if (sEl) {
+                    sEl.textContent = 'Unreachable';
+                    sEl.className = 'health-status offline';
+                }
+            };
+            ['api', 'redis', 'db', 'consumer', 'identity'].forEach(errStatus);
+        }
+    }
 };
 
 document.addEventListener('DOMContentLoaded', () => SuperAdmin.init());
