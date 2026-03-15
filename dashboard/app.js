@@ -2128,20 +2128,20 @@ async function initInteractiveMocks() {
                 list.innerHTML = settings.compliance_settings.frameworks.map(fw => {
                     const progress = Math.floor(Math.random() * (98 - 75) + 75); 
                     return `
-                    <div class="stat-card" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; border: 1px solid var(--primary-light);">
+                    <div class="mini-card" style="border: 1px solid var(--primary-light);">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <div style="display: flex; align-items: center; gap: 8px;">
-                                <i data-lucide="shield-check" class="icon-green"></i>
-                                <h4 style="margin: 0; font-size: 1.1rem; color: var(--text);">${fw}</h4>
+                                <i data-lucide="shield-check" class="icon-green" style="width:16px; height:16px;"></i>
+                                <h4 style="margin: 0; font-size: 0.95rem; color: var(--text);">${fw}</h4>
                             </div>
-                            <span class="badge" style="background: rgba(0, 167, 111, 0.1); color: var(--primary);">Active</span>
+                            <span class="badge" style="background: rgba(0, 167, 111, 0.1); color: var(--primary); font-size: 0.7rem; padding: 2px 6px;">Active</span>
                         </div>
                         <div>
-                            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">
-                                <span>Controls Monitored</span>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">
+                                <span>Health Score</span>
                                 <span style="font-weight: 700; color: var(--text);">${progress}%</span>
                             </div>
-                            <div class="progress-bar">
+                            <div class="progress-bar" style="height: 6px;">
                                 <div class="progress-bar-fill" style="width: ${progress}%; background: var(--primary);"></div>
                             </div>
                         </div>
