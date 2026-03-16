@@ -19,24 +19,21 @@ class ThreatIntelAnalyzer(BaseAnalyzer):
         super().__init__('threat_intel')
     
     def analyze(self, log: NormalizedLog) -> Optional[Alert]:
-        """Analyze log against threat intelligence indicators.
+        """Analyze log against threat intelligence indicators."""
+        logger.info(f"ThreatIntel: Analyzing log from {getattr(log, 'source_ip', 'MISSING')}")
         
-        Args:
-            log: NormalizedLog entry to analyze
-            
-        Returns:
-            Alert if threat indicator matched, None otherwise
-        """
         # Check source IP
-        if log.source_ip:
+        if hasattr(log, 'source_ip') and log.source_ip:
             threat = self._check_ip(log.source_ip)
             if threat:
+                logger.warning(f"ThreatIntel: MATCH FOUND for source IP {log.source_ip}")
                 return self._create_threat_alert(log, threat, 'source')
         
         # Check destination IP
-        if log.destination_ip:
+        if hasattr(log, 'destination_ip') and log.destination_ip:
             threat = self._check_ip(log.destination_ip)
             if threat:
+                logger.warning(f"ThreatIntel: MATCH FOUND for destination IP {log.destination_ip}")
                 return self._create_threat_alert(log, threat, 'destination')
         
         return None
@@ -52,6 +49,7 @@ class ThreatIntelAnalyzer(BaseAnalyzer):
         """
         try:
             with db_manager.session_scope() as session:
+                session.expire_on_commit = False
                 threat = session.query(ThreatIntelligence).filter(
                     ThreatIntelligence.indicator_type == 'ip',
                     ThreatIntelligence.indicator_value == ip_address,

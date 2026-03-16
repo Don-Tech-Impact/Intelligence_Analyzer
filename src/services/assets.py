@@ -3,10 +3,10 @@
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, cast, String
 from sqlalchemy.orm import Session
 
-from src.models.database import NormalizedLog, Alert
+from src.models.database import NormalizedLog, Alert, ManagedDevice
 from src.core.database import db_manager
 
 logger = logging.getLogger(__name__)
@@ -28,24 +28,26 @@ class AssetService:
         
         Assets are discovered from unique device_id values in logs.
         """
-        # Base query for unique device_ids
+        uid_col = func.coalesce(NormalizedLog.device_id, cast(NormalizedLog.source_ip, String))
+        
         query = db.query(
-            NormalizedLog.device_id,
+            uid_col.label('asset_uid'),
+            func.max(NormalizedLog.source_ip).label('max_source_ip'),
             NormalizedLog.vendor,
             func.max(NormalizedLog.timestamp).label('last_seen'),
             func.count(NormalizedLog.id).label('event_count')
         ).filter(
             NormalizedLog.tenant_id == tenant_id,
-            NormalizedLog.device_id.isnot(None)
+            uid_col.isnot(None)
         ).group_by(
-            NormalizedLog.device_id,
+            uid_col,
             NormalizedLog.vendor
         )
 
         # Apply search filter
         if search:
             query = query.filter(
-                NormalizedLog.device_id.ilike(f"%{search}%")
+                uid_col.ilike(f"%{search}%")
             )
 
         # Get total count for pagination
@@ -55,17 +57,16 @@ class AssetService:
         offset = (page - 1) * limit
         results = query.order_by(desc('last_seen')).offset(offset).limit(limit).all()
 
-        # Get threat counts for each device
         threat_counts = db.query(
-            NormalizedLog.device_id,
+            uid_col.label('asset_uid'),
             func.count(NormalizedLog.id).label('threat_count')
         ).filter(
             NormalizedLog.tenant_id == tenant_id,
-            NormalizedLog.device_id.isnot(None),
+            uid_col.isnot(None),
             NormalizedLog.severity.in_(['critical', 'high'])
-        ).group_by(NormalizedLog.device_id).all()
+        ).group_by(uid_col).all()
 
-        threat_map = {t.device_id: t.threat_count for t in threat_counts}
+        threat_map = {t.asset_uid: t.threat_count for t in threat_counts}
 
         assets = []
         for r in results:
@@ -73,13 +74,14 @@ class AssetService:
             asset_type = AssetService._infer_asset_type(r.vendor)
             
             assets.append({
-                "device_id": r.device_id,
-                "hostname": r.device_id,  # Use device_id as hostname for V1
+                "device_id": r.asset_uid,
+                "source_ip": r.max_source_ip,
+                "hostname": r.asset_uid,  # Use asset_uid as hostname for V1
                 "type": asset_type,
                 "vendor": r.vendor or "unknown",
                 "last_seen": r.last_seen.isoformat() if r.last_seen else None,
                 "event_count": r.event_count,
-                "threat_count": threat_map.get(r.device_id, 0)
+                "threat_count": threat_map.get(r.asset_uid, 0)
             })
 
         return {
@@ -91,6 +93,27 @@ class AssetService:
                 "has_more": offset + limit < total
             }
         }
+
+    @staticmethod
+    def update_heartbeats(tenant_id: str, device_ids: List[str], db: Session):
+        """Update last_log_at for managed devices when logs are received."""
+        if not device_ids:
+            return
+            
+        try:
+            from sqlalchemy import or_
+            db.query(ManagedDevice).filter(
+                ManagedDevice.tenant_id == tenant_id,
+                or_(
+                    ManagedDevice.device_id.in_(device_ids),
+                    ManagedDevice.ip_address.in_(device_ids)
+                )
+            ).update(
+                {ManagedDevice.last_log_at: datetime.utcnow()},
+                synchronize_session=False
+            )
+        except Exception as e:
+            logger.error(f"Failed to update asset heartbeats: {e}")
 
     @staticmethod
     def _infer_asset_type(vendor: Optional[str]) -> str:

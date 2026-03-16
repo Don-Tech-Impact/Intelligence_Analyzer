@@ -371,18 +371,46 @@ def get_system_overview(
 async def get_system_bundle(db: Session = Depends(get_db)):
     """
     Consolidated system overview for SuperAdmins.
-    Combines stats with the basic tenant list to reduce round-trips.
+    Combines Stats with the basic tenant list enriched with local metadata.
     """
     # 1. Get local overview stats
     overview = get_system_overview(db)
     
     # 2. Get remote tenant list from Repo 1
     try:
-        # We call the proxy helper directly to get the latest tenant data
-        tenants_data = await list_tenants(page_size=50)
+        tenants_data = await list_tenants(page_size=100)
         tenants = tenants_data.get("tenants", [])
+        
+        # 3. Enrich remote tenants with local Repo 2 statistics
+        for t in tenants:
+            tid = t.get("tenant_id")
+            if not tid: continue
+            
+            # Query local log counts
+            total_logs = db.query(func.count(NormalizedLog.id)).filter(
+                NormalizedLog.tenant_id == tid
+            ).scalar() or 0
+            
+            # Query local log counts last 24h
+            day_ago = datetime.utcnow() - timedelta(days=1)
+            logs_24h = db.query(func.count(NormalizedLog.id)).filter(
+                NormalizedLog.tenant_id == tid,
+                NormalizedLog.timestamp >= day_ago
+            ).scalar() or 0
+            
+            # Query local alert counts
+            active_alerts = db.query(func.count(Alert.id)).filter(
+                Alert.tenant_id == tid,
+                Alert.status != "resolved"
+            ).scalar() or 0
+            
+            t["total_logs"] = total_logs
+            t["logs_24h"] = logs_24h
+            t["active_alerts"] = active_alerts
+            t["estimated_storage"] = f"{total_logs * 0.45:.1f} KB" # 450 bytes per log avg
+            
     except Exception as e:
-        logger.error(f"Failed to fetch tenants for bundle: {e}")
+        logger.error(f"Failed to fetch tenants/enrich for bundle: {e}")
         tenants = []
         
     return {
@@ -800,63 +828,136 @@ async def configure_webhook(payload: dict):
     return await _repo1_request("POST", "/admin/webhooks/configure", body=payload)
 
 # ==========================================================================
-# Global Monitoring & Incidents (Repo 1 -> Repo 2 Proxy)
+# Global Monitoring & Unified Health
 # ==========================================================================
 
-@router.get("/health/detailed", dependencies=[Depends(verify_admin_or_superadmin)])
-async def get_global_health():
-    """Proxy health check from Repo 1."""
-    # Note: Repo 1 might expose this under /health or /api/monitoring/health/detailed
-    # We will try the expected Repo 1 root health endpoint to guarantee a response
-    base = _get_repo1_base()
+@router.get("/system/health/unified", dependencies=[Depends(verify_admin_or_superadmin)])
+async def get_unified_health():
+    """Combined health overview of Repo 1 and Repo 2."""
+    from src.api.health import health_check
+    
+    # 1. Get Local Health (Repo 2)
+    local_health = health_check()
+    
+    # 2. Get Remote Health (Repo 1)
+    remote_health = {}
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            res = await client.get(f"{base}/health")
-            if res.status_code == 200:
-                data = res.json()
-                # Map to 'components' structure for frontend
-                components = data.get("components", {})
-                if not isinstance(components, dict):
-                    components = {"system": {"status": "healthy"}}
-                    
-                return {
-                    "status": "success",
-                    "components": {
-                        "api": {"status": "healthy", "details": f"Version: {data.get('version', '1.0')}"},
-                        "redis": {"status": components.get("redis", "healthy")},
-                        "consumer": {"status": components.get("publisher", "healthy")},
-                        "database": {"status": "healthy"},
-                        "identity": {"status": "healthy"}
-                    }
-                }
-            return {"status": "error", "components": {}}
+        remote_health = await _repo1_request("GET", "/api/monitoring/health/detailed")
     except Exception as e:
-        logger.error(f"Failed to fetch health from Repo 1: {e}")
-        return {"status": "error", "components": {}}
+        logger.error(f"Failed to fetch Repo 1 health for unified: {e}")
+        remote_health = {"status": "unreachable", "error": str(e)}
 
+    # 3. Consolidate Components
+    # We prioritize Repo 2's knowledge of its own components, but pull Identity from Repo 1
+    # if it's more detailed there.
+    unified_components = local_health.get("components", {})
+    
+    # Pull in Repo 1 status if available
+    r1_components = remote_health.get("components", {})
+    if r1_components:
+        # If Repo 1 has a detailed identity status, use it
+        if "identity" in r1_components:
+            unified_components["identity"] = r1_components["identity"]
+        
+        # Merge other Repo 1 components that might be unique
+        for k, v in r1_components.items():
+            if k not in unified_components:
+                unified_components[k] = v
 
-@router.get("/queues/status", dependencies=[Depends(verify_admin_or_superadmin)])
-async def get_queue_status():
-    """Proxy queue status."""
-    return {"status": "success", "queues": {"raw_logs": 0, "dead_queue": 0}}
+    return {
+        "status": "healthy" if local_health.get("status") == "healthy" and remote_health.get("status") in ("healthy", "operational") else "degraded",
+        "timestamp": datetime.utcnow().isoformat(),
+        "local": local_health,
+        "remote": remote_health,
+        "components": unified_components
+    }
 
+@router.get("/monitoring/health", dependencies=[Depends(verify_admin_or_superadmin)])
+async def proxy_monitoring_health():
+    """Proxy health check from Repo 1 monitoring."""
+    return await _repo1_request("GET", "/api/monitoring/health")
+
+@router.get("/monitoring/health/detailed", dependencies=[Depends(verify_admin_or_superadmin)])
+async def proxy_monitoring_health_detailed():
+    """Proxy detailed health from Repo 1 monitoring."""
+    return await _repo1_request("GET", "/api/monitoring/health/detailed")
+
+@router.get("/monitoring/metrics", dependencies=[Depends(verify_admin_or_superadmin)])
+async def proxy_monitoring_metrics():
+    """Proxy Prometheus metrics from Repo 1."""
+    # Metrics are plain text, so we handle it manually
+    base = _get_repo1_base()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            res = await client.get(f"{base}/api/monitoring/metrics", headers={"X-Admin-Key": _get_admin_key()})
+            return Response(content=res.text, media_type="text/plain")
+        except Exception as e:
+            return Response(content=f"# Error fetching metrics: {e}", status_code=502)
+
+@router.get("/monitoring/queues/status", dependencies=[Depends(verify_admin_or_superadmin)])
+async def proxy_queue_status():
+    """Proxy real-time queue status."""
+    return await _repo1_request("GET", "/api/monitoring/queues/status")
+
+@router.get("/monitoring/pipelines/status", dependencies=[Depends(verify_admin_or_superadmin)])
+async def proxy_pipelines_status():
+    """Proxy pipeline status."""
+    return await _repo1_request("GET", "/api/monitoring/pipelines/status")
+
+@router.get("/monitoring/alerts", dependencies=[Depends(verify_admin_or_superadmin)])
+async def proxy_monitoring_alerts(severity: Optional[str] = None, limit: int = 50):
+    """Proxy system alerts."""
+    params = {"limit": limit}
+    if severity: params["severity"] = severity
+    return await _repo1_request("GET", "/api/monitoring/alerts", params=params)
+
+# ==========================================================================
+# Incident Response Proxies (Per Tenant)
+# ==========================================================================
+
+@router.get("/incidents/config/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
+async def get_incident_config(tenant_id: str):
+    """Get tenant alert configuration."""
+    return await _repo1_request("GET", f"/api/incidents/config/{tenant_id}")
+
+@router.put("/incidents/config/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
+async def update_incident_config(tenant_id: str, payload: dict):
+    """Update tenant alert configuration."""
+    return await _repo1_request("PUT", f"/api/incidents/config/{tenant_id}", body=payload)
+
+@router.post("/incidents/test/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
+async def test_incident_alert(tenant_id: str, payload: dict):
+    """Test alert delivery."""
+    return await _repo1_request("POST", f"/api/incidents/test/{tenant_id}", body=payload)
+
+@router.get("/incidents/history/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
+async def get_incident_history(tenant_id: str, limit: int = 100, severity: Optional[str] = None):
+    """Get alert history."""
+    params = {"limit": limit}
+    if severity: params["severity"] = severity
+    return await _repo1_request("GET", f"/api/incidents/history/{tenant_id}", params=params)
+
+@router.get("/incidents/stats/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
+async def get_incident_stats(tenant_id: str, days: int = 7):
+    """Get alert analytics."""
+    return await _repo1_request("GET", f"/api/incidents/stats/{tenant_id}", params={"days": days})
+
+@router.post("/incidents/simulate/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
+async def simulate_incident(tenant_id: str, payload: dict):
+    """Simulate alert for testing."""
+    return await _repo1_request("POST", f"/api/incidents/simulate/{tenant_id}", body=payload)
 
 @router.get("/incidents/active", dependencies=[Depends(verify_admin_or_superadmin)])
-async def get_active_incidents():
-    """Proxy active global incidents."""
-    base = _get_repo1_base()
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            headers = {"X-Admin-Key": _get_admin_key()}
-            res = await client.get(f"{base}/api/alerts", headers=headers)
-            if res.status_code == 200:
-                data = res.json()
-                alerts = data.get("alerts", [])
-                return {"status": "success", "active_incidents": alerts}
-            return {"status": "success", "active_incidents": []}
-    except Exception as e:
-        logger.error(f"Failed to fetch active incidents: {e}")
-        return {"status": "success", "active_incidents": []}
+async def get_all_active_incidents(severity: Optional[str] = None, limit: int = 50):
+    """Get global active alerts."""
+    params = {"limit": limit}
+    if severity: params["severity"] = severity
+    return await _repo1_request("GET", "/api/incidents/active", params=params)
+
+@router.get("/incidents/summary", dependencies=[Depends(verify_admin_or_superadmin)])
+async def get_global_incident_summary(days: int = 7):
+    """Get global incident summary."""
+    return await _repo1_request("GET", "/api/incidents/summary", params={"days": days})
 
 
 @router.get("/webhooks/status", dependencies=[Depends(verify_admin_or_superadmin)])

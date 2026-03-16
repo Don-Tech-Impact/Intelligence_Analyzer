@@ -268,22 +268,27 @@ class AnalyticsService:
     def get_geo_distribution(tenant_id: str, db: Session) -> List[Dict[str, Any]]:
         """Get geographic distribution of events."""
         # This queries the business_context JSON field for geoip data
-        # For SQLite, we use json_extract
-        if db.bind.dialect.name == 'sqlite':
-            country = func.json_extract(NormalizedLog.business_context, '$.geoip.country')
-            country_code = func.json_extract(NormalizedLog.business_context, '$.geoip.code')
-        else:
-            country = NormalizedLog.business_context['geoip']['country'].astext
-            country_code = NormalizedLog.business_context['geoip']['code'].astext
+        # Use a more cross-DB compatible way to handle JSON extraction if possible,
+        # but for now, let's just make sure we don't crash on empty results.
+        try:
+            if db.bind.dialect.name == 'sqlite':
+                country = func.json_extract(NormalizedLog.business_context, '$.geoip.country')
+                country_code = func.json_extract(NormalizedLog.business_context, '$.geoip.code')
+            else:
+                country = NormalizedLog.business_context['geoip']['country'].astext
+                country_code = NormalizedLog.business_context['geoip']['code'].astext
 
-        results = db.query(
-            country.label('country_name'),
-            country_code.label('country_code'),
-            func.count(NormalizedLog.id).label('event_count')
-        ).filter(
-            NormalizedLog.tenant_id == tenant_id,
-            NormalizedLog.business_context.isnot(None)
-        ).group_by('country_name', 'country_code').order_by(desc('event_count')).limit(20).all()
+            results = db.query(
+                country.label('country_name'),
+                country_code.label('country_code'),
+                func.count(NormalizedLog.id).label('event_count')
+            ).filter(
+                NormalizedLog.tenant_id == tenant_id,
+                NormalizedLog.business_context.isnot(None)
+            ).group_by(country, country_code).order_by(desc('event_count')).limit(20).all()
+        except Exception as e:
+            logger.error(f"Geo-distribution query failed: {e}")
+            return []
 
         # Count high-severity as threats
         threat_query = db.query(
@@ -330,10 +335,16 @@ class AnalyticsService:
         ]
 
     @staticmethod
-    def get_business_insights(tenant_id: str, db: Session) -> Dict[str, Any]:
+    def get_business_insights(tenant_id: str, db: Session, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Get insights on business activity patterns (last 7 days)."""
         now = datetime.utcnow()
         last_7d = now - timedelta(days=7)
+        
+        # Extract business hours from config or default to 9-18
+        # Format: {"start": "09:00", "end": "17:00"}
+        biz_config = config.get('business_hours', {}) if config else {}
+        start_hour = int(biz_config.get('start', '09').split(':')[0]) if isinstance(biz_config.get('start'), str) else 9
+        end_hour = int(biz_config.get('end', '18').split(':')[0]) if isinstance(biz_config.get('end'), str) else 18
         
         # Query logs for the last 7 days
         logs = db.query(NormalizedLog.timestamp, NormalizedLog.vendor).filter(
@@ -348,9 +359,9 @@ class AnalyticsService:
         by_vendor = {}
         
         for log_ts, vendor in logs:
-            # Business hours: 09:00 - 17:00
+            # Business hours check
             hour = log_ts.hour
-            if 9 <= hour < 18:  # Extended to 18:00 for common business day
+            if start_hour <= hour < end_hour:
                 business_hours += 1
             else:
                 after_hours += 1

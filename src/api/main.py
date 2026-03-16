@@ -147,8 +147,7 @@ async def add_security_headers(request: Request, call_next):
     # --- 1. Bot & Headless Browser Blocking ---
     user_agent = request.headers.get("user-agent", "").lower()
     bot_keywords = [
-        "headlesschrome", "python-requests", "curl/", "wget", 
-        "scrapy", "nmap", "nikto", "sqlmap", "zgrab"
+        "headlesschrome", "scrapy", "nmap", "nikto", "sqlmap", "zgrab"
     ]
     
     # Check if a known bot keyword is in the User-Agent

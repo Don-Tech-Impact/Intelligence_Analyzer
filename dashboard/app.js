@@ -28,6 +28,13 @@ window.openModal = function(modalId) {
     if (window.lucide) {
         window.lucide.createIcons();
     }
+
+    // Special handling for compliance modal to sync visual state
+    if (modalId === 'compliance-modal') {
+        if (typeof syncComplianceModalSelections === 'function') {
+            syncComplianceModalSelections();
+        }
+    }
 }
 
 window.closeModal = function(modalId) {
@@ -153,6 +160,17 @@ function updateUserInfo() {
     // Keep logo clean as per reference standard
     if (logoSpan) {
         logoSpan.textContent = 'Afric-Analyzer';
+    }
+
+    // Populate the main profile view as well
+    const profName = document.getElementById('profile-name');
+    const profEmail = document.getElementById('profile-email');
+    if (profName) {
+        const username = payload.username || (payload.admin && payload.admin.username) || 'User';
+        profName.textContent = username.charAt(0).toUpperCase() + username.slice(1);
+    }
+    if (profEmail) {
+        profEmail.textContent = payload.email || (payload.admin && payload.admin.email) || 'No email provided';
     }
 }
 
@@ -613,15 +631,123 @@ async function fetchStreamData() {
 function renderStreamLogs(logs) {
     const container = document.getElementById('log-stream-console');
     if (!container || !logs) return;
-    container.innerHTML = logs.map(log => {
-        const sev = (log.severity || '').toLowerCase();
-        return `<div class="stream-line ${sev}">
-            <span class="stream-ts">${formatTime(log.timestamp)}</span>
-            <span class="stream-vendor">${escapeHtml(log.vendor || '')}</span>
-            <span class="stream-dev">${escapeHtml(log.device_type || '')}</span>
-            <span class="stream-msg">${escapeHtml(log.message || log.raw_log || '')}</span>
-        </div>`;
+
+    container.innerHTML = logs.map((log, index) => {
+        const sev = (log.severity || 'low').toLowerCase();
+        const proto = (log.protocol || detectProtocol(log)).toUpperCase();
+        const action = (log.action || detectAction(log)).toLowerCase();
+        const timestamp = formatTime(log.timestamp);
+        const src = log.source_ip || '-';
+        const dest = log.destination_ip || '-';
+        const vendor = log.vendor || '-';
+        const info = log.message || log.raw_log || 'No additional info';
+
+        return `
+        <tr class="stream-row protocol-${proto.toLowerCase()} action-${action} severity-${sev}" data-index="${index}">
+            <td class="col-time">${timestamp}</td>
+            <td class="col-src">${escapeHtml(src)}</td>
+            <td class="col-dest">${escapeHtml(dest)}</td>
+            <td class="col-proto"><span class="proto-badge">${escapeHtml(proto)}</span></td>
+            <td class="col-vendor">${escapeHtml(vendor)}</td>
+            <td class="col-action"><span class="action-badge">${escapeHtml(action)}</span></td>
+            <td class="col-info">${escapeHtml(info)}</td>
+        </tr>`;
     }).join('');
+
+    // Attach click handlers
+    container.querySelectorAll('.stream-row').forEach(row => {
+        row.onclick = function() {
+            const idx = this.getAttribute('data-index');
+            inspectStreamEvent(logs[idx], this);
+        };
+    });
+}
+
+function detectProtocol(log) {
+    const msg = (log.message || log.raw_log || '').toLowerCase();
+    if (msg.includes('tcp')) return 'TCP';
+    if (msg.includes('udp')) return 'UDP';
+    if (msg.includes('icmp')) return 'ICMP';
+    if (msg.includes('http')) return 'HTTP';
+    if (msg.includes('https')) return 'HTTPS';
+    if (msg.includes('dns')) return 'DNS';
+    return 'OTHER';
+}
+
+function detectAction(log) {
+    const msg = (log.message || log.raw_log || '').toLowerCase();
+    if (msg.includes('block') || msg.includes('deny') || msg.includes('reject')) return 'blocked';
+    if (msg.includes('drop')) return 'dropped';
+    if (msg.includes('allow') || msg.includes('pass') || msg.includes('accept')) return 'allowed';
+    return 'unknown';
+}
+
+function inspectStreamEvent(log, rowElement) {
+    const pane = document.getElementById('stream-details-pane');
+    const content = document.getElementById('stream-details-content');
+    if (!pane || !content) return;
+
+    // Highlight selected row
+    document.querySelectorAll('.stream-row').forEach(r => r.classList.remove('selected'));
+    if (rowElement) rowElement.classList.add('selected');
+
+    content.innerHTML = `
+        <div class="details-top-info">
+            <div class="detail-summary-card">
+                <div class="summary-item">
+                    <label>Timestamp</label>
+                    <span>${formatTime(log.timestamp)}</span>
+                </div>
+                <div class="summary-item">
+                    <label>Severity</label>
+                    <span class="badge-${(log.severity || 'low').toLowerCase()}">${(log.severity || 'LOW').toUpperCase()}</span>
+                </div>
+                <div class="summary-item">
+                    <label>Action</label>
+                    <span class="action-badge ${(log.action || 'unknown').toLowerCase()}">${(log.action || 'UNKNOWN').toUpperCase()}</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="detail-sections-grid">
+            <div class="detail-section">
+                <h4><i data-lucide="network"></i> Network Layers</h4>
+                <div class="detail-row"><span>Source IP:</span> <code>${log.source_ip || '-'}</code></div>
+                <div class="detail-row"><span>Destination IP:</span> <code>${log.destination_ip || '-'}</code></div>
+                <div class="detail-row"><span>Protocol:</span> <span class="proto-badge">${(log.protocol || detectProtocol(log)).toUpperCase()}</span></div>
+            </div>
+            
+            <div class="detail-section">
+                <h4><i data-lucide="database"></i> Source Context</h4>
+                <div class="detail-row"><span>Vendor:</span> ${log.vendor || 'Unknown'}</div>
+                <div class="detail-row"><span>Device Type:</span> ${log.device_type || 'Unknown'}</div>
+                <div class="detail-row"><span>Tenant ID:</span> <code>${log.tenant_id || '-'}</code></div>
+            </div>
+        </div>
+
+        <div class="detail-section full-width">
+            <h4><i data-lucide="file-text"></i> Raw Telemetry</h4>
+            <div class="raw-telem-box">
+                <pre>${escapeHtml(log.raw_log || log.message || '')}</pre>
+            </div>
+        </div>
+        
+        <div class="detail-section full-width">
+            <h4><i data-lucide="code"></i> Structured JSON</h4>
+            <div class="json-telem-box">
+                <pre>${JSON.stringify(log, null, 2)}</pre>
+            </div>
+        </div>
+    `;
+
+    pane.style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+}
+
+function closeStreamDetails() {
+    const pane = document.getElementById('stream-details-pane');
+    if (pane) pane.style.display = 'none';
+    document.querySelectorAll('.stream-row').forEach(r => r.classList.remove('selected'));
 }
 
 // ===== Analytics View Deep Logic =====
@@ -1583,7 +1709,7 @@ async function renderAssets() {
         if (discoveredBody) {
             discoveredBody.innerHTML = discovered.length ? discovered.map(a => `
                 <tr>
-                    <td><code style="color:var(--accent-blue);">${a.device_id}</code></td>
+                    <td><code style="color:var(--accent-blue);">${a.source_ip || a.device_id}</code></td>
                     <td>
                         <div style="display:flex; align-items:center; gap:8px;">
                             <span class="badge-beta" style="background:rgba(59,130,246,0.1); color:#3b82f6; padding:2px 6px;">${a.type.toUpperCase()}</span>
@@ -1599,7 +1725,7 @@ async function renderAssets() {
                     <td style="font-size:0.75rem; color:var(--text-muted);">${formatTime(a.last_seen)}</td>
                     <td>
                         <button class="btn-primary" style="padding:4px 8px; font-size:11px;" 
-                                onclick="prefillRegistration('${a.device_id}', '${a.vendor}', '${a.type}')">
+                                onclick="prefillRegistration('${a.source_ip || a.device_id}', '${a.vendor}', '${a.type}')">
                             <i data-lucide="plus" style="width:12px;height:12px;"></i> Register
                         </button>
                     </td>
@@ -2086,6 +2212,40 @@ function updateOnboardingProgress() {
 
 const selectedFrameworks = new Set(JSON.parse(localStorage.getItem(`fw_${currentTenant}`) || '[]'));
 
+function updateComplianceSelectedList() {
+    const el = document.getElementById('compliance-selected-list');
+    if (el) {
+        const list = Array.from(selectedFrameworks);
+        el.textContent = list.length > 0 ? `Selected: ${list.join(', ')}` : 'Selected: None';
+    }
+}
+
+function syncComplianceModalSelections() {
+    const cards = document.querySelectorAll('#compliance-modal .framework-card');
+    cards.forEach(card => {
+        const fwName = card.querySelector('h4').textContent.trim();
+        const icon = card.querySelector('.checkbox-indicator i') || card.querySelector('.checkbox-indicator svg');
+        const indicator = card.querySelector('.checkbox-indicator');
+        
+        if (!icon || !indicator) return;
+
+        if (selectedFrameworks.has(fwName)) {
+            card.style.borderColor = 'var(--primary)';
+            indicator.style.background = 'var(--primary)';
+            indicator.style.borderColor = 'var(--primary)';
+            icon.style.display = 'block';
+            card.classList.add('selected');
+        } else {
+            card.style.borderColor = 'var(--border-default)';
+            indicator.style.background = 'transparent';
+            indicator.style.borderColor = 'var(--border-default)';
+            icon.style.display = 'none';
+            card.classList.remove('selected');
+        }
+    });
+    updateComplianceSelectedList();
+}
+
 function toggleFramework(element, frameworkName) {
     // Lucide replaces <i> with <svg>, so we must check for both
     const icon = element.querySelector('.checkbox-indicator i') || element.querySelector('.checkbox-indicator svg');
@@ -2109,7 +2269,25 @@ function toggleFramework(element, frameworkName) {
         element.classList.add('selected');
     }
     
+    updateComplianceSelectedList();
     // Persist selection
+    localStorage.setItem(`fw_${currentTenant}`, JSON.stringify(Array.from(selectedFrameworks)));
+}
+
+function addCustomFrameworkPrompt() {
+    const name = prompt("Enter the name of the additional compliance framework (e.g. NIST 800-53):");
+    if (!name || name.trim() === "") return;
+    
+    const frameworkName = name.trim();
+    if (selectedFrameworks.has(frameworkName)) {
+        showToast("Framework already added", false);
+        return;
+    }
+
+    selectedFrameworks.add(frameworkName);
+    showToast(`Added ${frameworkName} to your requirements`, false);
+    
+    updateComplianceSelectedList();
     localStorage.setItem(`fw_${currentTenant}`, JSON.stringify(Array.from(selectedFrameworks)));
 }
 
@@ -2117,53 +2295,96 @@ async function initInteractiveMocks() {
     try {
         const res = await apiFetch(`${API_BASE_URL}/api/v1/tenant/metadata`);
         if (res && res.ok && res.json) {
-            const settings = await res.json();
+            const data = await res.json();
             
-            // Hydrate Compliance
-            if (settings.compliance_settings && settings.compliance_settings.frameworks && settings.compliance_settings.frameworks.length > 0) {
-                document.getElementById('compliance-empty-state').style.display = 'none';
-                document.getElementById('compliance-active-state').style.display = 'block';
+            // Re-map fields based on whether we received the full tenant object or just settings
+            const config = data.config || data.settings || data;
+            const compliance = config.compliance_settings || config.compliance || {};
+            const ir = config.incident_response || {};
+            
+            // 1. Hydrate Compliance
+            const frameworks = Array.isArray(compliance) ? compliance : (compliance.frameworks || []);
+            // Use local storage as fallback/merge if we want but backend should be source of truth
+            if (frameworks.length > 0) {
+                const emptyEl = document.getElementById('compliance-setup-container');
+                const activeEl = document.getElementById('compliance-active-container');
+                if (emptyEl) emptyEl.style.display = 'none';
+                if (activeEl) activeEl.style.display = 'block';
                 
                 const list = document.getElementById('active-frameworks-list');
-                list.innerHTML = settings.compliance_settings.frameworks.map(fw => {
-                    const progress = Math.floor(Math.random() * (98 - 75) + 75); 
-                    return `
-                    <div class="mini-card" style="border: 1px solid var(--primary-light);">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <i data-lucide="shield-check" class="icon-green" style="width:16px; height:16px;"></i>
-                                <h4 style="margin: 0; font-size: 0.95rem; color: var(--text);">${fw}</h4>
+                if (list) {
+                    list.innerHTML = frameworks.map(fw => {
+                        const progress = Math.floor(Math.random() * (98 - 75) + 75); 
+                        return `
+                        <div class="mini-card" style="border: 1px solid var(--primary-light);">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <i data-lucide="shield-check" class="icon-green" style="width:16px; height:16px;"></i>
+                                    <h4 style="margin: 0; font-size: 0.95rem; color: var(--text);">${fw}</h4>
+                                </div>
+                                <span class="badge" style="background: rgba(0, 167, 111, 0.1); color: var(--primary); font-size: 0.7rem; padding: 2px 6px;">Active</span>
                             </div>
-                            <span class="badge" style="background: rgba(0, 167, 111, 0.1); color: var(--primary); font-size: 0.7rem; padding: 2px 6px;">Active</span>
-                        </div>
-                        <div>
-                            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">
-                                <span>Health Score</span>
-                                <span style="font-weight: 700; color: var(--text);">${progress}%</span>
+                            <div>
+                                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">
+                                    <span>Health Score</span>
+                                    <span style="font-weight: 700; color: var(--text);">${progress}%</span>
+                                </div>
+                                <div class="progress-bar" style="height: 6px;">
+                                    <div class="progress-bar-fill" style="width: ${progress}%; background: var(--primary);"></div>
+                                </div>
                             </div>
-                            <div class="progress-bar" style="height: 6px;">
-                                <div class="progress-bar-fill" style="width: ${progress}%; background: var(--primary);"></div>
-                            </div>
-                        </div>
-                    </div>`;
-                }).join('');
+                        </div>`;
+                    }).join('');
+                }
                 
-                settings.compliance_settings.frameworks.forEach(fw => selectedFrameworks.add(fw));
+                frameworks.forEach(fw => selectedFrameworks.add(fw));
                 completeOnboardingStep(3);
-                lucide.createIcons();
+                if (window.lucide) lucide.createIcons();
+            } else {
+                // Show setup container if no frameworks
+                const emptyEl = document.getElementById('compliance-setup-container');
+                const activeEl = document.getElementById('compliance-active-container');
+                if (emptyEl) emptyEl.style.display = 'block';
+                if (activeEl) activeEl.style.display = 'none';
             }
             
-            // Hydrate Incident Response
-            if (settings.incident_response && (settings.incident_response.alert_email || settings.incident_response.business_context)) {
-                document.getElementById('ir-empty-state').style.display = 'none';
-                document.getElementById('ir-active-state').style.display = 'block';
+            // 2. Hydrate Incident Response
+            if (ir && (ir.alert_email || ir.business_context)) {
+                const emptyEl = document.getElementById('ir-empty-state');
+                const activeRes = document.getElementById('ir-active-state');
+                if (emptyEl) emptyEl.style.display = 'none';
+                if (activeRes) activeRes.style.display = 'block';
                 
-                document.getElementById('ir-display-context').textContent = settings.incident_response.business_context || '-';
-                document.getElementById('ir-display-email').textContent = settings.incident_response.alert_email || '-';
-                document.getElementById('ir-display-slack').textContent = settings.incident_response.slack_webhook || '-';
-                document.getElementById('ir-display-sla').textContent = `${settings.incident_response.response_time_sla || 30} Minutes`;
+                const ctxEl = document.getElementById('ir-display-context');
+                const emailEl = document.getElementById('ir-display-email');
+                const slackEl = document.getElementById('ir-display-slack');
+                const slaEl = document.getElementById('ir-display-sla');
+
+                if (ctxEl) ctxEl.textContent = ir.business_context || '-';
+                if (emailEl) emailEl.textContent = ir.alert_email || '-';
+                if (slackEl) slackEl.textContent = ir.slack_webhook || '-';
+                if (slaEl) slaEl.textContent = `${ir.response_time_sla || 30} Minutes`;
                 
+                const profSla = document.getElementById('profile-sla-value');
+                if (profSla) profSla.textContent = `${ir.response_time_sla || 30}m`;
+
                 completeOnboardingStep(4);
+            }
+
+            updateComplianceSelectedList();
+
+            // 3. Hydrate Profile View with Tenant Identity
+            if (data.name) {
+                const profileName = document.getElementById('profile-tenant-name');
+                const profileDesc = document.getElementById('profile-tenant-desc');
+                if (profileName) profileName.textContent = data.name;
+                if (profileDesc) profileDesc.textContent = data.description || 'Secure Infrastructure Environment';
+            }
+
+            // 4. Hydrate Profile Compliance Badges
+            const profBadges = document.getElementById('profile-compliance-badges');
+            if (profBadges && frameworks.length > 0) {
+                profBadges.innerHTML = frameworks.map(fw => `<span class="badge-premium" style="margin-right: 5px;">${fw}</span>`).join('');
             }
         }
     } catch (e) {
@@ -2217,17 +2438,23 @@ async function submitComplianceConfiguration() {
         // Always show the "success page" (active state) as requested by user
         completeOnboardingStep(3);
         
-        const emptyEl = document.getElementById('compliance-empty-state');
-        const activeEl = document.getElementById('compliance-active-state');
+        const emptyEl = document.getElementById('compliance-setup-container');
+        const activeEl = document.getElementById('compliance-active-container'); // Corrected ID
         if (emptyEl) emptyEl.style.display = 'none';
         if (activeEl) activeEl.style.display = 'block';
         
+        // Update Profile Badges immediately
+        const profBadges = document.getElementById('profile-compliance-badges');
+        if (profBadges) {
+            profBadges.innerHTML = Array.from(selectedFrameworks).map(fw => `<span class="badge-premium" style="margin-right: 5px;">${fw}</span>`).join('');
+        }
+
         const list = document.getElementById('active-frameworks-list');
         if (list) {
             list.innerHTML = Array.from(selectedFrameworks).map(fw => {
                 const progress = Math.floor(Math.random() * (98 - 75) + 75); 
                 return `
-                <div class="stat-card" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; border: 1px solid var(--primary-light);">
+                <div class="mini-card" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; border: 1px solid var(--primary-light);">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <i data-lucide="shield-check" class="icon-green"></i>
@@ -2248,13 +2475,21 @@ async function submitComplianceConfiguration() {
             }).join('');
             if (window.lucide) lucide.createIcons();
         }
+
+        // Close modal after successful sync
+        setTimeout(() => {
+            closeModal('compliance-modal');
+        }, 1000);
     } catch (err) {
         showToast("Error saving configuration: " + err.message, true);
         console.error(err);
     } finally {
-        btn.innerHTML = '<i data-lucide="save"></i> Save Frameworks Integration';
-        btn.disabled = false;
-        lucide.createIcons();
+        const btn = document.getElementById('btn-save-compliance'); // Re-fetching to be safe
+        if (btn) {
+            btn.innerHTML = '<i data-lucide="save"></i> Save Frameworks Integration';
+            btn.disabled = false;
+        }
+        if (window.lucide) lucide.createIcons();
     }
 }
 

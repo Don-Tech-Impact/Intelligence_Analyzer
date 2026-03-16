@@ -77,16 +77,16 @@ def get_auth_token():
         "POST",
         f"{BASE_URL}/api/admin/proxy/login",
         200,
-        data={"username": "admin", "password": "admin123"}
+        json_data={"email": "admin@example.com", "password": "SecurePass123!"}
     )
     
     if response and response.status_code == 200:
         try:
-            token = response.json()["data"]["access_token"]
-            print(f"  {GREEN}-&gt; Token obtained successfully{RESET}")
+            token = response.json()["access_token"]
+            print(f"  {GREEN}-> Token obtained successfully{RESET}")
             return token
         except (KeyError, json.JSONDecodeError):
-            print(f"  {RED}-&gt; Failed to parse token from response{RESET}")
+            print(f"  {RED}-> Failed to parse token from response{RESET}")
     
     return None
 
@@ -381,8 +381,8 @@ def test_validation():
     
     # Need a token for these
     response = requests.post(
-        f"{BASE_URL}/auth/login",
-        data={"username": "admin", "password": "admin123"},
+        f"{BASE_URL}/api/admin/proxy/login",
+        json={"email": "admin@example.com", "password": "SecurePass123!"},
         timeout=10
     )
     
@@ -390,7 +390,7 @@ def test_validation():
         print(f"  {RED}Could not get token for validation tests{RESET}")
         return
     
-    token = response.json()["data"]["access_token"]
+    token = response.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     
     # Invalid timeline range
@@ -430,7 +430,7 @@ def main():
     
     if not token:
         print(f"\n{RED}Cannot proceed without authentication token!{RESET}")
-        print(f"{YELLOW}Make sure the admin user exists (login: admin / admin123){RESET}")
+        print(f"{YELLOW}Make sure the admin@example.com user exists (login: admin@example.com / SecurePass123!){RESET}")
         return
     
     # Test authenticated endpoints

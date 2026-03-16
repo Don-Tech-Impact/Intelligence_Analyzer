@@ -60,6 +60,24 @@ def health_check():
         health["status"] = "degraded"
         health["components"]["redis"] = {"status": "unhealthy", "error": str(e)}
 
+    # Check Log Consumer Heartbeat
+    try:
+        redis_client = redis.from_url(config.redis_url, socket_connect_timeout=2)
+        heartbeat = redis_client.get("health:consumer:heartbeat")
+        if heartbeat:
+            last_heartbeat = float(heartbeat)
+            if time.time() - last_heartbeat < 60: # Within 60s is healthy
+                health["components"]["consumer"] = {"status": "healthy", "last_heartbeat": last_heartbeat}
+            else:
+                health["status"] = "degraded"
+                health["components"]["consumer"] = {"status": "stale", "last_heartbeat": last_heartbeat}
+        else:
+            health["status"] = "degraded"
+            health["components"]["consumer"] = {"status": "down", "error": "No heartbeat found"}
+    except Exception as e:
+        health["status"] = "degraded"
+        health["components"]["consumer"] = {"status": "unhealthy", "error": str(e)}
+
     # Check Identity Provider (Repo 1)
     try:
         import httpx

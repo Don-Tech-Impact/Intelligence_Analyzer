@@ -35,7 +35,8 @@ from src.core.database import db_manager
 from src.models.database import NormalizedLog, DeadLetter, Alert
 from src.services.log_adapter import LogAdapter
 from src.services.enrichment import EnrichmentService
-from src.analyzers.base import analyzer_manager
+from src.services.assets import AssetService
+from src.analyzers import analyzer_manager
 
 logger = logging.getLogger(__name__)
 
@@ -283,6 +284,9 @@ class RedisConsumer:
                 }
                 normalized = self.log_adapter.normalize(v1_wrapper)
                 
+                # Boost confidence if we managed to map to a known vendor
+                recovery_confidence = 0.7 if normalized.vendor and normalized.vendor != 'unknown' else 0.4
+
                 log_dict = {
                     'tenant_id': normalized.tenant_id,
                     'timestamp': normalized.timestamp or datetime.utcnow(),
@@ -292,24 +296,25 @@ class RedisConsumer:
                     'destination_port': normalized.destination_port,
                     'protocol': normalized.protocol,
                     'action': normalized.action,
-                    'log_type': normalized.log_type or 'dead_recovered',
+                    'log_type': normalized.log_type if normalized.log_type != 'raw_ingest' else 'dead_recovered',
                     'vendor': normalized.vendor,
                     'device_hostname': normalized.device_hostname,
-                    'severity': 'info',  # Dead = low confidence, info-level
+                    'severity': normalized.severity or 'medium', # Allow normalized severity
                     'message': normalized.message,
                     'raw_data': normalized.raw_data,
                     'business_context': {
                         **(normalized.business_context or {}),
-                        'confidence': 0.3,
+                        'confidence': recovery_confidence,
                         'source_queue': 'dead',
-                        'original_error': log_data.get('error_type')
+                        'original_error': log_data.get('error_type'),
+                        'recovered_at': datetime.utcnow().isoformat()
                     },
                     'created_at': datetime.utcnow()
                 }
                 self.batch_clean.append(log_dict)  # Enters analysis pipeline
-                logger.debug(f"Dead log recovered for analysis: {tenant_id}")
+                logger.info(f"Dead log recovered with {recovery_confidence} confidence: {tenant_id} ({normalized.vendor})")
             except Exception as e:
-                logger.debug(f"Dead log unrecoverable (OK): {e}")
+                logger.debug(f"Dead log recovery analysis failed (skipped): {e}")
         
         return True
 
@@ -427,6 +432,23 @@ class RedisConsumer:
                 if self.batch_dead:
                     session.bulk_insert_mappings(DeadLetter, self.batch_dead)
                     logger.debug(f"Inserted {len(self.batch_dead)} dead letters")
+                
+                # UPDATE HEARTBEATS: Multi-tenant aware heartbeat update for managed devices
+                # Logic: Find unique device IDs per tenant in this batch
+                tenant_devices = defaultdict(set)
+                for log in all_logs:
+                    tenant_id = log.get('tenant_id')
+                    if not tenant_id: continue
+                    
+                    # Add both IDs and IPs to the tracking set
+                    # update_heartbeats will check both managed_devices.device_id and .ip_address
+                    if log.get('device_id'):
+                        tenant_devices[tenant_id].add(log.get('device_id'))
+                    if log.get('source_ip'):
+                        tenant_devices[tenant_id].add(log.get('source_ip'))
+                
+                for tenant, devices in tenant_devices.items():
+                    AssetService.update_heartbeats(tenant, list(devices), session)
                 
                 session.commit()
             
@@ -576,6 +598,15 @@ class RedisConsumer:
         
         while self.running:
             try:
+                # ==========================================================
+                # HEARTBEAT UPDATE
+                # ==========================================================
+                if self.redis_client:
+                    try:
+                        self.redis_client.set("health:consumer:heartbeat", time.time())
+                        self.redis_client.expire("health:consumer:heartbeat", 30) # 30s TTL
+                    except Exception: pass
+
                 # ==========================================================
                 # PERIODIC RESCAN for new tenants
                 # ==========================================================

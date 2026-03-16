@@ -202,20 +202,21 @@ CREATE INDEX IF NOT EXISTS idx_users_tenant
 -- =============================================================================
 
 ALTER TABLE logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dead_letters ENABLE ROW LEVEL SECURITY;
-
--- Policy: Users can only see their tenant's data
+ALTER TABLE logs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_logs ON logs;
 CREATE POLICY tenant_isolation_logs ON logs
-    FOR ALL
     USING (tenant_id = current_setting('app.current_tenant', TRUE));
 
+ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE alerts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_alerts ON alerts;
 CREATE POLICY tenant_isolation_alerts ON alerts
-    FOR ALL
     USING (tenant_id = current_setting('app.current_tenant', TRUE));
 
-CREATE POLICY tenant_isolation_dead ON dead_letters
-    FOR ALL
+ALTER TABLE dead_letters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE dead_letters FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_dead_letters ON dead_letters;
+CREATE POLICY tenant_isolation_dead_letters ON dead_letters
     USING (tenant_id = current_setting('app.current_tenant', TRUE));
 
 -- =============================================================================

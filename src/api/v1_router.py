@@ -260,12 +260,25 @@ def get_top_ips(
 
 
 @router.get("/analytics/business-insights")
-def get_business_insights(
+async def get_business_insights(
     tenant_id: str = Depends(get_tenant_id),
     db: Session = Depends(get_db)
 ):
     """Get insights on business vs after-hours activity."""
-    data = AnalyticsService.get_business_insights(tenant_id, db)
+    # Attempt to fetch tenant config for business hours
+    config = {}
+    try:
+        repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
+        admin_key = os.getenv("ADMIN_KEY") or "changeme-admin-key"
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            res = await client.get(f"{repo1_url}/admin/tenants/{tenant_id}", headers={"X-Admin-Key": admin_key})
+            if res.status_code == 200:
+                tenant_data = res.json()
+                config = tenant_data.get("config") or tenant_data.get("settings") or {}
+    except Exception as e:
+        logger.warning(f"Could not fetch tenant config for business hours: {e}")
+
+    data = AnalyticsService.get_business_insights(tenant_id, db, config=config)
     return ApiResponse(status="success", data=data)
 
 
@@ -557,9 +570,17 @@ def list_discovered_assets(
     limit: int = 20
 ):
     """Returns unique assets discovered from logs that are NOT yet in managed_devices."""
-    managed_ips = [d.ip_address for d in db.query(ManagedDevice.ip_address).filter(ManagedDevice.tenant_id == tenant_id).all()]
+    # Get all managed identifiers (both IPs and Correlation IDs)
+    managed_devices = db.query(ManagedDevice.ip_address, ManagedDevice.device_id).filter(ManagedDevice.tenant_id == tenant_id).all()
+    managed_identifiers = set()
+    for d in managed_devices:
+        if d.ip_address: managed_identifiers.add(d.ip_address)
+        if d.device_id: managed_identifiers.add(d.device_id)
+
     all_assets = AssetService.get_assets(tenant_id, db, page, limit)
-    discovered = [a for a in all_assets["data"] if a["device_id"] not in managed_ips]
+    
+    # Filter: Only show assets where the identifier is NOT known as a managed device
+    discovered = [a for a in all_assets["data"] if a["device_id"] not in managed_identifiers]
     return ApiResponse(status="success", data={
         "data": discovered,
         "pagination": all_assets["pagination"]
@@ -666,8 +687,15 @@ async def get_primary_ip(request: Request):
             
             response = await client.get(f"{repo1_url}/admin/tenants/{tenant_id}", headers=headers)
             data = response.json()
-            # Assuming Repo 1 returns tenant object with primary_ip field
-            return {"status": "success", "primary_ip": data.get("primary_ip") or data.get("office_ip") or "Not Set"}
+            
+            # Extract IP info (support string, or list of strings from 'primary_ips')
+            primary_ip = data.get("primary_ip") or data.get("office_ip")
+            primary_ips = data.get("primary_ips", [])
+            
+            if not primary_ip and isinstance(primary_ips, list) and primary_ips:
+                primary_ip = ", ".join(primary_ips)
+            
+            return {"status": "success", "primary_ip": primary_ip or "Not Set"}
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Identity server unreachable: {e}")
 
@@ -862,8 +890,8 @@ async def get_tenant_metadata(tenant_id: str = Depends(get_tenant_id)):
                 headers=headers
             )
             data = res.json()
-            settings = data.get("settings", {}) if isinstance(data, dict) else {}
-            return ApiResponse(status="success", data=settings)
+            # Support returning the full tenant object including name, description, config, etc.
+            return ApiResponse(status="success", data=data)
         except httpx.RequestError as e:
             logger.error(f"Failed to fetch metadata from Repo 1: {e}")
             raise HTTPException(status_code=502, detail="Control plane unreachable")

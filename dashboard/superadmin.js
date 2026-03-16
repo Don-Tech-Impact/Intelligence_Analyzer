@@ -276,8 +276,9 @@ const SuperAdmin = {
                         </div>
                     </div>
                 </td>
-                <td>${t.total_logs || '—'}</td>
-                <td>${t.active_alerts || '—'}</td>
+                <td>${this.formatNumber(t.total_logs) || '—'}</td>
+                <td>${this.formatNumber(t.active_alerts) || '—'}</td>
+                <td>${t.estimated_storage || '—'}</td>
                 <td><span class="badge badge-${t.status === 'active' ? 'active' : 'inactive'}">${t.status || 'Unknown'}</span></td>
                 <td style="text-align:right;">
                     <button class="btn-secondary btn-sm" onclick="SuperAdmin.viewTenantDetail('${t.tenant_id}')">
@@ -380,46 +381,57 @@ const SuperAdmin = {
     // TENANTS VIEW
     // ============================================
     async loadTenantsView() {
-        // Update stats placeholders
         const tcEl = document.getElementById('tenants-total-count');
         const acEl = document.getElementById('tenants-active-count');
         const icEl = document.getElementById('tenants-inactive-count');
+        const tlEl = document.getElementById('tenants-total-logs-count');
+        
         if (tcEl) tcEl.textContent = '...';
         if (acEl) acEl.textContent = '...';
         if (icEl) icEl.textContent = '...';
 
         try {
-            const res = await fetch(`${this.API_BASE}/api/admin/tenants`, {
-                headers: Auth.getAuthHeader()
-            });
-            if (res.ok) {
-                const data = await res.json();
-                const tenants = data.tenants || [];
-
-                // Standardize: Populate ALL tenant selects across the dashboard
-                const tenantSelects = ['user-tenant-filter', 'network-tenant-filter', 'gen-report-tenant', 'audit-tenant-filter', 'api-tenant-filter'];
-                tenantSelects.forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) {
-                        const currentVal = el.value;
-                        const defaultOpt = id === 'gen-report-tenant' ? '<option value="default">Default (All)</option>' :
-                            (id === 'api-tenant-filter' ? '<option value="">All Tenants</option>' : '<option value="">Select Tenant...</option>');
-                        el.innerHTML = defaultOpt + tenants.map(t => `<option value="${t.tenant_id}">${t.name || t.tenant_id}</option>`).join('');
-                        el.value = currentVal;
-                    }
+            const bundleCache = localStorage.getItem('superadmin_bundle');
+            let tenants = [];
+            
+            if (bundleCache) {
+                const bundle = JSON.parse(bundleCache);
+                tenants = bundle.tenants || [];
+            } else {
+                const res = await fetch(`${this.API_BASE}/api/admin/system/bundle`, {
+                    headers: Auth.getAuthHeader()
                 });
+                if (res.ok) {
+                    const result = await res.json();
+                    tenants = result.data?.tenants || [];
+                    localStorage.setItem('superadmin_bundle', JSON.stringify(result.data));
+                }
+            }
 
-                // Update stats
-                if (tcEl) tcEl.textContent = tenants.length;
-                if (acEl) acEl.textContent = tenants.filter(t => t.status === 'active').length;
-                if (icEl) icEl.textContent = tenants.filter(t => t.status !== 'active').length;
+            // Populate filter selects
+            const tenantSelects = ['user-tenant-filter', 'network-tenant-filter', 'gen-report-tenant', 'audit-tenant-filter', 'api-tenant-filter'];
+            tenantSelects.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    const currentVal = el.value;
+                    const defaultOpt = id === 'gen-report-tenant' ? '<option value="default">Default (All)</option>' :
+                        (id === 'api-tenant-filter' ? '<option value="">All Tenants</option>' : '<option value="">Select Tenant...</option>');
+                    el.innerHTML = defaultOpt + tenants.map(t => `<option value="${t.tenant_id}">${t.name || t.tenant_id}</option>`).join('');
+                    el.value = currentVal;
+                }
+            });
 
-                const tbody = document.getElementById('tenants-full-list');
-                if (tbody) {
-                    if (tenants.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No tenants registered yet.</td></tr>';
-                        return;
-                    }
+            // Update Metrics
+            if (tcEl) tcEl.textContent = tenants.length;
+            if (acEl) acEl.textContent = tenants.filter(t => (t.status || t.is_active) === 'active' || t.is_active === true).length;
+            if (icEl) icEl.textContent = tenants.filter(t => (t.status || t.is_active) !== 'active' && t.is_active !== true).length;
+            if (tlEl) tlEl.textContent = this.formatNumber(tenants.reduce((sum, t) => sum + (t.total_logs || 0), 0));
+
+            const tbody = document.getElementById('tenants-full-list');
+            if (tbody) {
+                if (tenants.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No tenants found in system.</td></tr>';
+                } else {
                     tbody.innerHTML = tenants.map(t => `
                         <tr>
                             <td>
@@ -433,27 +445,25 @@ const SuperAdmin = {
                                     </div>
                                 </div>
                             </td>
-                            <td>—</td>
-                            <td>—</td>
-                            <td>—</td>
-                            <td>—</td>
-                            <td><span class="badge badge-${t.status === 'active' ? 'active' : 'inactive'}">${t.status}</span></td>
+                            <td>${this.formatNumber(t.logs_24h || 0)}</td>
+                            <td>${this.formatNumber(t.total_logs || 0)}</td>
+                            <td>${this.formatNumber(t.active_alerts || 0)}</td>
+                            <td>${t.estimated_storage || '0 KB'}</td>
+                            <td><span class="badge badge-${(t.status === 'active' || t.is_active) ? 'active' : 'inactive'}">${t.status || (t.is_active ? 'active' : 'inactive')}</span></td>
                             <td style="text-align:right;">
-                                <div style="display:flex;gap:8px;justify-content:flex-end;">
-                                    <button class="btn-secondary btn-sm" onclick="SuperAdmin.viewTenantDetail('${t.tenant_id}')">
-                                        <i data-lucide="eye" style="width:14px;"></i> View
-                                    </button>
-                                </div>
+                                <button class="btn-secondary btn-sm" onclick="SuperAdmin.viewTenantDetail('${t.tenant_id}')">
+                                    <i data-lucide="eye" style="width:14px;"></i> View
+                                </button>
                             </td>
                         </tr>
                     `).join('');
-                    lucide.createIcons();
                 }
+                lucide.createIcons();
             }
         } catch (e) {
             console.error("Failed to load real tenants view", e);
-            const tbody = document.getElementById('tenants-full-list');
-            if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="empty-state" style="color:var(--error);">Failed to connect to Repo 1 API.</td></tr>';
+            const list = document.getElementById('tenants-full-list');
+            if (list) list.innerHTML = '<tr><td colspan="7" class="empty-state error">Failed to load tenant statistics.</td></tr>';
         }
     },
 
@@ -1675,7 +1685,7 @@ const SuperAdmin = {
     async loadHealth() {
         // Status updates for components
         try {
-            const res = await fetch(`${this.API_BASE}/api/admin/health/detailed`, {
+            const res = await fetch(`${this.API_BASE}/api/admin/system/health/unified`, {
                 headers: Auth.getAuthHeader()
             });
             
@@ -1689,28 +1699,29 @@ const SuperAdmin = {
                     const sEl = document.getElementById(`health-${uiPrefix}-status`);
                     const dEl = document.getElementById(`health-${uiPrefix}-detail`);
                     if (sEl && comp) {
-                        sEl.textContent = comp.status === 'healthy' ? 'Operational' : 'Degraded';
-                        sEl.className = `health-status ${comp.status === 'healthy' ? 'online' : 'offline'}`;
-                        dEl.textContent = comp.details || `Latency: ${comp.latency_ms || 0}ms`;
+                        const isOnline = comp.status === 'healthy' || comp.status === 'operational';
+                        sEl.textContent = isOnline ? 'Operational' : (comp.status.charAt(0).toUpperCase() + comp.status.slice(1));
+                        sEl.className = `health-status ${isOnline ? 'online' : 'offline'}`;
+                        if (dEl) dEl.textContent = comp.details || (comp.error ? `Error: ${comp.error}` : `Latency: ${comp.latency_ms || 0}ms`);
                     }
                 };
                 
                 mapComponentToUI('database', 'db');
                 mapComponentToUI('redis', 'redis');
                 mapComponentToUI('api', 'api');
-                mapComponentToUI('elastic', 'consumer');
-                mapComponentToUI('system', 'identity'); // Arbitrary fallback if exact not matched
+                mapComponentToUI('consumer', 'consumer');
+                mapComponentToUI('identity', 'identity');
                 
-                // Fetch internal queues if redis is healthy
+                // Fetch internal queues
                 try {
-                    const qRes = await fetch(`${this.API_BASE}/api/admin/queues/status`, {
+                    const qRes = await fetch(`${this.API_BASE}/api/admin/monitoring/queues/status`, {
                         headers: Auth.getAuthHeader()
                     });
                     if (qRes.ok) {
                         const qData = await qRes.json();
                         const rDetail = document.getElementById('health-redis-detail');
                         if (rDetail && qData.queues) {
-                            rDetail.textContent += ` | Logs: ${qData.queues.raw_logs} | DLQ: ${qData.queues.dead_queue}`;
+                            rDetail.textContent += ` | Logs: ${qData.queues.raw_logs || 0} | DLQ: ${qData.queues.dead_queue || 0}`;
                         }
                     }
                 } catch(qe) { console.error("Queue fetch failed", qe); }
@@ -1729,6 +1740,54 @@ const SuperAdmin = {
             };
             ['api', 'redis', 'db', 'consumer', 'identity'].forEach(errStatus);
         }
+    },
+
+    async loadGlobalAlerts() {
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/incidents/active`, {
+                headers: Auth.getAuthHeader()
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const alerts = data.active_incidents || [];
+                // Update small global alerts indicator or list if exists
+                console.log(`[Repo 1] Loaded ${alerts.length} active global incidents.`);
+            }
+        } catch (e) {
+            console.error("Failed to load global Repo 1 alerts", e);
+        }
+    },
+
+    async loadAuditLogs() {
+        const tbody = document.getElementById('audit-log-list');
+        if (!tbody) return;
+
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-state"><i class="spinner"></i> Loading system audit trail...</td></tr>';
+
+        try {
+            const res = await fetch(`${this.API_BASE}/api/admin/audit?limit=50&page=${this.auditPage}`, {
+                headers: Auth.getAuthHeader()
+            });
+            const data = await res.json();
+            const logs = data.logs || data;
+
+            if (!logs || logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No audit logs found.</td></tr>';
+            } else {
+                tbody.innerHTML = logs.map(log => `
+                    <tr>
+                        <td style="font-size:11px;">${new Date(log.timestamp).toLocaleString()}</td>
+                        <td><span class="badge badge-info">${log.action}</span></td>
+                        <td><strong>${log.username || 'System'}</strong></td>
+                        <td style="font-size:11px; color:var(--text-secondary);">${log.details || '—'}</td>
+                    </tr>
+                `).join('');
+            }
+        } catch (e) {
+            console.error("Audit load error:", e);
+            tbody.innerHTML = '<tr><td colspan="4" class="empty-state error">Failed to load audit trail.</td></tr>';
+        }
+        lucide.createIcons();
     }
 };
 

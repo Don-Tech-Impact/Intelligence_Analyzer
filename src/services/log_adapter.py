@@ -134,6 +134,12 @@ class LogAdapter:
         device_type = metadata.get('device_type', 'unknown')
         vendor = LogAdapter._map_device_type_to_vendor(device_type)
         
+        # Determine severity from raw level or metadata
+        raw_level = log.get('level') or metadata.get('severity') or 'info'
+        severity = str(raw_level).lower()
+        if severity not in ['low', 'medium', 'high', 'critical', 'info', 'warning', 'error']:
+            severity = 'info'
+            
         return NormalizedLogSchema(
             tenant_id=str(log.get('tenant_id', 'default')).strip('[]'),
             company_id=log.get('tenant_id'),
@@ -148,7 +154,7 @@ class LogAdapter:
             log_type='raw_ingest',
             vendor=vendor,
             device_hostname=None,
-            severity=log.get('level', 'info'),
+            severity=severity,
             message=log.get('raw_log', ''),
             raw_data=log,
             business_context={}
