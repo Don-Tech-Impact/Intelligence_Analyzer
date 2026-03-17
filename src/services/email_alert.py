@@ -5,7 +5,7 @@ import smtplib
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import List, Optional
+from typing import List
 
 from src.core.config import config
 from src.models.database import Alert

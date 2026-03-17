@@ -216,7 +216,7 @@ class ReportGenerator:
         total_alerts = data.get("total_alerts", 0)
         critical_alerts = data.get("alerts_by_severity", {}).get("critical", 0)
 
-        html = f"""
+        html = f""" # noqa: E501   
             <!DOCTYPE html>
             <html lang="en">
             <head>

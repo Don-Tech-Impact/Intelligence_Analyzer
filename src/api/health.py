@@ -2,7 +2,7 @@
 
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Set
+from typing import Any, Dict
 
 import redis
 from fastapi import APIRouter
