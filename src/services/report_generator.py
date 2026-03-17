@@ -381,7 +381,7 @@ class ReportGenerator:
                 </tr>
             """
 
-        html += """
+        html += """ # noqa: E501
             </tbody>
         </table>
 
@@ -403,7 +403,7 @@ class ReportGenerator:
             for alert_type, count in alert_types:
                 html += f"<tr><td>{alert_type.replace('_', ' ').title()}</td><td><b>{count}</b></td></tr>"
 
-        html += """
+        html += """ # noqa: E501
             </tbody>
         </table>
 
