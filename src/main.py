@@ -21,6 +21,8 @@ from src.core.logging_config import get_logger, setup_logging
 from src.services.redis_consumer import RedisConsumer
 from src.services.scheduler import TaskScheduler
 
+logger = logging.getLogger(__name__)
+
 
 # Webhook registration helper — registers Repo 2's URL with Repo 1 on startup
 # so Repo 1 knows where to send tenant lifecycle events (created/updated/deleted).

@@ -2,10 +2,9 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from threading import Thread
-from typing import List, Optional
+from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -13,8 +12,9 @@ from pydantic import BaseModel
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from slowapi.util import get_remote_address
-from sqlalchemy import desc, func
+
+# from slowapi.util import get_remote_address
+# from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -27,13 +27,10 @@ from src.api.health import router as health_router
 from src.api.v1_router import router as v1_router
 from src.core.database import db_manager
 from src.core.limiter import limiter
-from src.models.database import Alert, NormalizedLog, Report, ThreatIntelligence
-from src.models.schemas import AlertUpdateSchema, ApiResponse, DashboardSummarySchema
+from src.models.database import Alert, NormalizedLog, Report
+from src.models.schemas import AlertUpdateSchema, ApiResponse
 from src.services.analytics import AnalyticsService
-from src.services.log_ingestion import AnalysisPipeline
-from src.services.redis_consumer import RedisConsumer
 from src.services.report_generator import ReportGenerator
-from src.services.scheduler import TaskScheduler
 
 
 @asynccontextmanager
@@ -111,7 +108,8 @@ async def root_redirect():
 async def custom_swagger_ui_html():
     if not EXPOSE_DOCS:
         raise HTTPException(status_code=404, detail="Not Found")
-    return HTMLResponse("""
+    return HTMLResponse(
+        """
 <!DOCTYPE html>
 <html>
 <head>
@@ -137,7 +135,8 @@ async def custom_swagger_ui_html():
     </script>
 </body>
 </html>
-    """)
+    """
+    )
 
 
 # Global Exception Handler
@@ -227,7 +226,6 @@ app.include_router(v1_router)
 app.include_router(health_router)
 app.include_router(admin_router)
 
-import logging
 
 logger = logging.getLogger(__name__)
 

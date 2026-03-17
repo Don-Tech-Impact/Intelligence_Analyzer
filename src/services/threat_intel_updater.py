@@ -1,9 +1,7 @@
 """Threat intelligence feed management."""
 
-import csv
 import logging
 from datetime import datetime, timedelta
-from io import StringIO
 from typing import Any, Dict, List
 
 import requests
@@ -206,7 +204,7 @@ class ThreatIntelUpdater:
             with db_manager.session_scope() as session:
                 count = (
                     session.query(ThreatIntelligence)
-                    .filter(ThreatIntelligence.last_seen < threshold_date, ThreatIntelligence.is_active == True)
+                    .filter(ThreatIntelligence.last_seen < threshold_date, ThreatIntelligence.is_active)
                     .update({"is_active": False})
                 )
 

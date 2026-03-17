@@ -1,15 +1,14 @@
-"""Tests for V1 API endpoints — auth removed (handled by Repo 1)."""
+import json
+from datetime import datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-from datetime import datetime, timedelta
-from unittest.mock import patch
-import json
 
 from src.api.main import app
+from src.api.v1_router import verify_jwt
 from src.core.database import db_manager
-from src.models.database import NormalizedLog, Alert
-from src.api.auth import verify_jwt
+from src.models.database import Alert, NormalizedLog
 
 # ---------------------------------------------------------------------------
 # Mock JWT so tests don't need a live Repo 1 to issue tokens.
@@ -49,12 +48,10 @@ def sample_logs(setup_db):
     """Create sample logs for testing (module-scoped for reuse)."""
     with db_manager.session_scope() as session:
         # Check if logs already exist
-        existing = session.query(NormalizedLog).filter(
-            NormalizedLog.tenant_id == "test_tenant"
-        ).first()
+        existing = session.query(NormalizedLog).filter(NormalizedLog.tenant_id == "test_tenant").first()
         if existing:
             return True
-        
+
         for i in range(10):
             log = NormalizedLog(
                 tenant_id="test_tenant",
@@ -66,7 +63,7 @@ def sample_logs(setup_db):
                 vendor="TestVendor",
                 device_id=f"device-{i % 3}",
                 protocol="TCP",
-                business_context={"geoip": {"country": "USA", "code": "US"}}
+                business_context={"geoip": {"country": "USA", "code": "US"}},
             )
             session.add(log)
         session.commit()
@@ -78,12 +75,10 @@ def sample_alerts(setup_db):
     """Create sample alerts for testing (module-scoped for reuse)."""
     with db_manager.session_scope() as session:
         # Check if alerts already exist
-        existing = session.query(Alert).filter(
-            Alert.tenant_id == "test_tenant"
-        ).first()
+        existing = session.query(Alert).filter(Alert.tenant_id == "test_tenant").first()
         if existing:
             return True
-        
+
         for i in range(5):
             alert = Alert(
                 tenant_id="test_tenant",
@@ -92,7 +87,7 @@ def sample_alerts(setup_db):
                 source_ip=f"192.168.1.{i+1}",
                 description=f"Test alert {i}",
                 status="open",
-                details={"test": True}
+                details={"test": True},
             )
             session.add(alert)
         session.commit()
@@ -155,9 +150,7 @@ class TestAnalyticsEndpoints:
 
     def test_timeline(self, sample_logs):
         """Test timeline endpoint."""
-        response = client.get(
-            "/api/v1/analytics/timeline?range=24h&bucket=hour&tenant_id=test_tenant"
-        )
+        response = client.get("/api/v1/analytics/timeline?range=24h&bucket=hour&tenant_id=test_tenant")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
@@ -166,16 +159,12 @@ class TestAnalyticsEndpoints:
 
     def test_timeline_invalid_range(self):
         """Test timeline with invalid range."""
-        response = client.get(
-            "/api/v1/analytics/timeline?range=invalid&tenant_id=test_tenant"
-        )
+        response = client.get("/api/v1/analytics/timeline?range=invalid&tenant_id=test_tenant")
         assert response.status_code == 422  # Validation error
 
     def test_threat_vectors(self, sample_alerts):
         """Test threat vectors endpoint."""
-        response = client.get(
-            "/api/v1/analytics/threat-vectors?limit=10&tenant_id=test_tenant"
-        )
+        response = client.get("/api/v1/analytics/threat-vectors?limit=10&tenant_id=test_tenant")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
@@ -183,18 +172,14 @@ class TestAnalyticsEndpoints:
 
     def test_geo_distribution(self, sample_logs):
         """Test geo distribution endpoint."""
-        response = client.get(
-            "/api/v1/analytics/geo-distribution?tenant_id=test_tenant"
-        )
+        response = client.get("/api/v1/analytics/geo-distribution?tenant_id=test_tenant")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
 
     def test_traffic_analysis(self, sample_logs):
         """Test traffic analysis endpoint."""
-        response = client.get(
-            "/api/v1/analytics/traffic?tenant_id=test_tenant"
-        )
+        response = client.get("/api/v1/analytics/traffic?tenant_id=test_tenant")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
@@ -214,18 +199,14 @@ class TestAlertEndpoints:
 
     def test_list_alerts_with_filters(self, sample_alerts):
         """Test list alerts with severity filter."""
-        response = client.get(
-            "/api/v1/alerts?severity=high&status=open&tenant_id=test_tenant"
-        )
+        response = client.get("/api/v1/alerts?severity=high&status=open&tenant_id=test_tenant")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
 
     def test_list_alerts_pagination(self, sample_alerts):
         """Test alert pagination."""
-        response = client.get(
-            "/api/v1/alerts?page=1&limit=2&tenant_id=test_tenant"
-        )
+        response = client.get("/api/v1/alerts?page=1&limit=2&tenant_id=test_tenant")
         assert response.status_code == 200
         data = response.json()
         assert len(data["data"]) <= 2
@@ -237,7 +218,7 @@ class TestAlertEndpoints:
         list_response = client.get("/api/v1/alerts?tenant_id=test_tenant")
         if list_response.json()["data"]:
             alert_id = list_response.json()["data"][0]["id"]
-            
+
             response = client.get(f"/api/v1/alerts/{alert_id}?tenant_id=test_tenant")
             assert response.status_code == 200
             data = response.json()
@@ -264,9 +245,7 @@ class TestAssetEndpoints:
 
     def test_list_assets_with_search(self, sample_logs):
         """Test list assets with search filter."""
-        response = client.get(
-            "/api/v1/assets?search=device&tenant_id=test_tenant"
-        )
+        response = client.get("/api/v1/assets?search=device&tenant_id=test_tenant")
         assert response.status_code == 200
 
     def test_asset_summary(self, sample_logs):
@@ -279,7 +258,5 @@ class TestAssetEndpoints:
 
     def test_get_asset_not_found(self):
         """Test get non-existent asset."""
-        response = client.get(
-            "/api/v1/assets/non-existent-device?tenant_id=test_tenant"
-        )
+        response = client.get("/api/v1/assets/non-existent-device?tenant_id=test_tenant")
         assert response.status_code == 404

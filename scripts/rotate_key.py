@@ -4,12 +4,11 @@ API Key Management Utility for Intelligence Analyzer.
 Allows rotation, revocation, and listing of API keys via the Admin API.
 """
 
+import argparse
 import os
 import sys
-import json
+
 import requests
-import argparse
-from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -19,14 +18,13 @@ load_dotenv()
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
 
+
 def get_headers():
     if not ADMIN_API_KEY:
         print("Error: ADMIN_API_KEY environment variable not set.")
         sys.exit(1)
-    return {
-        "X-Admin-Key": ADMIN_API_KEY,
-        "Content-Type": "application/json"
-    }
+    return {"X-Admin-Key": ADMIN_API_KEY, "Content-Type": "application/json"}
+
 
 def list_keys(tenant_id: str):
     """List all API keys for a tenant."""
@@ -36,7 +34,7 @@ def list_keys(tenant_id: str):
         response.raise_for_status()
         data = response.json()
         keys = data.get("api_keys", [])
-        
+
         print(f"\nAPI Keys for Tenant: {tenant_id}")
         print("-" * 60)
         if not keys:
@@ -47,8 +45,9 @@ def list_keys(tenant_id: str):
         print("-" * 60)
     except Exception as e:
         print(f"Error listing keys: {e}")
-        if hasattr(e, 'response') and e.response is not None:
+        if hasattr(e, "response") and e.response is not None:
             print(f"Server response: {e.response.text}")
+
 
 def rotate_key(key_id: str):
     """Rotate an API key."""
@@ -57,7 +56,7 @@ def rotate_key(key_id: str):
         response = requests.post(url, headers=get_headers())
         response.raise_for_status()
         data = response.json()
-        
+
         print("\n✅ API Key Rotated Successfully!")
         print("-" * 60)
         print(f"Key ID:     {data['id']}")
@@ -68,8 +67,9 @@ def rotate_key(key_id: str):
         print("⚠️  The old secret is now invalid.")
     except Exception as e:
         print(f"Error rotating key: {e}")
-        if hasattr(e, 'response') and e.response is not None:
+        if hasattr(e, "response") and e.response is not None:
             print(f"Server response: {e.response.text}")
+
 
 def revoke_key(key_id: str):
     """Revoke an API key."""
@@ -80,8 +80,9 @@ def revoke_key(key_id: str):
         print(f"\n✅ API Key {key_id} revoked successfully.")
     except Exception as e:
         print(f"Error revoking key: {e}")
-        if hasattr(e, 'response') and e.response is not None:
+        if hasattr(e, "response") and e.response is not None:
             print(f"Server response: {e.response.text}")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Intelligence Analyzer API Key Management")
@@ -111,6 +112,7 @@ def main():
         rotate_key(args.key_id)
     elif args.command == "revoke":
         revoke_key(args.key_id)
+
 
 if __name__ == "__main__":
     main()

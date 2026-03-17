@@ -4,11 +4,10 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, desc, func
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
-from src.core.database import db_manager
-from src.models.database import Alert, NormalizedLog, ThreatIntelligence
+from src.models.database import Alert, NormalizedLog
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +164,8 @@ class AnalyticsService:
         start_time = now - timedelta(hours=hours)
 
         # Determine bucket format based on DB type
-        if db.bind.dialect.name == "sqlite":
+        engine = db.get_bind()
+        if engine and engine.dialect.name == "sqlite":
             if bucket == "hour":
                 time_bucket = func.strftime("%Y-%m-%d %H:00:00", NormalizedLog.timestamp)
             else:
@@ -228,7 +228,7 @@ class AnalyticsService:
 
         # Current period
         current = (
-            db.query(Alert.alert_type, Alert.severity, func.count(Alert.id).label("count"))
+            db.query(Alert.alert_type, Alert.severity, func.count(Alert.id).label("total_count"))
             .filter(Alert.tenant_id == tenant_id, Alert.created_at >= last_24h)
             .group_by(Alert.alert_type, Alert.severity)
             .all()
@@ -236,23 +236,23 @@ class AnalyticsService:
 
         # Previous period for trend
         previous = (
-            db.query(Alert.alert_type, func.count(Alert.id).label("count"))
+            db.query(Alert.alert_type, func.count(Alert.id).label("total_count"))
             .filter(Alert.tenant_id == tenant_id, Alert.created_at >= last_48h, Alert.created_at < last_24h)
             .group_by(Alert.alert_type)
             .all()
         )
 
-        prev_map = {p.alert_type: p.count for p in previous}
+        prev_map = {p.alert_type: p.total_count for p in previous}
 
         result = []
         for row in current:
             prev_count = prev_map.get(row.alert_type, 0)
             trend = 0.0
             if prev_count > 0:
-                trend = ((row.count - prev_count) / prev_count) * 100
+                trend = ((row.total_count - prev_count) / prev_count) * 100
 
             result.append(
-                {"type": row.alert_type, "count": row.count, "severity": row.severity, "trend": round(trend, 1)}
+                {"type": row.alert_type, "count": row.total_count, "severity": row.severity, "trend": round(trend, 1)}
             )
 
         # Sort by count descending
@@ -266,7 +266,8 @@ class AnalyticsService:
         # Use a more cross-DB compatible way to handle JSON extraction if possible,
         # but for now, let's just make sure we don't crash on empty results.
         try:
-            if db.bind.dialect.name == "sqlite":
+            engine = db.get_bind()
+            if engine and engine.dialect.name == "sqlite":
                 country = func.json_extract(NormalizedLog.business_context, "$.geoip.country")
                 country_code = func.json_extract(NormalizedLog.business_context, "$.geoip.code")
             else:
@@ -358,7 +359,7 @@ class AnalyticsService:
         after_hours = 0
         weekdays = 0
         weekends = 0
-        by_vendor = {}
+        by_vendor: Dict[str, int] = {}
 
         for log_ts, vendor in logs:
             # Business hours check

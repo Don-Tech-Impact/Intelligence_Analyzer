@@ -15,6 +15,7 @@ They are automatically registered with analyzer_manager on import.
 """
 
 import logging
+from typing import Optional
 
 import redis
 
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 # SHARED REDIS CONNECTION
 # =============================================================================
 # All Redis-based analyzers share this connection
-_shared_redis: redis.Redis = None
+_shared_redis: Optional[redis.Redis] = None
 
 
 def get_shared_redis() -> redis.Redis:

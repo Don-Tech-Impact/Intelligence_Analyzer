@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Any, Dict, Optional
 
 from fastapi import Depends, HTTPException, status
@@ -41,7 +40,7 @@ async def verify_jwt(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    public_key = get_public_key()  # We keep this for backward compatibility if needed, but primary is now HS256
+    # public_key = get_public_key()  # We keep this for backward compatibility if needed, but primary is now HS256
     secret_key = config.secret_key
     if secret_key:
         secret_key = secret_key.strip().strip('"').strip("'")
@@ -66,7 +65,7 @@ async def verify_jwt(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
             logger.warning("CRITICAL: SECRET_KEY is using the HARDCODED FALLBACK. .env is NOT being loaded correctly!")
 
         # Verify the token using HS256 and the shared secret
-        payload = jwt.decode(token, secret_key, algorithms=["HS256"], options={"verify_aud": False})
+        payload: Dict[str, Any] = jwt.decode(token, secret_key, algorithms=["HS256"], options={"verify_aud": False})
         return payload
     except jwt.ExpiredSignatureError:
         logger.warning("JWT Verification failed: Token expired")
@@ -76,7 +75,7 @@ async def verify_jwt(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
             headers={"WWW-Authenticate": "Bearer"},
         )
     except JWTError as e:
-        logger.warning(f"JWT Verification failed: Invalid signature or malformed token")
+        logger.warning(f"JWT Verification failed: Invalid signature or malformed token: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token",

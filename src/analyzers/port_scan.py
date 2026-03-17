@@ -27,7 +27,6 @@ Accuracy:
 
 import logging
 import os
-from datetime import datetime
 from typing import List, Optional
 
 import redis
@@ -179,7 +178,7 @@ class PortScanAnalyzer(BaseAnalyzer):
                     self.redis_client.expire(key, self.window_seconds)
 
             # Get unique port count
-            unique_ports = self.redis_client.scard(key)
+            unique_ports = int(self.redis_client.scard(key))  # type: ignore
 
             logger.debug(f"Port scan counter {source_ip}→{dest_ip}: {unique_ports}/{self.threshold}")
 

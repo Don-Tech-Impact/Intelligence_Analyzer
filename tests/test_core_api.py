@@ -1,11 +1,12 @@
+import os
+
 import pytest
 from fastapi.testclient import TestClient
+
 from src.api.main import app
 from src.core.database import db_manager
-from src.models.database import Tenant, Alert
+from src.models.database import Alert, Base, Tenant
 
-import os
-from src.models.database import Base
 
 @pytest.fixture(scope="module")
 def client():
@@ -14,23 +15,24 @@ def client():
     with TestClient(app) as c:
         yield c
 
+
 @pytest.fixture(scope="module", autouse=True)
 def test_db():
     # Use in-memory database for tests
-    _orig_db_url = os.environ.get('DATABASE_URL')
-    os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
+    _orig_db_url = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
     db_manager.initialize()
-    
+
     # Ensure a clean slate
     Base.metadata.drop_all(db_manager.engine)
     Base.metadata.create_all(db_manager.engine)
-    
+
     db = db_manager.get_session()
-    
+
     # Create test tenant
     tenant = Tenant(tenant_id="test_tenant", name="Test Tenant")
     db.add(tenant)
-    
+
     # Create a dummy alert
     alert = Alert(
         tenant_id="test_tenant",
@@ -38,23 +40,24 @@ def test_db():
         severity="critical",
         status="open",
         description="Test Malware Alert",
-        source_ip="1.2.3.4"
+        source_ip="1.2.3.4",
     )
     db.add(alert)
-    
+
     db.commit()
     yield db
     db.close()
-    
+
     # Cleanup
     db_manager.close()
     if db_manager.engine:
         db_manager.engine.dispose()
     # Restore original DATABASE_URL to prevent env pollution
     if _orig_db_url is not None:
-        os.environ['DATABASE_URL'] = _orig_db_url
+        os.environ["DATABASE_URL"] = _orig_db_url
     else:
-        os.environ.pop('DATABASE_URL', None)
+        os.environ.pop("DATABASE_URL", None)
+
 
 def test_health_check(client):
     response = client.get("/health")
@@ -63,6 +66,7 @@ def test_health_check(client):
     assert response.json()["status"] in ["healthy", "degraded"]
     assert "components" in response.json()
 
+
 def test_stats_endpoint(client):
     """Test stats endpoint requiring auth."""
     headers = {"X-Admin-Key": "changeme-admin-key"}
@@ -70,6 +74,7 @@ def test_stats_endpoint(client):
     assert response.status_code == 200
     data = response.json()["data"]
     assert "total_logs" in data
+
 
 def test_dashboard_summary(client):
     headers = {"X-Admin-Key": "changeme-admin-key"}
@@ -80,18 +85,18 @@ def test_dashboard_summary(client):
     assert "stats" in data
     assert "recent_alerts" in data
 
+
 def test_update_alert_status(client, test_db):
     # Get the alert ID
     alert = test_db.query(Alert).filter(Alert.tenant_id == "test_tenant").first()
     alert_id = alert.id
-    
+
     response = client.patch(
-        f"/alerts/{alert_id}",
-        json={"status": "acknowledged", "analyst_comment": "Checking this now"}
+        f"/alerts/{alert_id}", json={"status": "acknowledged", "analyst_comment": "Checking this now"}
     )
     assert response.status_code == 200
     assert response.json()["new_status"] == "acknowledged"
-    
+
     # Verify in DB
     test_db.refresh(alert)
     assert alert.status == "acknowledged"

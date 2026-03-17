@@ -9,17 +9,16 @@ OR a valid Superadmin Bearer JWT.
 
 import logging
 import os
-import time
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import func, text
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from src.api.auth import verify_superadmin
+# from src.api.auth import verify_superadmin
 from src.core.config import config
 from src.core.database import db_manager
 from src.core.limiter import limiter
@@ -67,7 +66,7 @@ def verify_admin_key(x_admin_key: Optional[str] = Header(None, alias="X-Admin-Ke
 
 def verify_admin_or_superadmin(
     x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key"),
-    request: Request = None,
+    request: Request = None,  # type: ignore
 ):
     """Allow either the service API key or a verified Superadmin Bearer JWT."""
     # --- Option A: X-Admin-Key ---
@@ -117,7 +116,7 @@ async def _repo1_request(
     body: Optional[dict] = None,
     params: Optional[dict] = None,
     forward_status: bool = False,
-) -> dict:
+) -> Any:
     """Send an authenticated request to Repo 1's admin API.
 
     Args:

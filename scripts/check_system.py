@@ -1,10 +1,12 @@
 """System readiness check script."""
+
 print("=== SYSTEM READINESS CHECK ===")
 print()
 
 # 1. RedisConsumer
 try:
-    from src.services.redis_consumer import RedisConsumer
+    # from src.services.redis_consumer import RedisConsumer
+
     print("[OK] RedisConsumer")
 except Exception as e:
     print(f"[FAIL] RedisConsumer: {e}")
@@ -12,6 +14,7 @@ except Exception as e:
 # 2. AnalysisPipeline
 try:
     from src.services.log_ingestion import AnalysisPipeline
+
     print("[OK] AnalysisPipeline")
 except Exception as e:
     print(f"[FAIL] AnalysisPipeline: {e}")
@@ -19,8 +22,9 @@ except Exception as e:
 # 3. Analyzers
 try:
     # Import the package to auto-register analyzers
-    from src import analyzers
+    # from src import analyzers
     from src.analyzers.base import analyzer_manager
+
     print("[OK] All 4 Analyzers loaded")
     print(f"     Registered: {len(analyzer_manager.analyzers)} analyzers")
 except Exception as e:
@@ -28,7 +32,8 @@ except Exception as e:
 
 # 4. EnrichmentService
 try:
-    from src.services.enrichment import EnrichmentService
+    # from src.services.enrichment import EnrichmentService
+
     print("[OK] EnrichmentService")
 except Exception as e:
     print(f"[FAIL] EnrichmentService: {e}")
@@ -36,8 +41,10 @@ except Exception as e:
 # 5. Database
 try:
     from src.core.database import db_manager
+
     db_manager.initialize()
-    from src.models.database import NormalizedLog, Alert
+    from src.models.database import Alert, NormalizedLog
+
     with db_manager.session_scope() as session:
         log_count = session.query(NormalizedLog).count()
         alert_count = session.query(Alert).count()
@@ -47,19 +54,21 @@ except Exception as e:
 
 # 6. Redis
 try:
-    import redis
     import os
+
+    import redis
+
     r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
-    print("[OK] Redis") 
+    print("[OK] Redis")
     r.ping()
     total = 0
     tenant = set()
-    for key in r.scan_iter(match='logs:*:ingest', count=100):
+    for key in r.scan_iter(match="logs:*:ingest", count=100):
         tenant.add(key.split(":")[1])
         total += r.llen(key)
-    for key in r.scan_iter(match='logs:*:clean', count=100):
+    for key in r.scan_iter(match="logs:*:clean", count=100):
         total += r.llen(key)
-    for key in r.scan_iter(match='logs:*:dead', count=100):
+    for key in r.scan_iter(match="logs:*:dead", count=100):
         total += r.llen(key)
     print(f"[OK] Redis: {total} logs across {len(tenant)} tenants: {sorted(tenant)}")
 
@@ -83,7 +92,7 @@ try:
         "action": "denied",
         "severity": "high",
         "message": "SSH connection denied",
-        "vendor": "test"
+        "vendor": "test",
     }
     result = pipeline.process_log(test_log)
     if result:

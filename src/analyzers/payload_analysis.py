@@ -2,7 +2,7 @@
 
 import logging
 import re
-from typing import Dict, List, Optional
+from typing import Optional
 
 from src.analyzers.base import BaseAnalyzer
 from src.models.database import Alert, NormalizedLog
@@ -124,11 +124,11 @@ class PayloadAnalysisAnalyzer(BaseAnalyzer):
                         return self.create_alert(
                             alert_type="payload_attack",
                             severity="high",
-                            source_ip=log.source_ip,
+                            source_ip=str(log.source_ip),
                             description=description,
                             details=details,
-                            tenant_id=log.tenant_id,
-                            destination_ip=log.destination_ip,
+                            tenant_id=str(log.tenant_id),
+                            destination_ip=str(log.destination_ip) if log.destination_ip else None,
                         )
 
         return None

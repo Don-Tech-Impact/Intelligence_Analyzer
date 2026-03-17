@@ -1,13 +1,13 @@
 """Tests for the Admin API Router (service-to-service endpoints)."""
 
 import os
+
 import pytest
 from fastapi.testclient import TestClient
 
 from src.api.main import app
 from src.core.database import db_manager
-from src.models.database import Base, Tenant, Alert, NormalizedLog, Report
-
+from src.models.database import Alert, Base, Tenant
 
 # Force both env var names so _get_admin_key() in admin_router picks up "changeme-admin-key"
 os.environ["ADMIN_KEY"] = "changeme-admin-key"
@@ -35,14 +35,16 @@ def test_db():
 
     # Create some alerts for acme_corp
     for sev in ["critical", "high", "medium", "low"]:
-        db.add(Alert(
-            tenant_id="acme_corp",
-            alert_type="brute_force",
-            severity=sev,
-            status="open",
-            description=f"Test {sev} alert",
-            source_ip="10.0.0.1"
-        ))
+        db.add(
+            Alert(
+                tenant_id="acme_corp",
+                alert_type="brute_force",
+                severity=sev,
+                status="open",
+                description=f"Test {sev} alert",
+                source_ip="10.0.0.1",
+            )
+        )
 
     db.commit()
     yield db
@@ -64,6 +66,7 @@ def client():
 
 # ===== Auth Tests =====
 
+
 class TestAdminAuth:
     def test_missing_admin_key_returns_401(self, client):
         """Missing X-Admin-Key header must return 401 (not 422) per Repo 1 contract."""
@@ -72,10 +75,7 @@ class TestAdminAuth:
 
     def test_wrong_admin_key_returns_401(self, client):
         """Wrong X-Admin-Key must return 401 per Repo 1 contract."""
-        resp = client.get(
-            "/api/admin/system/overview",
-            headers={"X-Admin-Key": "wrong-key"}
-        )
+        resp = client.get("/api/admin/system/overview", headers={"X-Admin-Key": "wrong-key"})
         assert resp.status_code == 401
 
     def test_correct_admin_key_passes(self, client):
@@ -85,6 +85,7 @@ class TestAdminAuth:
 
 
 # ===== System Overview Tests =====
+
 
 class TestSystemOverview:
     def test_returns_expected_shape(self, client):
@@ -141,13 +142,11 @@ class TestSystemOverview:
 
 # ===== Tenant Usage Tests =====
 
+
 class TestTenantUsage:
     def test_unknown_tenant_returns_empty_stats_not_404(self, client):
         """Hardening: Unknown tenants should return zeroed stats, not a 404, for Repo 1 compatibility."""
-        resp = client.get(
-            "/api/admin/tenants/unknown_tenant/usage",
-            headers=ADMIN_HEADERS
-        )
+        resp = client.get("/api/admin/tenants/unknown_tenant/usage", headers=ADMIN_HEADERS)
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert data["tenant_id"] == "unknown_tenant"
@@ -155,10 +154,7 @@ class TestTenantUsage:
         assert data["logs"]["total"] == 0
 
     def test_existing_tenant_returns_usage(self, client):
-        resp = client.get(
-            "/api/admin/tenants/acme_corp/usage",
-            headers=ADMIN_HEADERS
-        )
+        resp = client.get("/api/admin/tenants/acme_corp/usage", headers=ADMIN_HEADERS)
         assert resp.status_code == 200
 
         data = resp.json()["data"]
@@ -170,10 +166,7 @@ class TestTenantUsage:
         assert "reports" in data
 
     def test_tenant_alert_counts(self, client):
-        resp = client.get(
-            "/api/admin/tenants/acme_corp/usage",
-            headers=ADMIN_HEADERS
-        )
+        resp = client.get("/api/admin/tenants/acme_corp/usage", headers=ADMIN_HEADERS)
         data = resp.json()["data"]
 
         assert data["alerts"]["total"] == 4
@@ -181,10 +174,7 @@ class TestTenantUsage:
         assert data["alerts"]["by_severity"]["critical"] == 1
 
     def test_inactive_tenant_returns_usage(self, client):
-        resp = client.get(
-            "/api/admin/tenants/globex/usage",
-            headers=ADMIN_HEADERS
-        )
+        resp = client.get("/api/admin/tenants/globex/usage", headers=ADMIN_HEADERS)
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert data["is_active"] is False
@@ -196,8 +186,5 @@ class TestTenantUsage:
 
     def test_rejects_wrong_key(self, client):
         """Wrong X-Admin-Key must return 401 per Repo 1 contract."""
-        resp = client.get(
-            "/api/admin/tenants/acme_corp/usage",
-            headers={"X-Admin-Key": "bad-key"}
-        )
+        resp = client.get("/api/admin/tenants/acme_corp/usage", headers={"X-Admin-Key": "bad-key"})
         assert resp.status_code == 401

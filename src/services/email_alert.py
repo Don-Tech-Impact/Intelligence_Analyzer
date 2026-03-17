@@ -111,7 +111,7 @@ Tenant: {alert.tenant_id}
 Created At: {alert.created_at}
 
 Additional Details:
-{self._format_details(alert.details)}
+{self._format_details(dict(alert.details) if alert.details else {})}
 
 ---
 This is an automated alert from the SIEM Analyzer system.
@@ -128,9 +128,9 @@ This is an automated alert from the SIEM Analyzer system.
             Email body string
         """
         # Count by severity
-        severity_counts = {}
+        severity_counts: dict[str, int] = {}
         for alert in alerts:
-            severity = alert.severity
+            severity = str(alert.severity)
             severity_counts[severity] = severity_counts.get(severity, 0) + 1
 
         body = f"""

@@ -1,8 +1,9 @@
-import httpx
 import asyncio
-import sys
+
+import httpx
 
 BASE_URL = "http://localhost:8000"
+
 
 async def test_root_redirect():
     print("Test 1: Root Redirect to Login")
@@ -19,6 +20,7 @@ async def test_root_redirect():
         except Exception as e:
             print(f"  [ERROR] Connection failed: {e}")
 
+
 async def test_bot_blocking():
     print("\nTest 2: Bot Blocking (User-Agent: python-requests)")
     # 'python-requests' is in our blocked list
@@ -34,6 +36,7 @@ async def test_bot_blocking():
         except Exception as e:
             print(f"  [ERROR] Connection failed: {e}")
 
+
 async def test_docs_obscurity():
     print("\nTest 3: Documentation Obscurity")
     async with httpx.AsyncClient() as client:
@@ -46,33 +49,36 @@ async def test_docs_obscurity():
         except Exception as e:
             print(f"  [ERROR] Connection failed: {e}")
 
+
 async def test_honeypot_blocking():
     print("\nTest 4: Honeypot Trigger (Filling invisible field)")
-    payload = {
-        "email": "test@example.com",
-        "password": "any",
-        "website_url": "http://malicious-bot.com" # Honeypot field
-    }
-    async with httpx.AsyncClient() as client:
-        try:
-            # Note: The honeypot logic is currently in the HTML/JS for form submission,
-            # but the backend would also reject if standardized. 
-            # This test verifies the browser-level protection logic simulator.
-            print("  [INFO] Note: Honeypot is enforced in dashboard/login.html.")
-            print("  [INFO] Manual test: Open login.html, inspect, fill 'website_url', and submit.")
-        except Exception as e:
-            print(f"  [ERROR] {e}")
+    # payload = {
+    #     "email": "test@example.com",
+    #     "password": "any",
+    #     "website_url": "http://malicious-bot.com",  # Honeypot field
+    # }
+    # async with httpx.AsyncClient() as client:
+    #     try:
+    #         # Note: The honeypot logic is currently in the HTML/JS for form submission,
+    #         # but the backend would also reject if standardized.
+    #         # This test verifies the browser-level protection logic simulator.
+    #         print("  [INFO] Note: Honeypot is enforced in dashboard/login.html.")
+    #     print("  [INFO] Manual test: Open login.html, inspect, fill 'website_url', and submit.")
+    # except Exception as e:
+    #     print(f"  [ERROR] {e}")
+
 
 async def main():
     print("=== SIEM ENTRANCE HARDENING VERIFICATION ===\n")
     print("Ensure the server is running on http://localhost:8000 before starting.\n")
-    
+
     await test_root_redirect()
     await test_bot_blocking()
     await test_docs_obscurity()
     await test_honeypot_blocking()
-    
+
     print("\n=== VERIFICATION COMPLETE ===")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

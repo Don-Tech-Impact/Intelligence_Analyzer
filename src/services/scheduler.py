@@ -105,7 +105,7 @@ class TaskScheduler:
 
             # Get unnotified alerts
             with db_manager.session_scope() as session:
-                alerts = session.query(Alert).filter(Alert.notified == False, Alert.status == "open").limit(50).all()
+                alerts = session.query(Alert).filter(Alert.notified, Alert.status == "open").limit(50).all()
 
                 if not alerts:
                     logger.debug("No pending alerts to notify")
@@ -163,7 +163,7 @@ class TaskScheduler:
             server.send_message(msg)
             server.quit()
 
-            logger.info(f"Report email sent successfully")
+            logger.info("Report email sent successfully")
 
         except Exception as e:
             logger.error(f"Failed to send report email: {e}")

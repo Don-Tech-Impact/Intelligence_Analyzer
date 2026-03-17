@@ -1,0 +1,9 @@
+# Bandit configuration file
+# Ignored tests:
+# B101: assert_used (common in SIEM for internal logic validation)
+# B104: hardcoded_bind_all_interfaces (needed for some edge nodes)
+# B108: hardcoded_tmp_directory (needed for report generation)
+# B608: sql_injection (already using SQLAlchemy parameters/text())
+
+skips: ['B101', 'B104', 'B108', 'B608']
+exclude_dirs: ['tests', 'env', 'venv']

@@ -1,8 +1,9 @@
 """V1 API Router for afric-analyzer frontend."""
 
+import logging
 import os
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Dict, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -17,6 +18,9 @@ from src.models.schemas import ApiResponse
 from src.services.analytics import AnalyticsService
 from src.services.assets import AssetService
 from src.services.report_generator import ReportGenerator
+
+logger = logging.getLogger(__name__)
+
 
 # Create V1 router (protected by JWT)
 # Create V1 router (protected by JWT)
@@ -151,7 +155,7 @@ def list_logs(
     if vendor:
         query = query.filter(NormalizedLog.vendor == vendor)
     if device_type:
-        query = query.filter(NormalizedLog.device_type == device_type)
+        query = query.filter(NormalizedLog.log_type == device_type)
     if search:
         query = query.filter((NormalizedLog.message.contains(search)) | (NormalizedLog.raw_data.contains(search)))
 
@@ -251,7 +255,7 @@ def get_top_ips(
 async def get_business_insights(tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)):
     """Get insights on business vs after-hours activity."""
     # Attempt to fetch tenant config for business hours
-    config = {}
+    tenant_config: Dict[str, Any] = {}
     try:
         repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
         admin_key = os.getenv("ADMIN_KEY") or "changeme-admin-key"
@@ -259,11 +263,11 @@ async def get_business_insights(tenant_id: str = Depends(get_tenant_id), db: Ses
             res = await client.get(f"{repo1_url}/admin/tenants/{tenant_id}", headers={"X-Admin-Key": admin_key})
             if res.status_code == 200:
                 tenant_data = res.json()
-                config = tenant_data.get("config") or tenant_data.get("settings") or {}
+                tenant_config = tenant_data.get("config") or tenant_data.get("settings") or {}
     except Exception as e:
         logger.warning(f"Could not fetch tenant config for business hours: {e}")
 
-    data = AnalyticsService.get_business_insights(tenant_id, db, config=config)
+    data = AnalyticsService.get_business_insights(tenant_id, db, config=tenant_config)
     return ApiResponse(status="success", data=data)
 
 
@@ -356,7 +360,7 @@ def get_alert_detail(alert_id: int, tenant_id: str = Depends(get_tenant_id), db:
     )
 
     # Generate recommendations based on alert type
-    recommendations = _generate_recommendations(alert.alert_type, alert.severity)
+    recommendations = _generate_recommendations(str(alert.alert_type), str(alert.severity))
 
     return ApiResponse(
         status="success",

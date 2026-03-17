@@ -213,7 +213,7 @@ class LogAdapter:
         network = log.get("network", {})
         device = log.get("device", {})
         metadata = log.get("metadata", {})
-        threat_intel = log.get("threat_intel", {})
+        # threat_intel = log.get("threat_intel", {})
         business_context = log.get("business_context", {})
         raw = log.get("raw", {})
 
@@ -314,7 +314,7 @@ class LogAdapter:
     @staticmethod
     def _parse_network_fields(message: str) -> Dict[str, Any]:
         """Try to extract networking fields (IPs, Ports) from raw syslog string."""
-        fields = {}
+        fields: Dict[str, Any] = {}
         if not message or not isinstance(message, str):
             return fields
 
@@ -363,7 +363,7 @@ class LogAdapter:
         if isinstance(ts, (int, float)):
             try:
                 return datetime.fromtimestamp(ts)
-            except:
+            except ValueError:
                 return datetime.utcnow()
 
         if isinstance(ts, str):
@@ -374,9 +374,9 @@ class LogAdapter:
                     for fmt in ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"]:
                         try:
                             return datetime.strptime(ts, fmt)
-                        except:
+                        except ValueError:
                             continue
-                except:
+                except ValueError:
                     pass
 
         return datetime.utcnow()

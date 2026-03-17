@@ -12,28 +12,29 @@ ARCHITECTURE NOTES
 
 from datetime import datetime
 
-from sqlalchemy import (
+from sqlalchemy import (  # ForeignKey,; event,
     JSON,
     BigInteger,
     Boolean,
     Column,
     DateTime,
     Float,
-    ForeignKey,
     Index,
     Integer,
     String,
     Text,
-    event,
+    text,
 )
 
 # SQLite only auto-increments "INTEGER PRIMARY KEY" (not BIGINT).
 # This type uses BigInteger on PostgreSQL but Integer on SQLite.
 PortableBigInt = BigInteger().with_variant(Integer(), "sqlite")
-from sqlalchemy.dialects.postgresql import INET, JSONB
-from sqlalchemy.orm import Session, declarative_base, relationship
+# from sqlalchemy.dialects.postgresql import INET, JSONB
+from sqlalchemy.orm import DeclarativeBase, Session
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
 # =============================================================================
@@ -49,7 +50,7 @@ def set_tenant_context(session: Session, tenant_id: str):
             set_tenant_context(session, 'tenant_123')
             logs = session.query(NormalizedLog).all()  # Only tenant_123 logs
     """
-    session.execute(f"SET app.current_tenant = '{tenant_id}'")
+    session.execute(text(f"SET app.current_tenant = '{tenant_id}'"))
 
 
 class NormalizedLog(Base):

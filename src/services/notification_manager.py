@@ -1,4 +1,4 @@
-from typing import List
+# from typing import List
 
 from src.models.database import Alert
 from src.services.email_alert import EmailAlertService

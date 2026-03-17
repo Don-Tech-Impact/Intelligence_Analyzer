@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import String, cast, desc, func
 from sqlalchemy.orm import Session
 
-from src.core.database import db_manager
+# from src.core.database import db_manager
 from src.models.database import Alert, ManagedDevice, NormalizedLog
 
 logger = logging.getLogger(__name__)
@@ -205,17 +205,17 @@ class AssetService:
 
         # Assets by type (inferred from vendor)
         vendors = (
-            db.query(NormalizedLog.vendor, func.count(func.distinct(NormalizedLog.device_id)).label("count"))
+            db.query(NormalizedLog.vendor, func.count(func.distinct(NormalizedLog.device_id)).label("total_count"))
             .filter(NormalizedLog.tenant_id == tenant_id, NormalizedLog.device_id.isnot(None))
             .group_by(NormalizedLog.vendor)
             .all()
         )
 
         # Group by inferred type
-        type_counts = {}
+        type_counts: Dict[str, int] = {}
         for v in vendors:
             asset_type = AssetService._infer_asset_type(v.vendor)
-            type_counts[asset_type] = type_counts.get(asset_type, 0) + v.count
+            type_counts[asset_type] = type_counts.get(asset_type, 0) + v.total_count
 
         # Assets with threats (last 24h)
         last_24h = datetime.utcnow() - timedelta(hours=24)

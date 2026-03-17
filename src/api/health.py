@@ -4,12 +4,13 @@ import time
 from datetime import datetime
 
 import redis
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from sqlalchemy import text
 
 from src.core.config import config
 from src.core.database import db_manager
 
+from typing import Any, Dict, List, Set
 router = APIRouter(tags=["Health & Metrics"])
 
 # Metrics storage (in-memory for simplicity)
@@ -30,7 +31,7 @@ def health_check():
     Returns:
         Health status with component checks.
     """
-    health = {"status": "healthy", "timestamp": datetime.utcnow().isoformat(), "version": "1.0.0", "components": {}}
+    health: Dict[str, Any] = {"status": "healthy", "timestamp": datetime.utcnow().isoformat(), "version": "1.0.0", "components": {}}
 
     # Check database
     try:
@@ -200,7 +201,7 @@ def get_metrics_json():
     """
     uptime = time.time() - _metrics["start_time"]
 
-    result = {
+    result: Dict[str, Any] = {
         "logs_processed": _metrics["logs_processed"],
         "alerts_created": _metrics["alerts_created"],
         "api_requests": _metrics["api_requests"],

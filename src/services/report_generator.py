@@ -3,11 +3,11 @@
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import pandas as pd
 
-from src.core.config import config
+# from src.core.config import config
 from src.core.database import db_manager
 from src.models.database import Alert, NormalizedLog, Report
 
@@ -37,10 +37,13 @@ class ReportGenerator:
             Report object if generated successfully
         """
         if date is None:
-            date = datetime.utcnow().date() - timedelta(days=1)
+            comparison_date = (datetime.utcnow() - timedelta(days=1)).date()
+        else:
+            # Handle both date and datetime objects
+            comparison_date = date.date() if hasattr(date, "date") else date  # type: ignore
 
-        start_date = datetime.combine(date, datetime.min.time())
-        end_date = datetime.combine(date, datetime.max.time())
+        start_date = datetime.combine(comparison_date, datetime.min.time())
+        end_date = datetime.combine(comparison_date, datetime.max.time())
 
         return self.generate_report(start_date=start_date, end_date=end_date, report_type="daily", tenant_id=tenant_id)
 
@@ -123,9 +126,9 @@ class ReportGenerator:
                 .all()
             )
 
-            severity_counts = {}
-            alert_type_counts = {}
-            source_ip_counts = {}
+            severity_counts: Dict[str, int] = {}
+            alert_type_counts: Dict[str, int] = {}
+            source_ip_counts: Dict[str, int] = {}
 
             for alert in alerts:
                 # Count by severity
@@ -156,7 +159,7 @@ class ReportGenerator:
                 .all()
             )
 
-            log_type_counts = {}
+            log_type_counts: Dict[str, int] = {}
             for log in logs:
                 log_type = log.log_type or "unknown"
                 log_type_counts[log_type] = log_type_counts.get(log_type, 0) + 1
@@ -214,116 +217,151 @@ class ReportGenerator:
         critical_alerts = data.get("alerts_by_severity", {}).get("critical", 0)
 
         html = f"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Executive Security Report | Intelligence Analyzer</title>
-    <style>
-        :root {{
-            --primary: {PRIMARY};
-            --accent: {ACCENT};
-            --success: {SUCCESS};
-            --danger: {DANGER};
-            --text-dim: {TEXT_DIM};
-        }}
-        body {{ 
-            font-family: 'Inter', system-ui, -apple-system, sans-serif; 
-            margin: 0; padding: 0; background: #F8FAFC; color: #1E293B; line-height: 1.6;
-        }}
-        .sidebar-stripe {{ position: fixed; left: 0; top: 0; bottom: 0; width: 6px; background: var(--primary); }}
-        .container {{ max-width: 900px; margin: 40px auto; background: white; padding: 50px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border-radius: 8px; }}
-        
-        .header {{ display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; border-bottom: 1px solid #E2E8F0; padding-bottom: 30px; }}
-        .logo-area {{ display: flex; align-items: center; gap: 15px; }}
-        .logo-icon {{ background: var(--primary); color: white; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; }}
-        .report-title {{ letter-spacing: -0.02em; font-weight: 800; font-size: 24px; color: var(--primary); }}
-        
-        .confidential-notice {{ font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--danger); font-weight: 700; margin-bottom: 20px; }}
-        
-        .meta-grid {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; font-size: 13px; color: var(--text-dim); margin-bottom: 30px; }}
-        .meta-item b {{ color: #1E293B; margin-right: 5px; }}
-        
-        .summary-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 40px; }}
-        .stat-card {{ background: #F1F5F9; padding: 20px; border-radius: 12px; border: 1px solid #E2E8F0; }}
-        .stat-label {{ font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; margin-bottom: 5px; }}
-        .stat-value {{ font-size: 28px; font-weight: 800; color: var(--primary); }}
-        .stat-card.alert {{ border-left: 4px solid var(--danger); }}
-        
-        h2 {{ font-size: 18px; font-weight: 700; margin-top: 40px; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; }}
-        h2::after {{ content: ''; flex: 1; height: 1px; background: #E2E8F0; }}
-        
-        table {{ border-collapse: collapse; width: 100%; font-size: 14px; margin-top: 10px; }}
-        th {{ text-align: left; padding: 12px 15px; background: #F8FAFC; border-bottom: 2px solid #E2E8F0; color: var(--text-dim); font-weight: 600; text-transform: uppercase; font-size: 11px; }}
-        td {{ padding: 12px 15px; border-bottom: 1px solid #F1F5F9; }}
-        
-        .severity-pill {{ display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; }}
-        .sev-critical {{ background: rgba(239, 68, 68, 0.1); color: var(--danger); }}
-        .sev-high {{ background: rgba(245, 158, 11, 0.1); color: #D97706; }}
-        .sev-medium {{ background: rgba(59, 130, 246, 0.1); color: var(--accent); }}
-        .sev-low {{ background: rgba(34, 197, 94, 0.1); color: var(--success); }}
-        
-        .footer {{ margin-top: 60px; padding-top: 20px; border-top: 1px solid #E2E8F0; font-size: 12px; color: var(--text-dim); text-align: center; }}
-        
-        @media print {{
-            body {{ background: white; }}
-            .container {{ box-shadow: none; margin: 0; width: 100%; max-width: 100%; }}
-        }}
-    </style>
-</head>
-<body>
-    <div class="sidebar-stripe"></div>
-    <div class="container">
-        <div class="confidential-notice">Security Classification: Internal Use Only</div>
-        
-        <div class="header">
-            <div class="logo-area">
-                <div class="logo-icon">A</div>
-                <div>
-                    <div class="report-title">Security Intelligence Executive Summary</div>
-                    <div style="color: var(--text-dim); font-size: 14px;">Intelligence Analyzer Platform</div>
-                </div>
-            </div>
-            <div style="text-align: right;">
-                <div style="font-weight: 700; font-size: 12px;">VERSION 1.0</div>
-                <div style="font-size: 12px; color: var(--text-dim);">ID: {datetime.utcnow().strftime('%Y-%j')}</div>
-            </div>
-        </div>
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <title>Executive Security Report | Intelligence Analyzer</title>
+                <style>
+                    :root {{
+                        --primary: {PRIMARY};
+                        --accent: {ACCENT};
+                        --success: {SUCCESS};
+                        --danger: {DANGER};
+                        --text-dim: {TEXT_DIM};
+                    }}
+                    body {{
+                        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+                        margin: 0; padding: 0; background: #F8FAFC; color: #1E293B; line-height: 1.6;
+                    }}
+                    .sidebar-stripe {{
+                        position: fixed; left: 0; top: 0; bottom: 0; width: 6px; background: var(--primary);
+                    }}
+                    .container {{
+                        max-width: 900px; margin: 40px auto; background: white; padding: 50px;
+                        box-shadow: 0 10px 25px rgba(0,0,0,0.05); border-radius: 8px;
+                    }}
 
-        <div class="meta-grid">
-            <div class="meta-item"><b>REPORT PERIOD:</b> {start_date.strftime('%b %d, %Y')} &mdash; {end_date.strftime('%b %d, %Y')}</div>
-            <div class="meta-item"><b>GENERATED ON:</b> {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</div>
-            <div class="meta-item"><b>TENANT SCOPE:</b> {data.get('tenant_id', 'Enterprise Default')}</div>
-            <div class="meta-item"><b>COMPLIANCE SCOPE:</b> SOC2 / ISO 27001 Baseline</div>
-        </div>
+                    .header {{
+                        display: flex; justify-content: space-between; align-items: flex-start;
+                        margin-bottom: 40px; border-bottom: 1px solid #E2E8F0; padding-bottom: 30px;
+                    }}
+                    .logo-area {{ display: flex; align-items: center; gap: 15px; }}
+                    .logo-icon {{
+                        background: var(--primary); color: white; width: 40px; height: 40px;
+                        border-radius: 8px; display: flex; align-items: center; justify-content: center;
+                        font-weight: bold; font-size: 20px;
+                    }}
+                    .report-title {{ letter-spacing: -0.02em; font-weight: 800; font-size: 24px; color: var(--primary); }}
 
-        <div class="summary-grid">
-            <div class="stat-card">
-                <div class="stat-label">Ingested Logs</div>
-                <div class="stat-value">{total_logs:,}</div>
-            </div>
-            <div class="stat-card alert">
-                <div class="stat-label">Security Alerts</div>
-                <div class="stat-value">{total_alerts:,}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Critical Risks</div>
-                <div class="stat-value" style="color: var(--danger);">{critical_alerts}</div>
-            </div>
-        </div>
+                    .confidential-notice {{
+                        font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
+                        color: var(--danger); font-weight: 700; margin-bottom: 20px;
+                    }}
 
-        <h2>Risk Distribution</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Risk Severity</th>
-                    <th>Incident Count</th>
-                    <th>Proportional Volume</th>
-                </tr>
-            </thead>
-            <tbody>
-"""
+                    .meta-grid {{
+                        display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;
+                        font-size: 13px; color: var(--text-dim); margin-bottom: 30px;
+                    }}
+                    .meta-item b {{ color: #1E293B; margin-right: 5px; }}
 
+                    .summary-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 40px; }}
+                    .stat-card {{
+                        background: #F1F5F9; padding: 20px; border-radius: 12px; border: 1px solid #E2E8F0;
+                    }}
+                    .stat-label {{
+                        font-size: 12px; font-weight: 600; color: var(--text-dim);
+                        text-transform: uppercase; margin-bottom: 5px;
+                    }}
+                    .stat-value {{ font-size: 28px; font-weight: 800; color: var(--primary); }}
+                    .stat-card.alert {{ border-left: 4px solid var(--danger); }}
+
+                    h2 {{
+                        font-size: 18px; font-weight: 700; margin-top: 40px; margin-bottom: 15px;
+                        display: flex; align-items: center; gap: 10px;
+                    }}
+                    h2::after {{ content: ''; flex: 1; height: 1px; background: #E2E8F0; }}
+
+                    table {{ border-collapse: collapse; width: 100%; font-size: 14px; margin-top: 10px; }}
+                    th {{
+                        text-align: left; padding: 12px 15px; background: #F8FAFC;
+                        border-bottom: 2px solid #E2E8F0; color: var(--text-dim);
+                        font-weight: 600; text-transform: uppercase; font-size: 11px;
+                    }}
+                    td {{ padding: 12px 15px; border-bottom: 1px solid #F1F5F9; }}
+
+                    .severity-pill {{
+                        display: inline-block; padding: 3px 10px; border-radius: 20px;
+                        font-size: 11px; font-weight: 700; text-transform: uppercase;
+                    }}
+                    .sev-critical {{ background: rgba(239, 68, 68, 0.1); color: var(--danger); }}
+                    .sev-high {{ background: rgba(245, 158, 11, 0.1); color: #D97706; }}
+                    .sev-medium {{ background: rgba(59, 130, 246, 0.1); color: var(--accent); }}
+                    .sev-low {{ background: rgba(34, 197, 94, 0.1); color: var(--success); }}
+
+                    .footer {{
+                        margin-top: 60px; padding-top: 20px; border-top: 1px solid #E2E8F0;
+                        font-size: 12px; color: var(--text-dim); text-align: center;
+                    }}
+
+                    @media print {{
+                        body {{ background: white; }}
+                        .container {{ box-shadow: none; margin: 0; width: 100%; max-width: 100%; }}
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class="sidebar-stripe"></div>
+                <div class="container">
+                    <div class="confidential-notice">Security Classification: Internal Use Only</div>
+
+                    <div class="header">
+                        <div class="logo-area">
+                            <div class="logo-icon">A</div>
+                            <div>
+                                <div class="report-title">Security Intelligence Executive Summary</div>
+                                <div style="color: var(--text-dim); font-size: 14px;">Intelligence Analyzer Platform</div>
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-weight: 700; font-size: 12px;">VERSION 1.0</div>
+                            <div style="font-size: 12px; color: var(--text-dim);">ID: {datetime.utcnow().strftime('%Y-%j')}</div>
+                        </div>
+                    </div>
+
+                    <div class="meta-grid">
+                        <div class="meta-item"><b>REPORT PERIOD:</b> {start_date.strftime('%b %d, %Y')} &mdash; {end_date.strftime('%b %d, %Y')}</div>
+                        <div class="meta-item"><b>GENERATED ON:</b> {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</div>
+                        <div class="meta-item"><b>TENANT SCOPE:</b> {data.get('tenant_id', 'Enterprise Default')}</div>
+                        <div class="meta-item"><b>COMPLIANCE SCOPE:</b> SOC2 / ISO 27001 Baseline</div>
+                    </div>
+
+                    <div class="summary-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Ingested Logs</div>
+                            <div class="stat-value">{total_logs:,}</div>
+                        </div>
+                        <div class="stat-card alert">
+                            <div class="stat-label">Security Alerts</div>
+                            <div class="stat-value">{total_alerts:,}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Critical Risks</div>
+                            <div class="stat-value" style="color: var(--danger);">{critical_alerts}</div>
+                        </div>
+                    </div>
+
+                    <h2>Risk Distribution</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Risk Severity</th>
+                                <th>Incident Count</th>
+                                <th>Proportional Volume</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            """
         severities = ["critical", "high", "medium", "low"]
         for sev in severities:
             count = data.get("alerts_by_severity", {}).get(sev, 0)

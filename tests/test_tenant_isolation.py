@@ -1,14 +1,15 @@
 """Tests for Tenant Isolation and Data Privacy."""
 
 import os
-import pytest
-from fastapi.testclient import TestClient
 from datetime import datetime
 
+import pytest
+from fastapi.testclient import TestClient
+
+from src.api.auth import verify_jwt
 from src.api.main import app
 from src.core.database import db_manager
-from src.models.database import Base, Tenant, Alert, NormalizedLog
-from src.api.auth import verify_jwt
+from src.models.database import Alert, Base, NormalizedLog, Tenant
 
 # ---------------------------------------------------------------------------
 # Mock JWT — V1 router requires verify_jwt on every endpoint.
@@ -27,6 +28,7 @@ client = TestClient(app)
 TENANT_A = "company_alpha"
 TENANT_B = "company_beta"
 
+
 @pytest.fixture(scope="module", autouse=True)
 def test_db():
     """Setup a multi-tenant test database."""
@@ -44,31 +46,37 @@ def test_db():
     db.add(Tenant(tenant_id=TENANT_B, name="Company Beta"))
 
     # Add logs for Tenant A
-    db.add(NormalizedLog(
-        tenant_id=TENANT_A,
-        log_type="access",
-        source_ip="1.1.1.1",
-        message="Alpha sensitive log",
-        timestamp=datetime.utcnow()
-    ))
+    db.add(
+        NormalizedLog(
+            tenant_id=TENANT_A,
+            log_type="access",
+            source_ip="1.1.1.1",
+            message="Alpha sensitive log",
+            timestamp=datetime.utcnow(),
+        )
+    )
 
     # Add logs for Tenant B
-    db.add(NormalizedLog(
-        tenant_id=TENANT_B,
-        log_type="access",
-        source_ip="2.2.2.2",
-        message="Beta sensitive log",
-        timestamp=datetime.utcnow()
-    ))
+    db.add(
+        NormalizedLog(
+            tenant_id=TENANT_B,
+            log_type="access",
+            source_ip="2.2.2.2",
+            message="Beta sensitive log",
+            timestamp=datetime.utcnow(),
+        )
+    )
 
     # Add alert for Tenant A
-    db.add(Alert(
-        tenant_id=TENANT_A,
-        alert_type="malware",
-        severity="critical",
-        status="open",
-        description="Alpha critical alert"
-    ))
+    db.add(
+        Alert(
+            tenant_id=TENANT_A,
+            alert_type="malware",
+            severity="critical",
+            status="open",
+            description="Alpha critical alert",
+        )
+    )
 
     db.commit()
     yield db
@@ -86,12 +94,12 @@ class TestTenantIsolation:
         resp = client.get(f"/api/v1/logs?tenant_id={TENANT_A}")
         assert resp.status_code == 200
         data = resp.json()["data"]
-        
+
         # Should only have 1 log (Alpha)
         assert len(data) == 1
         assert data[0]["tenant_id"] == TENANT_A
         assert "Alpha" in data[0]["message"]
-        
+
         # Verify negative: no Beta log
         assert all("Beta" not in log["message"] for log in data)
 
@@ -100,7 +108,7 @@ class TestTenantIsolation:
         resp = client.get(f"/api/v1/alerts?tenant_id={TENANT_B}")
         assert resp.status_code == 200
         data = resp.json()["data"]
-        
+
         # Should be empty (no alerts added for B in fixture)
         assert len(data) == 0
 
@@ -108,7 +116,7 @@ class TestTenantIsolation:
         """Summary counts should be isolated per tenant."""
         resp_a = client.get(f"/api/v1/dashboard/summary?tenant_id={TENANT_A}")
         data_a = resp_a.json()["data"]
-        
+
         resp_b = client.get(f"/api/v1/dashboard/summary?tenant_id={TENANT_B}")
         data_b = resp_b.json()["data"]
 

@@ -27,8 +27,7 @@ Accuracy:
 
 import logging
 import os
-from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 import redis
 
@@ -172,7 +171,7 @@ class BruteForceAnalyzer(BaseAnalyzer):
             key = self._get_redis_key(tenant_id, source_ip)
 
             # Increment counter
-            count = self.redis_client.incr(key)
+            count = int(self.redis_client.incr(key))  # type: ignore
 
             # Set expiration on first increment
             if count == 1:

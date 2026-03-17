@@ -1,10 +1,11 @@
 import json
-import time
 import random
-import uuid
 import sys
+import time
+import uuid
+from datetime import datetime
+
 import redis
-from datetime import datetime, timedelta
 
 # Configuration
 REDIS_URL = "redis://localhost:6379/0"
@@ -23,11 +24,14 @@ DEVICES = [
 # Attack Patterns
 ATTACK_IPS = ["192.168.50.1", "45.33.22.11", "91.22.33.44", "203.0.113.5", "185.199.108.153"]
 
+
 def get_redis():
     return redis.from_url(REDIS_URL, decode_responses=True)
 
+
 def send_log(r, log_data):
     r.lpush(INGEST_QUEUE, json.dumps(log_data))
+
 
 def generate_v1_log(device, message, level="info", source_ip=None):
     return {
@@ -41,9 +45,10 @@ def generate_v1_log(device, message, level="info", source_ip=None):
             "device_type": device["type"],
             "source_ip": source_ip or device["ip"],
             "device_hostname": device["hostname"],
-            "vendor": device["vendor"]
-        }
+            "vendor": device["vendor"],
+        },
     }
+
 
 def stage_1_basic(r):
     print("Running Stage 1: Basic logs...")
@@ -54,6 +59,7 @@ def stage_1_basic(r):
         send_log(r, log)
         print(f" Sent log from {device['hostname']}")
         time.sleep(1)
+
 
 def stage_2_business(r):
     print("Running Stage 2: Massive business day logs...")
@@ -67,11 +73,12 @@ def stage_2_business(r):
         time.sleep(0.1)
     print("Stage 2 Complete.")
 
+
 def stage_3_attack(r):
     print("Running Stage 3: Massive attack logs...")
     # 1. Brute Force Simulation
     attacker_ip = ATTACK_IPS[0]
-    target_device = DEVICES[3] # VPN GW
+    target_device = DEVICES[3]  # VPN GW
     print(f"Simulating Brute Force on {target_device['hostname']} from {attacker_ip}...")
     for _ in range(20):
         msg = f"%ASA-6-605005: Login permitted from {attacker_ip} for user 'admin' on interface outside"
@@ -83,7 +90,7 @@ def stage_3_attack(r):
 
     # 2. Port Scan Simulation
     attacker_ip_2 = ATTACK_IPS[1]
-    target_srv = DEVICES[1] # WEB SRV
+    target_srv = DEVICES[1]  # WEB SRV
     print(f"Simulating Port Scan on {target_srv['hostname']} from {attacker_ip_2}...")
     for port in range(20, 100):
         msg = f"Connection attempt from {attacker_ip_2} to {target_srv['ip']}:{port} blocked by policy"
@@ -102,6 +109,7 @@ def stage_3_attack(r):
         time.sleep(0.01)
     print("Stage 3 Complete.")
 
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python log_simulator.py <stage1|stage2|stage3>")
@@ -109,7 +117,7 @@ if __name__ == "__main__":
 
     stage = sys.argv[1]
     r = get_redis()
-    
+
     if stage == "stage1":
         stage_1_basic(r)
     elif stage == "stage2":

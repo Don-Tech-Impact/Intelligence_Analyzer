@@ -1,13 +1,13 @@
 """Log ingestion service."""
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, Optional
 
 # Import analyzers package to auto-register all analyzers
-from src import analyzers
+# from src import analyzers
 from src.analyzers.base import analyzer_manager
-from src.core.config import config
+
+# from src.core.config import config
 from src.core.database import db_manager
 from src.models.database import Alert, NormalizedLog
 from src.services.enrichment import EnrichmentService

@@ -24,14 +24,14 @@ class ThreatIntelAnalyzer(BaseAnalyzer):
 
         # Check source IP
         if hasattr(log, "source_ip") and log.source_ip:
-            threat = self._check_ip(log.source_ip)
+            threat = self._check_ip(str(log.source_ip))
             if threat:
                 logger.warning(f"ThreatIntel: MATCH FOUND for source IP {log.source_ip}")
                 return self._create_threat_alert(log, threat, "source")
 
         # Check destination IP
         if hasattr(log, "destination_ip") and log.destination_ip:
-            threat = self._check_ip(log.destination_ip)
+            threat = self._check_ip(str(log.destination_ip))
             if threat:
                 logger.warning(f"ThreatIntel: MATCH FOUND for destination IP {log.destination_ip}")
                 return self._create_threat_alert(log, threat, "destination")
@@ -55,7 +55,7 @@ class ThreatIntelAnalyzer(BaseAnalyzer):
                     .filter(
                         ThreatIntelligence.indicator_type == "ip",
                         ThreatIntelligence.indicator_value == ip_address,
-                        ThreatIntelligence.is_active == True,
+                        ThreatIntelligence.is_active,
                     )
                     .first()
                 )
@@ -114,9 +114,9 @@ class ThreatIntelAnalyzer(BaseAnalyzer):
         return self.create_alert(
             alert_type="threat_intel",
             severity=severity,
-            source_ip=log.source_ip,
+            source_ip=str(log.source_ip),
             description=description,
             details=details,
-            tenant_id=log.tenant_id,
-            destination_ip=log.destination_ip,
+            tenant_id=str(log.tenant_id),
+            destination_ip=str(log.destination_ip) if log.destination_ip else None,
         )

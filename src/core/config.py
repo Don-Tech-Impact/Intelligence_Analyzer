@@ -81,16 +81,16 @@ class Config:
 
         # Navigate nested dictionary
         keys = key.split(".")
-        value = self._config
+        current_val: Any = self._config
         for k in keys:
-            if isinstance(value, dict):
-                value = value.get(k)
+            if isinstance(current_val, dict):
+                current_val = current_val.get(k)
             else:
                 return default
-            if value is None:
+            if current_val is None:
                 return default
 
-        return value
+        return current_val
 
     def _cast_value(self, value: str) -> Any:
         """Cast string value to appropriate type."""
@@ -125,7 +125,7 @@ class Config:
             return "sqlite"
 
         # Then check config
-        return self.get("database.type", "sqlite")
+        return str(self.get("database.type", "sqlite"))
 
     @property
     def database_url(self) -> str:
@@ -137,7 +137,7 @@ class Config:
 
         db_type = self.database_type
         if db_type == "sqlite":
-            db_name = self.get("database.name", "siem_analyzer")
+            db_name = str(self.get("database.name", "siem_analyzer"))
             return f"sqlite:///{db_name}.db"
 
         elif db_type == "postgresql":
@@ -187,7 +187,7 @@ class Config:
     @property
     def redis_queue_scan_interval(self) -> int:
         """How often (seconds) to re-scan for new tenant queues."""
-        return self.get("redis.queue_scan_interval", 30)
+        return int(self.get("redis.queue_scan_interval", 30))
 
     @property
     def redis_ingest_queue(self) -> str:

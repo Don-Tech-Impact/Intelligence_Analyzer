@@ -1,10 +1,12 @@
 """Enrichment service for Intelligence Analyzer."""
 
 import logging
-from typing import Any, Dict, Optional
 
 from src.core.database import db_manager
 from src.models.database import ThreatIntelligence
+
+# from typing import Any, Dict, Optional
+
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +42,7 @@ class EnrichmentService:
             # Check source IP
             intel = (
                 session.query(ThreatIntelligence)
-                .filter(ThreatIntelligence.indicator_value == log.source_ip, ThreatIntelligence.is_active == True)
+                .filter(ThreatIntelligence.indicator_value == log.source_ip, ThreatIntelligence.is_active)
                 .first()
             )
 

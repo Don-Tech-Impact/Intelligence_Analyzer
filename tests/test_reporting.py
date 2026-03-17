@@ -1,19 +1,22 @@
-import pytest
-from datetime import datetime, timedelta
-from src.services.report_generator import ReportGenerator
-from src.core.database import db_manager
-from src.models.database import NormalizedLog, Alert, Base
 import os
+from datetime import datetime, timedelta
+
+import pytest
+
+from src.core.database import db_manager
+from src.models.database import Alert, Base, NormalizedLog
+from src.services.report_generator import ReportGenerator
+
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_db():
     # Use in-memory database for tests
-    _orig_db_url = os.environ.get('DATABASE_URL')
-    os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
+    _orig_db_url = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
     db_manager.initialize()
     Base.metadata.drop_all(db_manager.engine)
     Base.metadata.create_all(db_manager.engine)
-    
+
     # Add some dummy data
     with db_manager.session_scope() as session:
         # Logs
@@ -23,55 +26,52 @@ def setup_db():
                 timestamp=datetime.utcnow() - timedelta(hours=i),
                 source_ip=f"192.168.1.{10+i}",
                 log_type="firewall",
-                severity="low"
+                severity="low",
             )
             session.add(log)
-        
+
         # Alerts
         alert = Alert(
             tenant_id="report_tenant",
             alert_type="Brute Force",
             severity="high",
             source_ip="1.2.3.4",
-            description="Test Alert"
+            description="Test Alert",
         )
         session.add(alert)
         session.commit()
-    
+
     yield
-    
+
     # Cleanup
     db_manager.close()
     if db_manager.engine:
         db_manager.engine.dispose()
     # Restore original DATABASE_URL to prevent env pollution
     if _orig_db_url is not None:
-        os.environ['DATABASE_URL'] = _orig_db_url
+        os.environ["DATABASE_URL"] = _orig_db_url
     else:
-        os.environ.pop('DATABASE_URL', None)
+        os.environ.pop("DATABASE_URL", None)
+
 
 def test_generate_daily_report():
     generator = ReportGenerator(output_dir="test_reports")
     # Yesterday's report
     yesterday = datetime.utcnow() - timedelta(days=1)
-    
+
     # Add a log for yesterday
     with db_manager.session_scope() as session:
         log = NormalizedLog(
-            tenant_id="report_tenant",
-            timestamp=yesterday,
-            source_ip="1.1.1.1",
-            log_type="firewall",
-            severity="info"
+            tenant_id="report_tenant", timestamp=yesterday, source_ip="1.1.1.1", log_type="firewall", severity="info"
         )
         session.add(log)
-    
+
     report = generator.generate_daily_report(date=yesterday.date(), tenant_id="report_tenant")
-    
+
     assert report is not None
     assert report.total_logs >= 1
     assert os.path.exists(report.file_path)
-    
+
     # Cleanup generated files
     if os.path.exists(report.file_path):
         os.remove(report.file_path)
@@ -80,13 +80,14 @@ def test_generate_daily_report():
         if os.path.exists(csv_path):
             os.remove(csv_path)
 
+
 def test_collect_report_data():
     generator = ReportGenerator()
     start = datetime.utcnow() - timedelta(days=1)
     end = datetime.utcnow()
-    
+
     data = generator._collect_report_data(start, end, "report_tenant")
-    
+
     assert "total_logs" in data
     assert "total_alerts" in data
     assert "alerts_by_severity" in data

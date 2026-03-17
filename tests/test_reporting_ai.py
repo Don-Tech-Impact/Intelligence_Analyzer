@@ -1,13 +1,14 @@
 """Tests for Reporting and AI Assistant endpoints."""
 
+import os
+from datetime import datetime, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
-from datetime import datetime, timedelta
-import os
 
 from src.api.main import app
 from src.core.database import db_manager
-from src.models.database import NormalizedLog, Alert, Report
+from src.models.database import Alert, NormalizedLog, Report
 
 # Force admin key so _get_admin_key() resolves correctly regardless of .env.production
 os.environ["ADMIN_KEY"] = "changeme-admin-key"
@@ -19,6 +20,7 @@ app.state.limiter.enabled = False
 client = TestClient(app)
 ADMIN_API_KEY = "changeme-admin-key"
 
+
 @pytest.fixture(scope="module")
 def setup_db():
     """Initialize database for tests."""
@@ -27,6 +29,7 @@ def setup_db():
     # Cleanup after tests
     if db_manager.engine:
         db_manager.engine.dispose()
+
 
 @pytest.fixture(scope="module")
 def sample_data(setup_db):
@@ -42,10 +45,10 @@ def sample_data(setup_db):
                 message=f"Attack simulation {i}",
                 severity=["low", "medium", "high", "critical"][i % 4],
                 vendor="Firewall-X",
-                log_type="security"
+                log_type="security",
             )
             session.add(log)
-            
+
         # Create some alerts
         for i in range(10):
             alert = Alert(
@@ -54,11 +57,12 @@ def sample_data(setup_db):
                 severity=["high", "critical", "medium"][i % 3],
                 source_ip="192.168.1.100",
                 description=f"Persistent brute force {i}",
-                status="open"
+                status="open",
             )
             session.add(alert)
         session.commit()
     return True
+
 
 class TestReportingAI:
     """Test the newly implemented reporting and AI related endpoints."""
@@ -69,24 +73,20 @@ class TestReportingAI:
             "tenant_id": "default",
             "report_type": "custom",
             "start_date": (datetime.utcnow() - timedelta(days=5)).isoformat(),
-            "end_date": datetime.utcnow().isoformat()
+            "end_date": datetime.utcnow().isoformat(),
         }
         headers = {"X-Admin-Key": ADMIN_API_KEY}
         response = client.post("/reports/generate", json=payload, headers=headers)
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
         assert "report_id" in data
         """Test the manual report generation endpoint."""
-        payload = {
-            "tenant_id": "default",
-            "report_type": "daily",
-            "days_back": 1
-        }
+        payload = {"tenant_id": "default", "report_type": "daily", "days_back": 1}
         headers = {"X-Admin-Key": ADMIN_API_KEY}
         response = client.post("/reports/generate", json=payload, headers=headers)
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
@@ -96,7 +96,7 @@ class TestReportingAI:
         """Test listing reports."""
         headers = {"X-Admin-Key": ADMIN_API_KEY}
         response = client.get("/reports?tenant_id=default", headers=headers)
-        
+
         assert response.status_code == 200
         reports = response.json()
         assert isinstance(reports, list)
@@ -108,7 +108,7 @@ class TestReportingAI:
         headers = {"X-Admin-Key": ADMIN_API_KEY}
         gen_res = client.post("/reports/generate", json={"tenant_id": "default"}, headers=headers)
         report_id = gen_res.json()["report_id"]
-        
+
         response = client.get(f"/reports/{report_id}/content", headers=headers)
         assert response.status_code == 200
         data = response.json()
@@ -122,7 +122,7 @@ class TestReportingAI:
         headers = {"X-Admin-Key": ADMIN_API_KEY}
         gen_res = client.post("/reports/generate", json={"tenant_id": "default"}, headers=headers)
         report_id = gen_res.json()["report_id"]
-        
+
         response = client.get(f"/reports/{report_id}/download", headers=headers)
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/html; charset=utf-8"

@@ -125,7 +125,8 @@ class BeaconingAnalyzer(BaseAnalyzer):
         # Try parsing string
         try:
             return datetime.fromisoformat(str(timestamp).replace("Z", "+00:00")).timestamp()
-        except:
+        except Exception as e:
+            logger.error(f"Failed to parse timestamp: {e}")
             return datetime.utcnow().timestamp()
 
     def _calculate_jitter(self, timestamps: List[float]) -> Tuple[float, float, float]:
@@ -228,7 +229,8 @@ class BeaconingAnalyzer(BaseAnalyzer):
             # =========================================================
             if len(timestamps) < self.min_occurrences:
                 logger.debug(
-                    f"Beaconing check {source_ip}→{dest_ip}: {len(timestamps)} connections (need {self.min_occurrences})"
+                    f"Beaconing check {source_ip}→{dest_ip}: "
+                    f"{len(timestamps)} connections (need {self.min_occurrences})"
                 )
                 return None
 
@@ -293,7 +295,7 @@ class BeaconingAnalyzer(BaseAnalyzer):
 
         try:
             key = self._get_redis_key(tenant_id, source_ip, dest_ip)
-            timestamps = self.redis_client.zrange(key, 0, -1, withscores=True)
+            timestamps = self.redis_client.zrange(key, 0, -1, withscores=True)  # type: ignore
             return [datetime.fromtimestamp(score) for _, score in timestamps]
         except redis.RedisError:
             return []

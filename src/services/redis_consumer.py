@@ -28,7 +28,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
-import httpx
+# import httpx
 import redis
 from redis.exceptions import ConnectionError, RedisError
 
@@ -37,7 +37,8 @@ from src.core.config import config
 from src.core.database import db_manager
 from src.models.database import Alert, DeadLetter, NormalizedLog
 from src.services.assets import AssetService
-from src.services.enrichment import EnrichmentService
+
+# from src.services.enrichment import EnrichmentService
 from src.services.log_adapter import LogAdapter
 
 logger = logging.getLogger(__name__)
@@ -81,7 +82,7 @@ class RedisConsumer:
         self.last_batch_time = time.time()
 
         # Metrics
-        self.metrics = {
+        self.metrics: Dict[str, Any] = {
             "logs_processed": 0,
             "logs_failed": 0,
             "batches_committed": 0,
@@ -571,8 +572,9 @@ class RedisConsumer:
                         for k, v in d.items():
                             setattr(self, k, v)
 
+                from typing import cast
                 log_proxy = LogProxy(log_dict)
-                alerts = analyzer_manager.analyze_log(log_proxy)
+                alerts = analyzer_manager.analyze_log(cast(NormalizedLog, log_proxy))
 
                 if alerts:
                     # Filter out None and handle potential duplicates
@@ -589,17 +591,17 @@ class RedisConsumer:
                     for alert in valid_alerts:
                         # --- Confidence-weighted severity ---
                         if confidence < 0.5:
-                            if alert.severity == "critical":
+                            if str(alert.severity) == "critical":
                                 alert.severity = "medium"
-                            elif alert.severity == "high":
+                            elif str(alert.severity) == "high":
                                 alert.severity = "low"
 
                         # --- Business-hours severity boost ---
                         is_off_hours = not biz.get("is_business_hour", True)
                         if is_off_hours and confidence >= 0.5:
-                            if alert.severity == "low":
+                            if str(alert.severity) == "low":
                                 alert.severity = "medium"
-                            elif alert.severity == "medium":
+                            elif str(alert.severity) == "medium":
                                 alert.severity = "high"
 
                         # Track types for metadata
@@ -718,7 +720,7 @@ class RedisConsumer:
                 # BRPOP reads from the RIGHT (FIFO order) — Repo 1 uses LPUSH (writes to left)
                 # FIFO ensures oldest logs are processed first for correct chronological analysis.
                 # The previous BLPOP read from the LEFT (LIFO) which broke time-ordered detection.
-                result = self.redis_client.brpop(self.discovered_queues, timeout=1)
+                result = self.redis_client.brpop(self.discovered_queues, timeout=1)  # type: ignore
 
                 if result:
                     queue_name, message = result
