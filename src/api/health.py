@@ -2,6 +2,7 @@
 
 import time
 from datetime import datetime
+from typing import Any, Dict, List, Set
 
 import redis
 from fastapi import APIRouter
@@ -10,7 +11,6 @@ from sqlalchemy import text
 from src.core.config import config
 from src.core.database import db_manager
 
-from typing import Any, Dict, List, Set
 router = APIRouter(tags=["Health & Metrics"])
 
 # Metrics storage (in-memory for simplicity)
