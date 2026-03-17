@@ -1,20 +1,25 @@
-from pydantic import BaseModel, Field, ConfigDict, field_validator
-from typing import Optional, Any, Dict, List, Generic, TypeVar
 from datetime import datetime
+from typing import Any, Dict, Generic, List, Optional, TypeVar
 
-T = TypeVar('T')
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+T = TypeVar("T")
+
 
 class ApiResponse(BaseModel, Generic[T]):
     """Standard API response envelope."""
+
     status: str = "success"
     data: Optional[T] = None
     message: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
+
 class NormalizedLogSchema(BaseModel):
     """Schema for a normalized log entry."""
+
     company_id: Optional[str] = Field(default=None, description="The top-level business entity")
-    tenant_id: str = Field(default='default', description="The specific branch or subdivision")
+    tenant_id: str = Field(default="default", description="The specific branch or subdivision")
     device_id: Optional[str] = Field(default=None, description="The specific source device or service")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     source_ip: Optional[str] = None
@@ -23,27 +28,29 @@ class NormalizedLogSchema(BaseModel):
     destination_port: Optional[int] = None
     protocol: Optional[str] = None
     action: Optional[str] = None
-    log_type: str = Field(default='generic')
+    log_type: str = Field(default="generic")
     vendor: Optional[str] = None
     device_hostname: Optional[str] = None
-    severity: Optional[str] = 'low'
+    severity: Optional[str] = "low"
     message: Optional[str] = None
     raw_data: Dict[str, Any] = Field(default_factory=dict)
     business_context: Dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator('timestamp', mode='before')
+    @field_validator("timestamp", mode="before")
     @classmethod
     def parse_timestamp(cls, v):
         if isinstance(v, str):
             try:
-                return datetime.fromisoformat(v.replace('Z', '+00:00'))
+                return datetime.fromisoformat(v.replace("Z", "+00:00"))
             except ValueError:
                 return datetime.utcnow()
         return v
 
+
 class AlertUpdateSchema(BaseModel):
     status: str = Field(..., description="The status of the alert (e.g., acknowledged, resolved, closed)")
     analyst_comment: Optional[str] = None
+
 
 class DashboardSummarySchema(BaseModel):
     tenant_id: str
@@ -55,29 +62,32 @@ class DashboardSummarySchema(BaseModel):
     business_insights: Dict[str, Any]
     intelligence: Dict[str, Any] = Field(default_factory=dict)
 
+
 class UserBase(BaseModel):
     username: str
     email: str
     full_name: Optional[str] = None
-    role: str = 'business'
-    tenant_id: str = 'default'
+    role: str = "business"
+    tenant_id: str = "default"
+
 
 class UserCreate(UserBase):
     password: str
     confirm_password: str
 
-    @field_validator('confirm_password')
+    @field_validator("confirm_password")
     @classmethod
     def passwords_match(cls, v, info):
-        if 'password' in info.data and v != info.data['password']:
-            raise ValueError('passwords do not match')
+        if "password" in info.data and v != info.data["password"]:
+            raise ValueError("passwords do not match")
         return v
+
 
 class UserResponse(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     is_active: bool
-    username: str   
+    username: str
     business_details: Optional[Dict[str, Any]] = None
     created_at: datetime

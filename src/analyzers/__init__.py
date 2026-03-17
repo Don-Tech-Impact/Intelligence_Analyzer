@@ -15,7 +15,9 @@ They are automatically registered with analyzer_manager on import.
 """
 
 import logging
+
 import redis
+
 from src.core.config import config
 
 logger = logging.getLogger(__name__)
@@ -37,7 +39,7 @@ def get_shared_redis() -> redis.Redis:
                 decode_responses=True,
                 socket_connect_timeout=5,
                 socket_keepalive=True,
-                health_check_interval=30
+                health_check_interval=30,
             )
             _shared_redis.ping()
             logger.info("Analyzer Redis connection established")
@@ -50,11 +52,11 @@ def get_shared_redis() -> redis.Redis:
 # =============================================================================
 # IMPORT AND REGISTER ANALYZERS
 # =============================================================================
-from src.analyzers.base import analyzer_manager, BaseAnalyzer, AnalyzerManager
-from src.analyzers.brute_force import BruteForceAnalyzer
-from src.analyzers.port_scan import PortScanAnalyzer
+from src.analyzers.base import AnalyzerManager, BaseAnalyzer, analyzer_manager
 from src.analyzers.beaconing import BeaconingAnalyzer
+from src.analyzers.brute_force import BruteForceAnalyzer
 from src.analyzers.payload_analysis import PayloadAnalysisAnalyzer, PayloadAnalyzer
+from src.analyzers.port_scan import PortScanAnalyzer
 from src.analyzers.threat_intel import ThreatIntelAnalyzer
 
 # Get shared Redis for all analyzers
@@ -76,14 +78,14 @@ for analyzer in _analyzers:
 logger.info(f"Registered {len(_analyzers)} analyzers")
 
 __all__ = [
-    'analyzer_manager',
-    'BaseAnalyzer',
-    'AnalyzerManager',
-    'BruteForceAnalyzer',
-    'PortScanAnalyzer',
-    'BeaconingAnalyzer',
-    'PayloadAnalysisAnalyzer',
-    'PayloadAnalyzer',
-    'ThreatIntelAnalyzer',
-    'get_shared_redis',
+    "analyzer_manager",
+    "BaseAnalyzer",
+    "AnalyzerManager",
+    "BruteForceAnalyzer",
+    "PortScanAnalyzer",
+    "BeaconingAnalyzer",
+    "PayloadAnalysisAnalyzer",
+    "PayloadAnalyzer",
+    "ThreatIntelAnalyzer",
+    "get_shared_redis",
 ]

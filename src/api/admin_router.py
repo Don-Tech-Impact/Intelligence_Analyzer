@@ -7,23 +7,23 @@ Protected by X-Admin-Key header (shared secret between Repo1 and Repo2)
 OR a valid Superadmin Bearer JWT.
 """
 
+import logging
 import os
 import time
-import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Header, Request, Response
+import httpx
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
-from src.core.limiter import limiter
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from src.core.database import db_manager
-from src.core.config import config
-from src.models.database import NormalizedLog, Alert, Tenant, Report, DeadLetter
-import httpx
 from src.api.auth import verify_superadmin
+from src.core.config import config
+from src.core.database import db_manager
+from src.core.limiter import limiter
+from src.models.database import Alert, DeadLetter, NormalizedLog, Report, Tenant
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ router = APIRouter(prefix="/api/admin", tags=["Admin (Service-to-Service)"])
 
 
 # ---------- Auth ----------
+
 
 def _get_admin_key() -> str:
     """Get the admin API key from environment."""
@@ -44,11 +45,7 @@ def _get_admin_key() -> str:
 
 def _get_repo1_base() -> str:
     """Return the base URL of Repo 1."""
-    return (
-        os.getenv("REPO1_URL")
-        or os.getenv("REPO1_BASE_URL")
-        or "http://host.docker.internal:8080"
-    ).rstrip("/")
+    return (os.getenv("REPO1_URL") or os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080").rstrip("/")
 
 
 def verify_admin_key(x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key")) -> str:
@@ -84,11 +81,12 @@ def verify_admin_or_superadmin(
             token = auth_header.split(" ", 1)[1]
             try:
                 from src.api.auth import decode_token_payload
+
                 payload = decode_token_payload(token)
                 if payload:
                     role = str(payload.get("role", "")).lower()
                     is_admin = payload.get("is_admin", False)
-                    
+
                     # Handle nested Repo 1 admin object
                     admin_obj = payload.get("admin", {})
                     if isinstance(admin_obj, dict):
@@ -106,11 +104,12 @@ def verify_admin_or_superadmin(
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Missing or invalid authentication. Provide X-Admin-Key or a valid Bearer JWT."
+        detail="Missing or invalid authentication. Provide X-Admin-Key or a valid Bearer JWT.",
     )
 
 
 # ---------- Shared Repo 1 HTTP helper ----------
+
 
 async def _repo1_request(
     method: str,
@@ -175,6 +174,7 @@ async def _repo1_request(
 
 # ---------- Dependencies ----------
 
+
 def get_db():
     with db_manager.session_scope() as session:
         yield session
@@ -184,11 +184,9 @@ def get_db():
 # Local analytics endpoints (read from Repo 2's own DB)
 # ==========================================================================
 
+
 @router.get("/tenants/{tenant_id}/usage", dependencies=[Depends(verify_admin_or_superadmin)])
-def get_tenant_usage(
-    tenant_id: str,
-    db: Session = Depends(get_db)
-):
+def get_tenant_usage(tenant_id: str, db: Session = Depends(get_db)):
     """
     Get per-tenant usage statistics.
 
@@ -204,7 +202,7 @@ def get_tenant_usage(
     """
     # --- Verify if tenant exists locally ---
     tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
-    # Note: We don't 404 here anymore, as the tenant might exist in Repo 1 but 
+    # Note: We don't 404 here anymore, as the tenant might exist in Repo 1 but
     # hasn't synced or ingested logs yet. We return zeroed stats.
 
     now = datetime.utcnow()
@@ -212,46 +210,43 @@ def get_tenant_usage(
     last_7d = now - timedelta(days=7)
 
     # --- Log counts ---
-    total_logs = db.query(func.count(NormalizedLog.id)).filter(
-        NormalizedLog.tenant_id == tenant_id
-    ).scalar() or 0
+    total_logs = db.query(func.count(NormalizedLog.id)).filter(NormalizedLog.tenant_id == tenant_id).scalar() or 0
 
-    logs_24h = db.query(func.count(NormalizedLog.id)).filter(
-        NormalizedLog.tenant_id == tenant_id,
-        NormalizedLog.timestamp >= last_24h
-    ).scalar() or 0
+    logs_24h = (
+        db.query(func.count(NormalizedLog.id))
+        .filter(NormalizedLog.tenant_id == tenant_id, NormalizedLog.timestamp >= last_24h)
+        .scalar()
+        or 0
+    )
 
-    logs_7d = db.query(func.count(NormalizedLog.id)).filter(
-        NormalizedLog.tenant_id == tenant_id,
-        NormalizedLog.timestamp >= last_7d
-    ).scalar() or 0
+    logs_7d = (
+        db.query(func.count(NormalizedLog.id))
+        .filter(NormalizedLog.tenant_id == tenant_id, NormalizedLog.timestamp >= last_7d)
+        .scalar()
+        or 0
+    )
 
     # --- Alert counts by severity ---
-    alert_rows = db.query(
-        Alert.severity,
-        func.count(Alert.id)
-    ).filter(
-        Alert.tenant_id == tenant_id
-    ).group_by(Alert.severity).all()
+    alert_rows = (
+        db.query(Alert.severity, func.count(Alert.id))
+        .filter(Alert.tenant_id == tenant_id)
+        .group_by(Alert.severity)
+        .all()
+    )
 
     alerts_by_severity = {row[0]: row[1] for row in alert_rows}
     total_alerts = sum(alerts_by_severity.values())
 
     # Active (non-resolved) alerts
-    active_alerts = db.query(func.count(Alert.id)).filter(
-        Alert.tenant_id == tenant_id,
-        Alert.status != "resolved"
-    ).scalar() or 0
+    active_alerts = (
+        db.query(func.count(Alert.id)).filter(Alert.tenant_id == tenant_id, Alert.status != "resolved").scalar() or 0
+    )
 
     # --- Reports ---
-    report_count = db.query(func.count(Report.id)).filter(
-        Report.tenant_id == tenant_id
-    ).scalar() or 0
+    report_count = db.query(func.count(Report.id)).filter(Report.tenant_id == tenant_id).scalar() or 0
 
     # --- Dead letters ---
-    dead_count = db.query(func.count(DeadLetter.id)).filter(
-        DeadLetter.tenant_id == tenant_id
-    ).scalar() or 0
+    dead_count = db.query(func.count(DeadLetter.id)).filter(DeadLetter.tenant_id == tenant_id).scalar() or 0
 
     # --- Estimated storage (rough: avg 500 bytes per log row) ---
     estimated_storage_bytes = total_logs * 500
@@ -263,28 +258,18 @@ def get_tenant_usage(
             "tenant_name": tenant.name if tenant else tenant_id,
             "is_active": tenant.is_active if tenant else True,
             "created_at": (tenant.created_at.isoformat() if tenant.created_at else None) if tenant else None,
-            "logs": {
-                "total": total_logs,
-                "last_24h": logs_24h,
-                "last_7d": logs_7d
-            },
-            "alerts": {
-                "total": total_alerts,
-                "active": active_alerts,
-                "by_severity": alerts_by_severity
-            },
+            "logs": {"total": total_logs, "last_24h": logs_24h, "last_7d": logs_7d},
+            "alerts": {"total": total_alerts, "active": active_alerts, "by_severity": alerts_by_severity},
             "reports": report_count,
             "dead_letters": dead_count,
-            "estimated_storage_bytes": estimated_storage_bytes
+            "estimated_storage_bytes": estimated_storage_bytes,
         },
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
 
 @router.get("/system/overview", dependencies=[Depends(verify_admin_or_superadmin)])
-def get_system_overview(
-    db: Session = Depends(get_db)
-):
+def get_system_overview(db: Session = Depends(get_db)):
     """
     Get system-wide statistics across all tenants.
 
@@ -298,9 +283,7 @@ def get_system_overview(
     """
     # --- Tenant counts ---
     total_tenants = db.query(func.count(Tenant.id)).scalar() or 0
-    active_tenants = db.query(func.count(Tenant.id)).filter(
-        Tenant.is_active == True  # noqa: E712
-    ).scalar() or 0
+    active_tenants = db.query(func.count(Tenant.id)).filter(Tenant.is_active == True).scalar() or 0  # noqa: E712
 
     # --- Global counts ---
     total_logs = db.query(func.count(NormalizedLog.id)).scalar() or 0
@@ -312,58 +295,36 @@ def get_system_overview(
     now = datetime.utcnow()
     last_24h = now - timedelta(hours=24)
 
-    logs_24h = db.query(func.count(NormalizedLog.id)).filter(
-        NormalizedLog.timestamp >= last_24h
-    ).scalar() or 0
+    logs_24h = db.query(func.count(NormalizedLog.id)).filter(NormalizedLog.timestamp >= last_24h).scalar() or 0
 
-    alerts_24h = db.query(func.count(Alert.id)).filter(
-        Alert.created_at >= last_24h
-    ).scalar() or 0
+    alerts_24h = db.query(func.count(Alert.id)).filter(Alert.created_at >= last_24h).scalar() or 0
 
     # --- Alert severity breakdown (global) ---
-    severity_rows = db.query(
-        Alert.severity,
-        func.count(Alert.id)
-    ).group_by(Alert.severity).all()
+    severity_rows = db.query(Alert.severity, func.count(Alert.id)).group_by(Alert.severity).all()
     alerts_by_severity = {row[0]: row[1] for row in severity_rows}
 
     # --- Top tenants by log volume (top 20) ---
-    tenant_volumes = db.query(
-        NormalizedLog.tenant_id,
-        func.count(NormalizedLog.id).label("log_count")
-    ).group_by(
-        NormalizedLog.tenant_id
-    ).order_by(
-        func.count(NormalizedLog.id).desc()
-    ).limit(20).all()
-    top_tenants = [
-        {"tenant_id": row[0], "log_count": row[1]}
-        for row in tenant_volumes
-    ]
+    tenant_volumes = (
+        db.query(NormalizedLog.tenant_id, func.count(NormalizedLog.id).label("log_count"))
+        .group_by(NormalizedLog.tenant_id)
+        .order_by(func.count(NormalizedLog.id).desc())
+        .limit(20)
+        .all()
+    )
+    top_tenants = [{"tenant_id": row[0], "log_count": row[1]} for row in tenant_volumes]
 
     return {
         "status": "success",
         "data": {
-            "tenants": {
-                "total": total_tenants,
-                "active": active_tenants,
-                "inactive": total_tenants - active_tenants
-            },
-            "logs": {
-                "total": total_logs,
-                "last_24h": logs_24h
-            },
-            "alerts": {
-                "total": total_alerts,
-                "last_24h": alerts_24h,
-                "by_severity": alerts_by_severity
-            },
+            "tenants": {"total": total_tenants, "active": active_tenants, "inactive": total_tenants - active_tenants},
+            "logs": {"total": total_logs, "last_24h": logs_24h},
+            "alerts": {"total": total_alerts, "last_24h": alerts_24h, "by_severity": alerts_by_severity},
             "reports": total_reports,
             "dead_letters": total_dead,
             "estimated_storage_bytes": total_logs * 500,
-            "top_tenants_by_volume": top_tenants
+            "top_tenants_by_volume": top_tenants,
         },
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
 
@@ -375,57 +336,55 @@ async def get_system_bundle(db: Session = Depends(get_db)):
     """
     # 1. Get local overview stats
     overview = get_system_overview(db)
-    
+
     # 2. Get remote tenant list from Repo 1
     try:
         tenants_data = await list_tenants(page_size=100)
         tenants = tenants_data.get("tenants", [])
-        
+
         # 3. Enrich remote tenants with local Repo 2 statistics
         for t in tenants:
             tid = t.get("tenant_id")
-            if not tid: continue
-            
+            if not tid:
+                continue
+
             # Query local log counts
-            total_logs = db.query(func.count(NormalizedLog.id)).filter(
-                NormalizedLog.tenant_id == tid
-            ).scalar() or 0
-            
+            total_logs = db.query(func.count(NormalizedLog.id)).filter(NormalizedLog.tenant_id == tid).scalar() or 0
+
             # Query local log counts last 24h
             day_ago = datetime.utcnow() - timedelta(days=1)
-            logs_24h = db.query(func.count(NormalizedLog.id)).filter(
-                NormalizedLog.tenant_id == tid,
-                NormalizedLog.timestamp >= day_ago
-            ).scalar() or 0
-            
+            logs_24h = (
+                db.query(func.count(NormalizedLog.id))
+                .filter(NormalizedLog.tenant_id == tid, NormalizedLog.timestamp >= day_ago)
+                .scalar()
+                or 0
+            )
+
             # Query local alert counts
-            active_alerts = db.query(func.count(Alert.id)).filter(
-                Alert.tenant_id == tid,
-                Alert.status != "resolved"
-            ).scalar() or 0
-            
+            active_alerts = (
+                db.query(func.count(Alert.id)).filter(Alert.tenant_id == tid, Alert.status != "resolved").scalar() or 0
+            )
+
             t["total_logs"] = total_logs
             t["logs_24h"] = logs_24h
             t["active_alerts"] = active_alerts
-            t["estimated_storage"] = f"{total_logs * 0.45:.1f} KB" # 450 bytes per log avg
-            
+            t["estimated_storage"] = f"{total_logs * 0.45:.1f} KB"  # 450 bytes per log avg
+
     except Exception as e:
         logger.error(f"Failed to fetch tenants/enrich for bundle: {e}")
         tenants = []
-        
+
     return {
         "status": "success",
-        "data": {
-            "overview": overview["data"],
-            "tenants": tenants
-        },
-        "timestamp": datetime.utcnow().isoformat()
+        "data": {"overview": overview["data"], "tenants": tenants},
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
 
 # ==========================================================================
 # Webhook receiver — Repo 1 → Repo 2
 # ==========================================================================
+
 
 @router.post("/tenants/sync", dependencies=[Depends(verify_admin_key)])
 async def sync_tenant(payload: dict, db: Session = Depends(get_db)):
@@ -488,6 +447,7 @@ async def sync_tenant(payload: dict, db: Session = Depends(get_db)):
 # Auth proxy  (Repo 1 auth endpoints — no admin key required on login)
 # ==========================================================================
 
+
 @router.post("/proxy/login")
 @limiter.limit("5/minute")
 async def proxy_login(request: Request, payload: dict, response: Response):
@@ -496,7 +456,7 @@ async def proxy_login(request: Request, payload: dict, response: Response):
     Relays the status code and JSON body from Repo 1.
     """
     repo1_base = _get_repo1_base()
-    
+
     # Smart Routing: Check if this is an Admin (email) or Tenant (username) login
     if "username" in payload and "email" not in payload:
         url = f"{repo1_base}/tenant/login"
@@ -512,26 +472,26 @@ async def proxy_login(request: Request, payload: dict, response: Response):
                 json=payload,
                 headers={"Content-Type": "application/json"},
             )
-            
+
             # Standardize all auth errors (401/403) to a generic message
             if r1_res.status_code in [401, 403]:
                 return JSONResponse(
                     status_code=401,
-                    content={"status": "error", "detail": "Invalid credentials or unauthorized access."}
+                    content={"status": "error", "detail": "Invalid credentials or unauthorized access."},
                 )
 
             # Relay the status code for other errors (e.g. 500)
             if r1_res.status_code >= 400:
                 return JSONResponse(
                     status_code=r1_res.status_code,
-                    content={"status": "error", "detail": "Authentication system encountered an issue."}
+                    content={"status": "error", "detail": "Authentication system encountered an issue."},
                 )
 
             res_data = r1_res.json()
             # Normalize token key if Repo 1 uses 'token' instead of 'access_token'
             if "token" in res_data and "access_token" not in res_data:
                 res_data["access_token"] = res_data["token"]
-                
+
             return res_data
         except Exception as exc:
             logger.error(f"Proxy login failed: {exc}")
@@ -541,7 +501,6 @@ async def proxy_login(request: Request, payload: dict, response: Response):
             )
 
 
-
 @router.post("/logout", dependencies=[Depends(verify_admin_or_superadmin)])
 async def proxy_logout(request: Request):
     """Proxy logout to Repo 1 — invalidates the JWT on Repo 1's side."""
@@ -549,20 +508,21 @@ async def proxy_logout(request: Request):
     headers = {"X-Admin-Key": _get_admin_key(), "Content-Type": "application/json"}
     if auth_header:
         headers["Authorization"] = auth_header
-    
+
     repo1_base = _get_repo1_base()
-    url = f"{repo1_base}/admin/logout" # Default fallback
+    url = f"{repo1_base}/admin/logout"  # Default fallback
 
     # Check the JWT to see if this is a tenant user or superadmin
     if auth_header and auth_header.startswith("Bearer "):
         try:
             from jose import jwt
+
             token = auth_header.split(" ")[1]
             # We don't need to verify the signature strictly here just to route the logout,
             # but we can use the configured secret if available.
             secret = getattr(config, "secret_key", "")
             payload = jwt.decode(token, secret, algorithms=["HS256"], options={"verify_signature": False})
-            
+
             user_type = payload.get("user_type", "")
             if user_type == "tenant_user":
                 url = f"{repo1_base}/tenant/logout"
@@ -610,6 +570,7 @@ async def verify_repo1_sync():
 # Tenant CRUD proxy → Repo 1
 # ==========================================================================
 
+
 @router.get("/tenants", dependencies=[Depends(verify_admin_or_superadmin)])
 async def list_tenants(
     status: Optional[str] = None,
@@ -653,6 +614,7 @@ async def delete_tenant(tenant_id: str):
 # ==========================================================================
 # User CRUD proxy → Repo 1
 # ==========================================================================
+
 
 @router.get("/users", dependencies=[Depends(verify_admin_or_superadmin)])
 async def list_users(
@@ -700,6 +662,7 @@ async def delete_user(username: str):
 # ==========================================================================
 # IP Allowlist proxy → Repo 1
 # ==========================================================================
+
 
 @router.get("/allowlist/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
 async def get_ip_allowlist(tenant_id: str):
@@ -761,6 +724,7 @@ async def remove_from_allowlist_legacy(tenant_id: str, ip: str):
 # API Keys proxy → Repo 1
 # ==========================================================================
 
+
 @router.post("/tenants/{tenant_id}/api-keys", dependencies=[Depends(verify_admin_or_superadmin)])
 async def create_api_key(tenant_id: str, payload: dict):
     """Create an API key for a tenant in Repo 1."""
@@ -780,16 +744,17 @@ async def list_all_api_keys():
         # Fetch tenants first
         tenants_data = await _repo1_request("GET", "/admin/tenants")
         tenants = tenants_data.get("tenants", [])
-        
+
         all_keys = []
         # Aggregate keys from all tenants
         async with httpx.AsyncClient(timeout=10.0) as client:
             repo1_base = _get_repo1_base()
             headers = {"X-Admin-Key": _get_admin_key()}
-            
+
             for t in tenants:
                 tid = t.get("tenant_id")
-                if not tid: continue
+                if not tid:
+                    continue
                 try:
                     r = await client.get(f"{repo1_base}/admin/tenants/{tid}/api-keys", headers=headers)
                     if r.status_code == 200:
@@ -799,7 +764,7 @@ async def list_all_api_keys():
                         all_keys.extend(tenant_keys)
                 except Exception as e:
                     logger.error(f"Failed to fetch keys for tenant {tid}: {e}")
-                    
+
         return {"total": len(all_keys), "keys": all_keys}
     except Exception as exc:
         logger.error(f"Global key aggregation failed: {exc}")
@@ -822,23 +787,26 @@ async def rotate_api_key(key_id: str):
 # Webhook configuration proxy → Repo 1
 # ==========================================================================
 
+
 @router.post("/webhooks/configure", dependencies=[Depends(verify_admin_or_superadmin)])
 async def configure_webhook(payload: dict):
     """Set or override the webhook URL that Repo 1 sends tenant events to."""
     return await _repo1_request("POST", "/admin/webhooks/configure", body=payload)
 
+
 # ==========================================================================
 # Global Monitoring & Unified Health
 # ==========================================================================
+
 
 @router.get("/system/health/unified", dependencies=[Depends(verify_admin_or_superadmin)])
 async def get_unified_health():
     """Combined health overview of Repo 1 and Repo 2."""
     from src.api.health import health_check
-    
+
     # 1. Get Local Health (Repo 2)
     local_health = health_check()
-    
+
     # 2. Get Remote Health (Repo 1)
     remote_health = {}
     try:
@@ -851,36 +819,43 @@ async def get_unified_health():
     # We prioritize Repo 2's knowledge of its own components, but pull Identity from Repo 1
     # if it's more detailed there.
     unified_components = local_health.get("components", {})
-    
+
     # Pull in Repo 1 status if available
     r1_components = remote_health.get("components", {})
     if r1_components:
         # If Repo 1 has a detailed identity status, use it
         if "identity" in r1_components:
             unified_components["identity"] = r1_components["identity"]
-        
+
         # Merge other Repo 1 components that might be unique
         for k, v in r1_components.items():
             if k not in unified_components:
                 unified_components[k] = v
 
     return {
-        "status": "healthy" if local_health.get("status") == "healthy" and remote_health.get("status") in ("healthy", "operational") else "degraded",
+        "status": (
+            "healthy"
+            if local_health.get("status") == "healthy" and remote_health.get("status") in ("healthy", "operational")
+            else "degraded"
+        ),
         "timestamp": datetime.utcnow().isoformat(),
         "local": local_health,
         "remote": remote_health,
-        "components": unified_components
+        "components": unified_components,
     }
+
 
 @router.get("/monitoring/health", dependencies=[Depends(verify_admin_or_superadmin)])
 async def proxy_monitoring_health():
     """Proxy health check from Repo 1 monitoring."""
     return await _repo1_request("GET", "/api/monitoring/health")
 
+
 @router.get("/monitoring/health/detailed", dependencies=[Depends(verify_admin_or_superadmin)])
 async def proxy_monitoring_health_detailed():
     """Proxy detailed health from Repo 1 monitoring."""
     return await _repo1_request("GET", "/api/monitoring/health/detailed")
+
 
 @router.get("/monitoring/metrics", dependencies=[Depends(verify_admin_or_superadmin)])
 async def proxy_monitoring_metrics():
@@ -894,65 +869,80 @@ async def proxy_monitoring_metrics():
         except Exception as e:
             return Response(content=f"# Error fetching metrics: {e}", status_code=502)
 
+
 @router.get("/monitoring/queues/status", dependencies=[Depends(verify_admin_or_superadmin)])
 async def proxy_queue_status():
     """Proxy real-time queue status."""
     return await _repo1_request("GET", "/api/monitoring/queues/status")
+
 
 @router.get("/monitoring/pipelines/status", dependencies=[Depends(verify_admin_or_superadmin)])
 async def proxy_pipelines_status():
     """Proxy pipeline status."""
     return await _repo1_request("GET", "/api/monitoring/pipelines/status")
 
+
 @router.get("/monitoring/alerts", dependencies=[Depends(verify_admin_or_superadmin)])
 async def proxy_monitoring_alerts(severity: Optional[str] = None, limit: int = 50):
     """Proxy system alerts."""
     params = {"limit": limit}
-    if severity: params["severity"] = severity
+    if severity:
+        params["severity"] = severity
     return await _repo1_request("GET", "/api/monitoring/alerts", params=params)
+
 
 # ==========================================================================
 # Incident Response Proxies (Per Tenant)
 # ==========================================================================
+
 
 @router.get("/incidents/config/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
 async def get_incident_config(tenant_id: str):
     """Get tenant alert configuration."""
     return await _repo1_request("GET", f"/api/incidents/config/{tenant_id}")
 
+
 @router.put("/incidents/config/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
 async def update_incident_config(tenant_id: str, payload: dict):
     """Update tenant alert configuration."""
     return await _repo1_request("PUT", f"/api/incidents/config/{tenant_id}", body=payload)
+
 
 @router.post("/incidents/test/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
 async def test_incident_alert(tenant_id: str, payload: dict):
     """Test alert delivery."""
     return await _repo1_request("POST", f"/api/incidents/test/{tenant_id}", body=payload)
 
+
 @router.get("/incidents/history/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
 async def get_incident_history(tenant_id: str, limit: int = 100, severity: Optional[str] = None):
     """Get alert history."""
     params = {"limit": limit}
-    if severity: params["severity"] = severity
+    if severity:
+        params["severity"] = severity
     return await _repo1_request("GET", f"/api/incidents/history/{tenant_id}", params=params)
+
 
 @router.get("/incidents/stats/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
 async def get_incident_stats(tenant_id: str, days: int = 7):
     """Get alert analytics."""
     return await _repo1_request("GET", f"/api/incidents/stats/{tenant_id}", params={"days": days})
 
+
 @router.post("/incidents/simulate/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
 async def simulate_incident(tenant_id: str, payload: dict):
     """Simulate alert for testing."""
     return await _repo1_request("POST", f"/api/incidents/simulate/{tenant_id}", body=payload)
 
+
 @router.get("/incidents/active", dependencies=[Depends(verify_admin_or_superadmin)])
 async def get_all_active_incidents(severity: Optional[str] = None, limit: int = 50):
     """Get global active alerts."""
     params = {"limit": limit}
-    if severity: params["severity"] = severity
+    if severity:
+        params["severity"] = severity
     return await _repo1_request("GET", "/api/incidents/active", params=params)
+
 
 @router.get("/incidents/summary", dependencies=[Depends(verify_admin_or_superadmin)])
 async def get_global_incident_summary(days: int = 7):
@@ -976,6 +966,7 @@ async def delete_webhook_override():
 # Audit log proxy → Repo 1
 # ==========================================================================
 
+
 @router.get("/audit-log", dependencies=[Depends(verify_admin_or_superadmin)])
 async def get_audit_log(
     page: int = 1,
@@ -992,6 +983,7 @@ async def get_audit_log(
 # ==========================================================================
 # Generic catch-all proxy (for any Repo 1 /admin/* path not explicitly listed)
 # ==========================================================================
+
 
 @router.api_route("/proxy/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_repo1(

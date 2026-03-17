@@ -1,21 +1,21 @@
 """Log ingestion service."""
 
 import logging
-from typing import Dict, Any, Optional
 from datetime import datetime
+from typing import Any, Dict, Optional
 
-from src.core.database import db_manager
-from src.models.database import NormalizedLog, Alert
-from src.services.log_adapter import LogAdapter
 # Import analyzers package to auto-register all analyzers
 from src import analyzers
 from src.analyzers.base import analyzer_manager
-from src.services.notification_manager import notification_manager
 from src.core.config import config
-
+from src.core.database import db_manager
+from src.models.database import Alert, NormalizedLog
 from src.services.enrichment import EnrichmentService
+from src.services.log_adapter import LogAdapter
+from src.services.notification_manager import notification_manager
 
 logger = logging.getLogger(__name__)
+
 
 class AnalysisPipeline:
     """Service to process standardized logs: enrich, store, and analyze."""
@@ -45,7 +45,7 @@ class AnalysisPipeline:
 
             # 3. Enrich with Intelligence (GeoIP, Threat Intel, Scoring)
             EnrichmentService.enrich(log_entry)
-            
+
             # Save enrichment results
             with db_manager.session_scope() as session:
                 session.add(log_entry)
@@ -89,7 +89,7 @@ class AnalysisPipeline:
                 severity=schema.severity,
                 message=schema.message,
                 raw_data=schema.raw_data,
-                business_context=schema.business_context
+                business_context=schema.business_context,
             )
             session.add(log_entry)
             session.commit()
@@ -112,4 +112,3 @@ class AnalysisPipeline:
         """Handle generated alerts (deduplication, notification)."""
         for alert in alerts:
             notification_manager.notify(alert)
-

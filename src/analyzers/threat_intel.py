@@ -1,124 +1,122 @@
 """Threat intelligence analyzer."""
 
 import logging
-from typing import Optional
 from datetime import datetime
+from typing import Optional
 
 from src.analyzers.base import BaseAnalyzer
-from src.models.database import NormalizedLog, Alert, ThreatIntelligence
 from src.core.database import db_manager
+from src.models.database import Alert, NormalizedLog, ThreatIntelligence
 
 logger = logging.getLogger(__name__)
 
 
 class ThreatIntelAnalyzer(BaseAnalyzer):
     """Matches log entries against threat intelligence feeds."""
-    
+
     def __init__(self):
         """Initialize threat intelligence analyzer."""
-        super().__init__('threat_intel')
-    
+        super().__init__("threat_intel")
+
     def analyze(self, log: NormalizedLog) -> Optional[Alert]:
         """Analyze log against threat intelligence indicators."""
         logger.info(f"ThreatIntel: Analyzing log from {getattr(log, 'source_ip', 'MISSING')}")
-        
+
         # Check source IP
-        if hasattr(log, 'source_ip') and log.source_ip:
+        if hasattr(log, "source_ip") and log.source_ip:
             threat = self._check_ip(log.source_ip)
             if threat:
                 logger.warning(f"ThreatIntel: MATCH FOUND for source IP {log.source_ip}")
-                return self._create_threat_alert(log, threat, 'source')
-        
+                return self._create_threat_alert(log, threat, "source")
+
         # Check destination IP
-        if hasattr(log, 'destination_ip') and log.destination_ip:
+        if hasattr(log, "destination_ip") and log.destination_ip:
             threat = self._check_ip(log.destination_ip)
             if threat:
                 logger.warning(f"ThreatIntel: MATCH FOUND for destination IP {log.destination_ip}")
-                return self._create_threat_alert(log, threat, 'destination')
-        
+                return self._create_threat_alert(log, threat, "destination")
+
         return None
-    
+
     def _check_ip(self, ip_address: str) -> Optional[ThreatIntelligence]:
         """Check if IP is in threat intelligence database.
-        
+
         Args:
             ip_address: IP address to check
-            
+
         Returns:
             ThreatIntelligence object if found, None otherwise
         """
         try:
             with db_manager.session_scope() as session:
                 session.expire_on_commit = False
-                threat = session.query(ThreatIntelligence).filter(
-                    ThreatIntelligence.indicator_type == 'ip',
-                    ThreatIntelligence.indicator_value == ip_address,
-                    ThreatIntelligence.is_active == True
-                ).first()
-                
+                threat = (
+                    session.query(ThreatIntelligence)
+                    .filter(
+                        ThreatIntelligence.indicator_type == "ip",
+                        ThreatIntelligence.indicator_value == ip_address,
+                        ThreatIntelligence.is_active == True,
+                    )
+                    .first()
+                )
+
                 if threat:
                     # Update last_seen timestamp
                     threat.last_seen = datetime.utcnow()
                     session.commit()
-                
+
                 return threat
         except Exception as e:
             logger.error(f"Error checking threat intelligence: {e}")
             return None
-    
-    def _create_threat_alert(
-        self,
-        log: NormalizedLog,
-        threat: ThreatIntelligence,
-        direction: str
-    ) -> Optional[Alert]:
+
+    def _create_threat_alert(self, log: NormalizedLog, threat: ThreatIntelligence, direction: str) -> Optional[Alert]:
         """Create alert for threat intelligence match.
-        
+
         Args:
             log: NormalizedLog entry
             threat: Matched threat intelligence
             direction: 'source' or 'destination'
-            
+
         Returns:
             Created Alert object
         """
-        ip_address = log.source_ip if direction == 'source' else log.destination_ip
-        
+        ip_address = log.source_ip if direction == "source" else log.destination_ip
+
         description = (
             f"Threat intelligence match: {ip_address} ({direction} IP) "
             f"is known {threat.threat_type}. Source: {threat.source}"
         )
-        
+
         details = {
-            'matched_ip': ip_address,
-            'direction': direction,
-            'threat_type': threat.threat_type,
-            'confidence': threat.confidence,
-            'source': threat.source,
-            'indicator_description': threat.description,
-            'first_seen': threat.first_seen.isoformat() if threat.first_seen else None,
-            'last_seen': threat.last_seen.isoformat() if threat.last_seen else None
+            "matched_ip": ip_address,
+            "direction": direction,
+            "threat_type": threat.threat_type,
+            "confidence": threat.confidence,
+            "source": threat.source,
+            "indicator_description": threat.description,
+            "first_seen": threat.first_seen.isoformat() if threat.first_seen else None,
+            "last_seen": threat.last_seen.isoformat() if threat.last_seen else None,
         }
-        
+
         # Determine severity based on confidence and threat type
         if threat.confidence and threat.confidence > 0.8:
-            severity = 'high'
+            severity = "high"
         elif threat.confidence and threat.confidence > 0.5:
-            severity = 'medium'
+            severity = "medium"
         else:
-            severity = 'low'
-        
+            severity = "low"
+
         # Escalate for certain threat types
-        if threat.threat_type and any(t in threat.threat_type.lower() 
-                                      for t in ['botnet', 'c2', 'command']):
-            severity = 'critical'
-        
+        if threat.threat_type and any(t in threat.threat_type.lower() for t in ["botnet", "c2", "command"]):
+            severity = "critical"
+
         return self.create_alert(
-            alert_type='threat_intel',
+            alert_type="threat_intel",
             severity=severity,
             source_ip=log.source_ip,
             description=description,
             details=details,
             tenant_id=log.tenant_id,
-            destination_ip=log.destination_ip
+            destination_ip=log.destination_ip,
         )

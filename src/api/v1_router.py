@@ -1,29 +1,30 @@
 """V1 API Router for afric-analyzer frontend."""
 
-from fastapi import APIRouter, Depends, Query, HTTPException, status, Request, Response
-from sqlalchemy import func, desc
-from sqlalchemy.orm import Session
-from typing import Optional
+import os
 from datetime import datetime, timedelta
+from typing import Optional
 
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from sqlalchemy import desc, func
+from sqlalchemy.orm import Session
+
+from src.api.auth import verify_jwt
+from src.core.config import config as siem_config
 from src.core.database import db_manager
-from src.models.database import Alert, NormalizedLog, Report, ManagedDevice
+from src.models.database import Alert, ManagedDevice, NormalizedLog, Report
+from src.models.schemas import ApiResponse
 from src.services.analytics import AnalyticsService
 from src.services.assets import AssetService
 from src.services.report_generator import ReportGenerator
-from src.models.schemas import ApiResponse
-from src.api.auth import verify_jwt
-from src.core.config import config as siem_config
-import httpx
-import os
 
 # Create V1 router (protected by JWT)
 # Create V1 router (protected by JWT)
 router = APIRouter(
-    prefix="/api/v1", 
-    tags=["V1 API"], 
+    prefix="/api/v1",
+    tags=["V1 API"],
     dependencies=[Depends(verify_jwt)],
-    redirect_slashes=False  # Added to prevent 307 redirects/405s on trailing slashes
+    redirect_slashes=False,  # Added to prevent 307 redirects/405s on trailing slashes
 )
 
 
@@ -34,10 +35,7 @@ def get_db():
 
 
 # Secure dependency to get tenant ID from JWT or Query
-def get_tenant_id(
-    tenant_id: str = Query("default"),
-    payload: dict = Depends(verify_jwt)
-) -> str:
+def get_tenant_id(tenant_id: str = Query("default"), payload: dict = Depends(verify_jwt)) -> str:
     """
     Returns the tenant_id scoped to the current user.
     - If user is a regular tenant user: ALWAYS use their token's tenant_id.
@@ -50,15 +48,15 @@ def get_tenant_id(
     if isinstance(admin_obj, dict):
         role = role or admin_obj.get("role", "").lower()
         is_admin = is_admin or admin_obj.get("is_admin", False)
-        
+
     is_super = role == "superadmin" or is_admin is True
-    
+
     # If not superadmin, strictly enforce token-based scoping
     if not is_super:
         token_tenant = payload.get("tenant_id") or payload.get("sub")
         if token_tenant:
             return token_tenant
-            
+
     return tenant_id
 
 
@@ -66,14 +64,12 @@ def get_tenant_id(
 # Dashboard Endpoints
 # ============================================
 
+
 @router.get("/dashboard/summary")
-def get_dashboard_summary(
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
+def get_dashboard_summary(tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)):
     """
     Get comprehensive dashboard summary.
-    
+
     Returns:
         - Total events with trend
         - Active threats by severity
@@ -85,10 +81,7 @@ def get_dashboard_summary(
 
 
 @router.get("/dashboard/bundle")
-def get_dashboard_bundle(
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
+def get_dashboard_bundle(tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)):
     """
     Consolidated endpoint for all dashboard data.
     Reduces network round-trips for slow connections.
@@ -98,33 +91,44 @@ def get_dashboard_bundle(
     top_ips = AnalyticsService.get_top_ips(tenant_id, db)
     traffic = AnalyticsService.get_traffic_analysis(tenant_id, db)
     business = AnalyticsService.get_business_insights(tenant_id, db)
-    
+
     # Recent alerts
     alerts_query = db.query(Alert).filter(Alert.tenant_id == tenant_id)
     recent_alerts = alerts_query.order_by(Alert.created_at.desc()).limit(10).all()
-    
-    return ApiResponse(status="success", data={
-        "summary": summary,
-        "timeline": timeline,
-        "top_ips": top_ips,
-        "traffic": traffic,
-        "business": business,
-        "recent_alerts": [a.to_dict() if hasattr(a, 'to_dict') else {
-            "id": a.id,
-            "tenant_id": a.tenant_id,
-            "alert_type": a.alert_type,
-            "severity": a.severity,
-            "status": a.status,
-            "description": a.description,
-            "source_ip": a.source_ip,
-            "created_at": a.created_at.isoformat() if a.created_at else None
-        } for a in recent_alerts]
-    })
+
+    return ApiResponse(
+        status="success",
+        data={
+            "summary": summary,
+            "timeline": timeline,
+            "top_ips": top_ips,
+            "traffic": traffic,
+            "business": business,
+            "recent_alerts": [
+                (
+                    a.to_dict()
+                    if hasattr(a, "to_dict")
+                    else {
+                        "id": a.id,
+                        "tenant_id": a.tenant_id,
+                        "alert_type": a.alert_type,
+                        "severity": a.severity,
+                        "status": a.status,
+                        "description": a.description,
+                        "source_ip": a.source_ip,
+                        "created_at": a.created_at.isoformat() if a.created_at else None,
+                    }
+                )
+                for a in recent_alerts
+            ],
+        },
+    )
 
 
 # ============================================
 # Log Endpoints
 # ============================================
+
 
 @router.get("/logs")
 def list_logs(
@@ -135,7 +139,7 @@ def list_logs(
     device_type: Optional[str] = None,
     search: Optional[str] = None,
     tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     List normalized logs with filters and pagination.
@@ -149,10 +153,7 @@ def list_logs(
     if device_type:
         query = query.filter(NormalizedLog.device_type == device_type)
     if search:
-        query = query.filter(
-            (NormalizedLog.message.contains(search)) | 
-            (NormalizedLog.raw_data.contains(search))
-        )
+        query = query.filter((NormalizedLog.message.contains(search)) | (NormalizedLog.raw_data.contains(search)))
 
     total = query.count()
     offset = (page - 1) * limit
@@ -163,13 +164,8 @@ def list_logs(
     return {
         "status": "success",
         "data": data,
-        "pagination": {
-            "page": page,
-            "limit": limit,
-            "total": total,
-            "has_more": offset + limit < total
-        },
-        "timestamp": datetime.utcnow().isoformat()
+        "pagination": {"page": page, "limit": limit, "total": total, "has_more": offset + limit < total},
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
 
@@ -177,16 +173,17 @@ def list_logs(
 # Analytics Endpoints
 # ============================================
 
+
 @router.get("/analytics/timeline")
 def get_timeline(
     range: str = Query("24h", pattern="^(24h|7d|30d)$"),
     bucket: str = Query("hour", pattern="^(hour|day)$"),
     tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Get event timeline for charts.
-    
+
     Args:
         range: Time range (24h, 7d, 30d)
         bucket: Aggregation bucket (hour, day)
@@ -197,13 +194,11 @@ def get_timeline(
 
 @router.get("/analytics/threat-vectors")
 def get_threat_vectors(
-    limit: int = Query(10, ge=1, le=50),
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
+    limit: int = Query(10, ge=1, le=50), tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)
 ):
     """
     Get top threat vectors by alert type.
-    
+
     Returns top N threat types with counts and trends.
     """
     data = AnalyticsService.get_threat_vectors(tenant_id, db, limit)
@@ -211,13 +206,10 @@ def get_threat_vectors(
 
 
 @router.get("/analytics/geo-distribution")
-def get_geo_distribution(
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
+def get_geo_distribution(tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)):
     """
     Get geographic distribution of events.
-    
+
     Returns country breakdown with event and threat counts.
     """
     data = AnalyticsService.get_geo_distribution(tenant_id, db)
@@ -225,13 +217,10 @@ def get_geo_distribution(
 
 
 @router.get("/analytics/traffic")
-def get_traffic_analysis(
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
+def get_traffic_analysis(tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)):
     """
     Get network traffic analysis by protocol.
-    
+
     Note: Byte counts are estimated for V1.
     """
     data = AnalyticsService.get_traffic_analysis(tenant_id, db)
@@ -240,30 +229,26 @@ def get_traffic_analysis(
 
 @router.get("/analytics/top-ips")
 def get_top_ips(
-    limit: int = Query(10, ge=1, le=50),
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
+    limit: int = Query(10, ge=1, le=50), tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)
 ):
     """Get top source/destination IPs."""
     # We can reuse logic or call root-level logic if we had it in a service.
     # For now, let's implement via a quick query or use logic from existing root endpoint.
-    results = db.query(
-        NormalizedLog.source_ip,
-        func.count(NormalizedLog.id).label('count')
-    ).filter(
-        NormalizedLog.tenant_id == tenant_id,
-        NormalizedLog.source_ip.isnot(None)
-    ).group_by(NormalizedLog.source_ip).order_by(desc('count')).limit(limit).all()
-    
+    results = (
+        db.query(NormalizedLog.source_ip, func.count(NormalizedLog.id).label("count"))
+        .filter(NormalizedLog.tenant_id == tenant_id, NormalizedLog.source_ip.isnot(None))
+        .group_by(NormalizedLog.source_ip)
+        .order_by(desc("count"))
+        .limit(limit)
+        .all()
+    )
+
     data = [{"ip": r.source_ip, "count": r.count} for r in results]
     return ApiResponse(status="success", data=data)
 
 
 @router.get("/analytics/business-insights")
-async def get_business_insights(
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
+async def get_business_insights(tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)):
     """Get insights on business vs after-hours activity."""
     # Attempt to fetch tenant config for business hours
     config = {}
@@ -282,10 +267,10 @@ async def get_business_insights(
     return ApiResponse(status="success", data=data)
 
 
-
 # ============================================
 # Alert Endpoints (Enhanced)
 # ============================================
+
 
 @router.get("/alerts")
 def list_alerts(
@@ -295,7 +280,7 @@ def list_alerts(
     status: Optional[str] = Query(None, pattern="^(open|investigating|resolved|dismissed)$"),
     alert_type: Optional[str] = None,
     tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     List alerts with filters and pagination.
@@ -327,7 +312,7 @@ def list_alerts(
             "description": a.description,
             "status": a.status,
             "created_at": a.created_at.isoformat() if a.created_at else None,
-            "notified": a.notified
+            "notified": a.notified,
         }
         for a in alerts
     ]
@@ -335,48 +320,40 @@ def list_alerts(
     return {
         "status": "success",
         "data": data,
-        "pagination": {
-            "page": page,
-            "limit": limit,
-            "total": total,
-            "has_more": offset + limit < total
-        },
-        "timestamp": datetime.utcnow().isoformat()
+        "pagination": {"page": page, "limit": limit, "total": total, "has_more": offset + limit < total},
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
 
 @router.get("/alerts/{alert_id}")
-def get_alert_detail(
-    alert_id: int,
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
+def get_alert_detail(alert_id: int, tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)):
     """
     Get detailed alert information including related logs.
     """
-    alert = db.query(Alert).filter(
-        Alert.id == alert_id,
-        Alert.tenant_id == tenant_id
-    ).first()
+    alert = db.query(Alert).filter(Alert.id == alert_id, Alert.tenant_id == tenant_id).first()
 
     if not alert:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Alert not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found")
 
     # Get related logs (same source_ip, within 1 hour)
     from datetime import timedelta
+
     time_window = timedelta(hours=1)
     start_time = alert.created_at - time_window
     end_time = alert.created_at + time_window
 
-    related_logs = db.query(NormalizedLog).filter(
-        NormalizedLog.tenant_id == tenant_id,
-        NormalizedLog.source_ip == alert.source_ip,
-        NormalizedLog.timestamp >= start_time,
-        NormalizedLog.timestamp <= end_time
-    ).order_by(NormalizedLog.timestamp.desc()).limit(20).all()
+    related_logs = (
+        db.query(NormalizedLog)
+        .filter(
+            NormalizedLog.tenant_id == tenant_id,
+            NormalizedLog.source_ip == alert.source_ip,
+            NormalizedLog.timestamp >= start_time,
+            NormalizedLog.timestamp <= end_time,
+        )
+        .order_by(NormalizedLog.timestamp.desc())
+        .limit(20)
+        .all()
+    )
 
     # Generate recommendations based on alert type
     recommendations = _generate_recommendations(alert.alert_type, alert.severity)
@@ -401,12 +378,12 @@ def get_alert_detail(
                     "source_ip": log.source_ip,
                     "destination_ip": log.destination_ip,
                     "message": log.message[:200] if log.message else None,
-                    "severity": log.severity
+                    "severity": log.severity,
                 }
                 for log in related_logs
             ],
-            "recommendations": recommendations
-        }
+            "recommendations": recommendations,
+        },
     )
 
 
@@ -417,39 +394,37 @@ def _generate_recommendations(alert_type: str, severity: str) -> list:
             "Block the source IP at the firewall",
             "Enable account lockout policies",
             "Implement MFA for affected accounts",
-            "Review authentication logs for successful logins"
+            "Review authentication logs for successful logins",
         ],
         "port_scan": [
             "Block the source IP",
             "Review exposed services",
             "Enable IDS/IPS rules for port scanning",
-            "Check for follow-up exploitation attempts"
+            "Check for follow-up exploitation attempts",
         ],
         "suspicious_payload": [
             "Quarantine the affected payload",
             "Scan systems for indicators of compromise",
             "Update antivirus signatures",
-            "Review network traffic for data exfiltration"
+            "Review network traffic for data exfiltration",
         ],
         "beaconing": [
             "Block the destination IP/domain",
             "Scan affected host for malware",
             "Review process execution logs",
-            "Check for lateral movement"
+            "Check for lateral movement",
         ],
         "threat_intel_match": [
             "Block the matched indicator",
             "Investigate all related traffic",
             "Scan for additional IoCs",
-            "Report to threat intelligence team"
-        ]
+            "Report to threat intelligence team",
+        ],
     }
 
-    base_recommendations = recommendations_map.get(alert_type, [
-        "Investigate the alert",
-        "Block suspicious IPs",
-        "Review related logs"
-    ])
+    base_recommendations = recommendations_map.get(
+        alert_type, ["Investigate the alert", "Block suspicious IPs", "Review related logs"]
+    )
 
     if severity in ["critical", "high"]:
         base_recommendations.insert(0, "⚠️ IMMEDIATE ACTION REQUIRED")
@@ -461,21 +436,16 @@ def _generate_recommendations(alert_type: str, severity: str) -> list:
 # Asset Endpoints
 # ============================================
 
+
 @router.get("/assets/summary")
-def get_asset_summary(
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
+def get_asset_summary(tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)):
     """Get asset inventory summary."""
     data = AssetService.get_asset_summary(tenant_id, db)
     return ApiResponse(status="success", data=data)
 
 
 @router.get("/assets/managed")
-def list_managed_devices(
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
+def list_managed_devices(tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)):
     """List all formally registered devices for this tenant."""
     devices = db.query(ManagedDevice).filter(ManagedDevice.tenant_id == tenant_id).all()
     results = []
@@ -489,13 +459,9 @@ def list_managed_devices(
 
 
 @router.post("/assets/managed")
-async def register_device(
-    payload: dict,
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
+async def register_device(payload: dict, tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)):
     """
-    Register a new managed device. 
+    Register a new managed device.
     Also automatically adds the IP to the Repo 1 allowlist.
     """
     try:
@@ -511,27 +477,25 @@ async def register_device(
             ip_address=ip,
             device_id=payload.get("device_id"),
             category=payload.get("category", "other"),
-            description=payload.get("description")
+            description=payload.get("description"),
         )
         db.add(device)
         db.commit()
 
         # 2. Sync with Repo 1 Allowlist
         try:
-            import httpx
             import os
+
+            import httpx
+
             repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
             admin_key = os.getenv("ADMIN_KEY") or "changeme-admin-key"
-            
+
             async with httpx.AsyncClient(timeout=5.0) as client:
                 await client.post(
                     f"{repo1_url}/admin/tenants/{tenant_id}/ips",
-                    json={
-                        "ip_range": ip,
-                        "label": f"Managed Device: {name}",
-                        "is_active": True
-                    },
-                    headers={"X-Admin-Key": admin_key}
+                    json={"ip_range": ip, "label": f"Managed Device: {name}", "is_active": True},
+                    headers={"X-Admin-Key": admin_key},
                 )
         except Exception as sync_err:
             print(f"[SIEM] Device registered locally but failed to sync allowlist: {sync_err}")
@@ -543,20 +507,15 @@ async def register_device(
 
 
 @router.delete("/assets/managed/{device_id_int}")
-def delete_managed_device(
-    device_id_int: int,
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
+def delete_managed_device(device_id_int: int, tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)):
     """Unregister a managed device."""
-    device = db.query(ManagedDevice).filter(
-        ManagedDevice.id == device_id_int, 
-        ManagedDevice.tenant_id == tenant_id
-    ).first()
-    
+    device = (
+        db.query(ManagedDevice).filter(ManagedDevice.id == device_id_int, ManagedDevice.tenant_id == tenant_id).first()
+    )
+
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
-        
+
     db.delete(device)
     db.commit()
     return ApiResponse(status="success", message="Device unregistered")
@@ -564,27 +523,25 @@ def delete_managed_device(
 
 @router.get("/assets/discovered")
 def list_discovered_assets(
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db),
-    page: int = 1,
-    limit: int = 20
+    tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db), page: int = 1, limit: int = 20
 ):
     """Returns unique assets discovered from logs that are NOT yet in managed_devices."""
     # Get all managed identifiers (both IPs and Correlation IDs)
-    managed_devices = db.query(ManagedDevice.ip_address, ManagedDevice.device_id).filter(ManagedDevice.tenant_id == tenant_id).all()
+    managed_devices = (
+        db.query(ManagedDevice.ip_address, ManagedDevice.device_id).filter(ManagedDevice.tenant_id == tenant_id).all()
+    )
     managed_identifiers = set()
     for d in managed_devices:
-        if d.ip_address: managed_identifiers.add(d.ip_address)
-        if d.device_id: managed_identifiers.add(d.device_id)
+        if d.ip_address:
+            managed_identifiers.add(d.ip_address)
+        if d.device_id:
+            managed_identifiers.add(d.device_id)
 
     all_assets = AssetService.get_assets(tenant_id, db, page, limit)
-    
+
     # Filter: Only show assets where the identifier is NOT known as a managed device
     discovered = [a for a in all_assets["data"] if a["device_id"] not in managed_identifiers]
-    return ApiResponse(status="success", data={
-        "data": discovered,
-        "pagination": all_assets["pagination"]
-    })
+    return ApiResponse(status="success", data={"data": discovered, "pagination": all_assets["pagination"]})
 
 
 @router.get("/assets")
@@ -593,33 +550,30 @@ def list_assets(
     limit: int = Query(20, ge=1, le=100),
     search: Optional[str] = None,
     tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """List discovered assets with pagination."""
     result = AssetService.get_assets(tenant_id, db, page, limit, search)
-    return {
-        "status": "success",
-        **result,
-        "timestamp": datetime.utcnow().isoformat()
-    }
+    return {"status": "success", **result, "timestamp": datetime.utcnow().isoformat()}
 
 
 # ============================================
 # User Device Management (Repo 1 Proxy)
 # ============================================
 
+
 @router.get("/assets/my-devices")
 async def get_my_devices(request: Request):
     """Get registered devices for the current user from Repo 1."""
     repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
     auth_header = request.headers.get("Authorization")
-    
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             headers = {"Content-Type": "application/json"}
             if auth_header:
                 headers["Authorization"] = auth_header
-                
+
             response = await client.get(f"{repo1_url}/api/tenant/devices", headers=headers)
             return response.json()
         except Exception as e:
@@ -631,25 +585,21 @@ async def register_user_device(request: Request, payload: dict):
     """Register a personal device in Repo 1."""
     repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
     auth_header = request.headers.get("Authorization")
-    
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             headers = {"Content-Type": "application/json"}
             if auth_header:
                 headers["Authorization"] = auth_header
-            
+
             # Map frontend payload to Repo 1 spec
             repo1_payload = {
                 "action": "add",
                 "device_ip": payload.get("device_ip") or payload.get("ip"),
-                "device_name": payload.get("device_name") or payload.get("name")
+                "device_name": payload.get("device_name") or payload.get("name"),
             }
-                
-            response = await client.post(
-                f"{repo1_url}/api/tenant/devices", 
-                json=repo1_payload, 
-                headers=headers
-            )
+
+            response = await client.post(f"{repo1_url}/api/tenant/devices", json=repo1_payload, headers=headers)
             return response.json()
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Identity server unreachable: {e}")
@@ -660,24 +610,17 @@ async def remove_user_device(ip: str, request: Request):
     """Remove a registered device from Repo 1."""
     repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
     auth_header = request.headers.get("Authorization")
-    
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             headers = {"Content-Type": "application/json"}
             if auth_header:
                 headers["Authorization"] = auth_header
-            
+
             # Use the new Repo 1 remove pattern
-            payload = {
-                "action": "remove",
-                "device_ip": ip
-            }
-                
-            response = await client.post(
-                f"{repo1_url}/api/tenant/devices", 
-                json=payload, 
-                headers=headers
-            )
+            payload = {"action": "remove", "device_ip": ip}
+
+            response = await client.post(f"{repo1_url}/api/tenant/devices", json=payload, headers=headers)
             return response.json()
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Identity server unreachable: {e}")
@@ -688,41 +631,38 @@ async def get_primary_ip(request: Request):
     """Get the primary office IP for the current tenant from Repo 1."""
     repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
     auth_header = request.headers.get("Authorization")
-    
+
     # We need the tenant_id from the token to call the Repo 1 admin endpoint
     from src.api.auth import decode_token_payload
+
     token = auth_header.split(" ")[1] if auth_header and "Bearer " in auth_header else ""
     payload = decode_token_payload(token)
     tenant_id = payload.get("tenant_id") if payload else "default"
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
-            # Repo 1 doesn't have a public "get-primary-ip" for users yet, 
+            # Repo 1 doesn't have a public "get-primary-ip" for users yet,
             # so we use the admin endpoint with the analyzer's admin key
             admin_key = os.getenv("ADMIN_KEY") or "changeme-admin-key"
             headers = {"X-Admin-Key": admin_key}
-            
+
             response = await client.get(f"{repo1_url}/admin/tenants/{tenant_id}", headers=headers)
             data = response.json()
-            
+
             # Extract IP info (support string, or list of strings from 'primary_ips')
             primary_ip = data.get("primary_ip") or data.get("office_ip")
             primary_ips = data.get("primary_ips", [])
-            
+
             if not primary_ip and isinstance(primary_ips, list) and primary_ips:
                 primary_ip = ", ".join(primary_ips)
-            
+
             return {"status": "success", "primary_ip": primary_ip or "Not Set"}
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Identity server unreachable: {e}")
 
 
 @router.get("/assets/telemetry/{device_id}")
-def get_asset_detail(
-    device_id: str,
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
+def get_asset_detail(device_id: str, tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)):
     """Get detailed asset information."""
     data = AssetService.get_asset_details(tenant_id, device_id, db)
     if not data:
@@ -734,68 +674,64 @@ def get_asset_detail(
 # Report Endpoints
 # ============================================
 
+
 @router.get("/reports")
 def list_reports(
-    report_type: Optional[str] = None,
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
+    report_type: Optional[str] = None, tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)
 ):
     """List reports for the current tenant."""
     query = db.query(Report).filter(Report.tenant_id == tenant_id)
     if report_type:
         query = query.filter(Report.report_type == report_type)
-    
+
     reports = query.order_by(desc(Report.created_at)).all()
     data = []
     for r in reports:
-        data.append({
-            "id": r.id,
-            "report_type": r.report_type,
-            "start_date": r.start_date.isoformat() if r.start_date else None,
-            "end_date": r.end_date.isoformat() if r.end_date else None,
-            "total_logs": r.total_logs,
-            "total_alerts": r.total_alerts,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "format": r.format
-        })
+        data.append(
+            {
+                "id": r.id,
+                "report_type": r.report_type,
+                "start_date": r.start_date.isoformat() if r.start_date else None,
+                "end_date": r.end_date.isoformat() if r.end_date else None,
+                "total_logs": r.total_logs,
+                "total_alerts": r.total_alerts,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "format": r.format,
+            }
+        )
     return ApiResponse(status="success", data=data)
 
 
 @router.get("/reports/{report_id}/download")
-def download_report(
-    report_id: int,
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
+def download_report(report_id: int, tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)):
     """Download a specific report file."""
     report = db.query(Report).filter(Report.id == report_id, Report.tenant_id == tenant_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
-    
+
     import os
+
     if not os.path.exists(report.file_path):
         raise HTTPException(status_code=404, detail="Report file missing on server")
-        
+
     from fastapi.responses import FileResponse
+
     return FileResponse(report.file_path, filename=os.path.basename(report.file_path))
 
 
 @router.get("/reports/{report_id}/content")
-def get_report_content(
-    report_id: int,
-    tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
-):
+def get_report_content(report_id: int, tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)):
     """Get the HTML content of a report."""
     report = db.query(Report).filter(Report.id == report_id, Report.tenant_id == tenant_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
-        
+
     import os
+
     if not os.path.exists(report.file_path):
         raise HTTPException(status_code=404, detail="Report file missing on server")
-        
-    with open(report.file_path, 'r', encoding='utf-8') as f:
+
+    with open(report.file_path, "r", encoding="utf-8") as f:
         content = f.read()
     return ApiResponse(status="success", data={"html": content, "type": report.report_type})
 
@@ -805,7 +741,7 @@ def generate_report(
     report_type: str = "daily",
     days_back: int = 1,
     tenant_id: str = Depends(get_tenant_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Trigger manual report generation."""
     try:
@@ -824,15 +760,19 @@ def generate_report(
 # Configuration Endpoints
 # ============================================
 
+
 @router.get("/config")
 def get_config(tenant_id: str = Depends(get_tenant_id)):
     """Get tenant-safe configuration thresholds."""
-    return ApiResponse(status="success", data={
-        "brute_force_threshold": siem_config.brute_force_threshold,
-        "port_scan_threshold": siem_config.port_scan_threshold,
-        "log_level": siem_config.log_level,
-        "tenant_id": tenant_id
-    })
+    return ApiResponse(
+        status="success",
+        data={
+            "brute_force_threshold": siem_config.brute_force_threshold,
+            "port_scan_threshold": siem_config.port_scan_threshold,
+            "log_level": siem_config.log_level,
+            "tenant_id": tenant_id,
+        },
+    )
 
 
 @router.post("/config")
@@ -849,19 +789,21 @@ def update_config(new_config: dict, tenant_id: str = Depends(get_tenant_id)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 # ============================================
 # Interactive Mocks: Metadata Proxy
 # ============================================
 
+
 @router.patch("/tenant/metadata")
 async def update_tenant_metadata(request: Request, tenant_id: str = Depends(get_tenant_id)):
     """
-    Proxies metadata updates (Compliance, Incident Response, Onboarding) 
+    Proxies metadata updates (Compliance, Incident Response, Onboarding)
     from the dashboard directly to Repo 1's deep merge endpoint.
     """
     repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
     admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY") or "changeme-admin-key"
-    
+
     try:
         body = await request.json()
     except Exception:
@@ -869,27 +811,19 @@ async def update_tenant_metadata(request: Request, tenant_id: str = Depends(get_
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
-            # We use the X-Admin-Key to bypass user auth on Repo 1 since 
+            # We use the X-Admin-Key to bypass user auth on Repo 1 since
             # Repo 2 has already verified the user via get_tenant_id
-            headers = {
-                "Content-Type": "application/json",
-                "X-Admin-Key": admin_key
-            }
-            
-            res = await client.patch(
-                f"{repo1_url}/admin/tenants/{tenant_id}/metadata",
-                headers=headers,
-                json=body
-            )
-            
+            headers = {"Content-Type": "application/json", "X-Admin-Key": admin_key}
+
+            res = await client.patch(f"{repo1_url}/admin/tenants/{tenant_id}/metadata", headers=headers, json=body)
+
             return Response(
-                content=res.content,
-                status_code=res.status_code,
-                headers={"Content-Type": "application/json"}
+                content=res.content, status_code=res.status_code, headers={"Content-Type": "application/json"}
             )
         except httpx.RequestError as e:
             logger.error(f"Failed to proxy metadata update to Repo 1: {e}")
             raise HTTPException(status_code=502, detail="Control plane unreachable")
+
 
 @router.get("/tenant/metadata")
 async def get_tenant_metadata(tenant_id: str = Depends(get_tenant_id)):
@@ -898,14 +832,11 @@ async def get_tenant_metadata(tenant_id: str = Depends(get_tenant_id)):
     """
     repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
     admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY") or "changeme-admin-key"
-    
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             headers = {"X-Admin-Key": admin_key}
-            res = await client.get(
-                f"{repo1_url}/admin/tenants/{tenant_id}",
-                headers=headers
-            )
+            res = await client.get(f"{repo1_url}/admin/tenants/{tenant_id}", headers=headers)
             data = res.json()
             # Support returning the full tenant object including name, description, config, etc.
             return ApiResponse(status="success", data=data)
