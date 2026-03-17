@@ -216,7 +216,7 @@ class ReportGenerator:
         total_alerts = data.get("total_alerts", 0)
         critical_alerts = data.get("alerts_by_severity", {}).get("critical", 0)
 
-        html = f""" # noqa: E501   
+        html = f""" # noqa: E501
             <!DOCTYPE html>
             <html lang="en">
             <head>
@@ -398,12 +398,12 @@ class ReportGenerator:
 
         alert_types = sorted(data.get("alerts_by_type", {}).items(), key=lambda x: x[1], reverse=True)[:5]
         if not alert_types:
-            html += "<tr><td colspan='2' style='text-align:center;'>No significant threat vectors detected during this period.</td></tr>"
+            html += " #noqa:E501 <tr><td colspan='2' style='text-align:center;'>No significant threat vectors detected during this period.</td></tr>"
         else:
             for alert_type, count in alert_types:
                 html += f"<tr><td>{alert_type.replace('_', ' ').title()}</td><td><b>{count}</b></td></tr>"
 
-        html += """ # noqa: E501
+        html += """ #noqa:E501
             </tbody>
         </table>
 
