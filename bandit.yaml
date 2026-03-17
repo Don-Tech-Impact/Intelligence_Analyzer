@@ -1,0 +1,2 @@
+skips: ["B101", "B601"] # Skip assert checks and shell usage where intended
+exclude_dirs: ["tests", "env", "venv"]

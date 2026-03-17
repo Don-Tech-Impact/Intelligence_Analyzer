@@ -33,6 +33,7 @@ from datetime import datetime
 
 from src.core.config import config
 from src.models.database import Alert
+from src.analyzers.base import BaseAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ PORT_SCAN_THRESHOLD = int(os.getenv('PORT_SCAN_THRESHOLD', 5))
 PORT_SCAN_WINDOW = int(os.getenv('PORT_SCAN_WINDOW', 60))  # 1 minute
 
 
-class PortScanAnalyzer:
+class PortScanAnalyzer(BaseAnalyzer):
     """
     Detects port scanning using Redis sets.
     
@@ -193,7 +194,7 @@ class PortScanAnalyzer:
                 scanned_ports = self.redis_client.smembers(key)
                 ttl = self.redis_client.ttl(key)
                 
-                alert = Alert(
+                alert = self.create_alert(
                     tenant_id=tenant_id,
                     alert_type='port_scan',
                     severity='medium',
@@ -210,14 +211,14 @@ class PortScanAnalyzer:
                         'time_remaining': ttl,
                         'scanned_ports': sorted([int(p) for p in scanned_ports])[:20],  # Top 20
                         'detection_method': 'redis_set'
-                    },
-                    status='open'
+                    }
                 )
                 
-                logger.warning(
-                    f"ALERT: Port scan {source_ip}→{dest_ip} "
-                    f"({unique_ports} ports in {self.window_seconds}s)"
-                )
+                if alert:
+                    logger.warning(
+                        f"ALERT: Port scan {source_ip}→{dest_ip} "
+                        f"({unique_ports} ports in {self.window_seconds}s)"
+                    )
                 
                 # Reset to prevent alert spam
                 # Keep the set but raise severity on subsequent detections

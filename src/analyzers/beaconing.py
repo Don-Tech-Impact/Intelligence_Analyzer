@@ -34,6 +34,7 @@ from datetime import datetime
 
 from src.core.config import config
 from src.models.database import Alert
+from src.analyzers.base import BaseAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ BEACON_JITTER_THRESHOLD = float(os.getenv('BEACON_JITTER_THRESHOLD', 0.2))
 BEACON_WINDOW_SECONDS = int(os.getenv('BEACON_WINDOW_SECONDS', 14400))
 
 
-class BeaconingAnalyzer:
+class BeaconingAnalyzer(BaseAnalyzer):
     """
     Detects C2 beaconing using Redis sorted sets.
     
@@ -245,7 +246,7 @@ class BeaconingAnalyzer:
             # ALERT GENERATION
             # =========================================================
             if jitter_ratio <= self.jitter_threshold:
-                alert = Alert(
+                alert = self.create_alert(
                     tenant_id=tenant_id,
                     alert_type='beaconing',
                     severity='critical',  # C2 = critical
@@ -266,14 +267,14 @@ class BeaconingAnalyzer:
                         'detection_method': 'redis_sorted_set',
                         'first_seen': datetime.fromtimestamp(min(timestamps)).isoformat(),
                         'last_seen': datetime.fromtimestamp(max(timestamps)).isoformat()
-                    },
-                    status='open'
+                    }
                 )
                 
-                logger.warning(
-                    f"ALERT: Beaconing detected {source_ip}→{dest_ip} "
-                    f"(jitter={jitter_ratio:.3f} <= {self.jitter_threshold})"
-                )
+                if alert:
+                    logger.warning(
+                        f"ALERT: Beaconing detected {source_ip}→{dest_ip} "
+                        f"(jitter={jitter_ratio:.3f} <= {self.jitter_threshold})"
+                    )
                 
                 return alert
             

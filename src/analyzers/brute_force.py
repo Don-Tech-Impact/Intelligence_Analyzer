@@ -33,6 +33,7 @@ from datetime import datetime
 
 from src.core.config import config
 from src.models.database import Alert
+from src.analyzers.base import BaseAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ BRUTE_FORCE_THRESHOLD = int(os.getenv('BRUTE_FORCE_THRESHOLD', 5))
 BRUTE_FORCE_WINDOW = int(os.getenv('BRUTE_FORCE_WINDOW', 300))  # 5 minutes
 
 
-class BruteForceAnalyzer:
+class BruteForceAnalyzer(BaseAnalyzer):
     """
     Detects brute force attacks using Redis counters.
     
@@ -189,7 +190,7 @@ class BruteForceAnalyzer:
                 # Get remaining TTL for context
                 ttl = self.redis_client.ttl(key)
                 
-                alert = Alert(
+                alert = self.create_alert(
                     tenant_id=tenant_id,
                     alert_type='brute_force',
                     severity='high',
@@ -207,14 +208,14 @@ class BruteForceAnalyzer:
                         'detection_method': 'redis_counter',
                         'last_log_type': getattr(log, 'log_type', None),
                         'last_action': getattr(log, 'action', None)
-                    },
-                    status='open'
+                    }
                 )
                 
-                logger.warning(
-                    f"ALERT: Brute force from {source_ip} "
-                    f"({count} attempts in {self.window_seconds}s window)"
-                )
+                if alert:
+                    logger.warning(
+                        f"ALERT: Brute force from {source_ip} "
+                        f"({count} attempts in {self.window_seconds}s window)"
+                    )
                 
                 # Reset counter after alert to prevent spam
                 # Comment out if you want continued counting

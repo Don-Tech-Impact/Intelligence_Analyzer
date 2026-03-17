@@ -8,6 +8,7 @@ from src.analyzers.payload_analysis import PayloadAnalysisAnalyzer
 from src.core.database import db_manager
 
 import os
+from unittest.mock import MagicMock
 from src.models.database import Base
 
 @pytest.fixture(scope="module", autouse=True)
@@ -39,6 +40,43 @@ def sample_log():
         message="Test message",
         raw_data={"test": "data"}
     )
+
+class MockRedis:
+    def __init__(self):
+        self.data = {}
+        self.ttls = {}
+        
+    def sadd(self, key, value):
+        if key not in self.data:
+            self.data[key] = set()
+        is_new = value not in self.data[key]
+        self.data[key].add(value)
+        return 1 if is_new else 0
+        
+    def scard(self, key):
+        return len(self.data.get(key, set()))
+        
+    def smembers(self, key):
+        return self.data.get(key, set())
+        
+    def incr(self, key):
+        val = self.data.get(key, 0) + 1
+        self.data[key] = val
+        return val
+        
+    def get(self, key):
+        return self.data.get(key)
+        
+    def expire(self, key, seconds):
+        self.ttls[key] = seconds
+        return True
+        
+    def ttl(self, key):
+        return self.ttls.get(key, 60)
+        
+    def delete(self, key):
+        self.data.pop(key, None)
+        self.ttls.pop(key, None)
 
 class TestAnalyzers:
     
@@ -82,6 +120,33 @@ class TestAnalyzers:
         assert alert is not None
         assert alert.alert_type == 'payload_attack'
         assert 'XSS' in alert.description
+
+    def test_payload_analysis_malware(self, sample_log):
+        analyzer = PayloadAnalysisAnalyzer()
+        sample_log.message = "Detected Cobalt Strike beacon on endpoint"
+        alert = analyzer.analyze(sample_log)
+        assert alert is not None
+        assert alert.alert_type == 'payload_attack'
+        assert 'MALWARE' in alert.description
+
+    def test_port_scan_stateful(self, sample_log):
+        mock_redis = MockRedis()
+        analyzer = PortScanAnalyzer(redis_client=mock_redis)
+        sample_log.source_ip = "10.0.0.1"
+        sample_log.destination_ip = "10.0.0.2"
+        
+        # 1-4 ports: no alert
+        for port in range(1, 5):
+            sample_log.destination_port = port
+            alert = analyzer.analyze(sample_log)
+            assert alert is None
+        
+        # 5th unique port: triggers alert (new threshold is 5)
+        sample_log.destination_port = 5
+        alert = analyzer.analyze(sample_log)
+        assert alert is not None
+        assert alert.alert_type == 'port_scan'
+        assert alert.details['unique_ports'] == 5
 
     def test_payload_analysis_safe(self, sample_log):
         analyzer = PayloadAnalysisAnalyzer()

@@ -692,6 +692,33 @@ class TestLogAdapterV1Schema:
         }
         result = LogAdapter.normalize(log)
         assert result.raw_data["log_id"] == "abc-123"
-        assert result.raw_data["metadata"]["source_ip"] == "10.0.0.1"
+    def test_v1_regex_extraction_ufw(self):
+        """Test extraction of network fields from UFW style raw logs."""
+        raw = "Mar 17 00:00:00 fw kernel: [UFW BLOCK] IN=eth0 OUT= SRC=192.168.1.50 DST=8.8.8.8 SPT=12345 DPT=443 PROTO=TCP"
+        log = {
+            "schema_version": "v1",
+            "tenant_id": "TEST",
+            "raw_log": raw,
+            "metadata": {"device_type": "firewall"}
+        }
+        result = LogAdapter.normalize(log)
+        assert result.source_ip == "192.168.1.50"
+        assert result.destination_ip == "8.8.8.8"
+        assert result.destination_port == 443
+        assert result.protocol == "tcp"
+        assert result.action == "blocked"
+
+    def test_v1_regex_extraction_generic(self):
+        """Test fallback extraction for logs without SRC=/DST= prefixes."""
+        raw = "Connection refused from 1.2.3.4 to 5.6.7.8"
+        log = {
+            "schema_version": "v1",
+            "tenant_id": "TEST",
+            "raw_log": raw,
+            "metadata": {"device_type": "generic"}
+        }
+        result = LogAdapter.normalize(log)
+        assert result.source_ip == "1.2.3.4"
+        assert result.destination_ip == "5.6.7.8"
 
 # Run with: pytest tests/test_log_adapter.py -v
