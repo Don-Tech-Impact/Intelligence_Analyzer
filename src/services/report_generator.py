@@ -118,7 +118,6 @@ class ReportGenerator:
                 .filter(Alert.tenant_id == tenant_id, Alert.created_at >= start_date, Alert.created_at <= end_date)
                 .count()
             )
-
             # Alerts by severity
             alerts = (
                 session.query(Alert)
@@ -398,7 +397,10 @@ class ReportGenerator:
 
         alert_types = sorted(data.get("alerts_by_type", {}).items(), key=lambda x: x[1], reverse=True)[:5]
         if not alert_types:
-            html += " #noqa:E501 <tr><td colspan='2' style='text-align:center;'>No significant threat vectors detected during this period.</td></tr>"
+            html += """ #noqa:E501
+            <tr><td colspan='2' style='text-align:center;'>
+            No significant threat vectors detected during this period.</td></tr>
+            """
         else:
             for alert_type, count in alert_types:
                 html += f"<tr><td>{alert_type.replace('_', ' ').title()}</td><td><b>{count}</b></td></tr>"
