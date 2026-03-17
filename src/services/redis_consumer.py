@@ -578,30 +578,49 @@ class RedisConsumer:
                 alerts = analyzer_manager.analyze_log(log_proxy)
                 
                 if alerts:
-                    for alert in alerts:
-                        if not alert:
-                            continue
-                        
+                    # Filter out None and handle potential duplicates
+                    valid_alerts = [a for a in alerts if a]
+                    if not valid_alerts:
+                        continue
+
+                    # Update the log itself to reflect that it triggered an alert
+                    # This "archives" the threat status in the main logs table
+                    severity_map = {'low': 0, 'medium': 1, 'high': 2, 'critical': 3}
+                    current_highest = severity_map.get(log_dict.get('severity', 'low'), 0)
+                    
+                    alert_types = []
+                    for alert in valid_alerts:
                         # --- Confidence-weighted severity ---
-                        # Dead-recovered logs: downgrade to avoid false positives
                         if confidence < 0.5:
-                            if alert.severity == 'critical':
-                                alert.severity = 'medium'
-                            elif alert.severity == 'high':
-                                alert.severity = 'low'
+                            if alert.severity == 'critical': alert.severity = 'medium'
+                            elif alert.severity == 'high': alert.severity = 'low'
                         
                         # --- Business-hours severity boost ---
-                        # Off-hours / weekend activity is more suspicious
                         is_off_hours = not biz.get('is_business_hour', True)
-                        is_weekend = biz.get('is_weekend', False)
+                        if is_off_hours and confidence >= 0.5:
+                            if alert.severity == 'low': alert.severity = 'medium'
+                            elif alert.severity == 'medium': alert.severity = 'high'
                         
-                        if (is_off_hours or is_weekend) and confidence >= 0.5:
-                            if alert.severity == 'low':
-                                alert.severity = 'medium'
-                            elif alert.severity == 'medium':
-                                alert.severity = 'high'
-                    
-                    self._store_alerts(alerts)
+                        # Track types for metadata
+                        alert_types.append(alert.alert_type)
+                        
+                        # Update log severity if alert is higher
+                        alert_rank = severity_map.get(alert.severity, 0)
+                        if alert_rank > current_highest:
+                            current_highest = alert_rank
+                            log_dict['severity'] = alert.severity
+
+                    # Mark log as a confirmed threat
+                    if 'alert_triggered' not in biz:
+                        biz['alert_triggered'] = True
+                        biz['triggered_alerts'] = list(set(alert_types))
+                        log_dict['business_context'] = biz
+
+                    # Only store alerts that aren't already persistent
+                    # (Analyzers using BaseAnalyzer.create_alert may have already saved)
+                    unsaved_alerts = [a for a in valid_alerts if getattr(a, 'id', None) is None]
+                    if unsaved_alerts:
+                        self._store_alerts(unsaved_alerts)
                     
             except Exception as e:
                 logger.error(f"Analysis failed for log: {e}")

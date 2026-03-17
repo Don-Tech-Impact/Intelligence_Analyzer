@@ -53,6 +53,26 @@ class PayloadAnalysisAnalyzer(BaseAnalyzer):
                 r"censys",                        # Recon tool
                 r"tor\s*exit",                    # TOR network
                 r"\.onion"                        # Hidden service
+            ],
+            'data_exfiltration': [
+                r"excessive\s*outbound",          # Traffic volume
+                r"ftp\s*upload",                  # FTP transfer
+                r"sensitive\s*data\s*transfer",   # Keyword
+                r"large\s*payload\s*detected",    # Anomaly
+                r"sftp\s*put"                     # File transfer
+            ],
+            'privilege_escalation': [
+                r"sudo\s*failed",                 # Sudo failure
+                r"root\s*access\s*attempt",       # Admin attempt
+                r"unauthorized\s*su",             # SU attempt
+                r"privilege\s*elevation",         # Keyword
+                r"permission\s*denied\s*for\s*root" # Root denial
+            ],
+            'ddos': [
+                r"ddos\s*attack\s*detected",      # Generic
+                r"syn\s*flood",                   # Protocol attack
+                r"connection\s*limit\s*exceeded", # Resource exhaustion
+                r"request\s*rate\s*limit"         # Rate limiting
             ]
         }
         
