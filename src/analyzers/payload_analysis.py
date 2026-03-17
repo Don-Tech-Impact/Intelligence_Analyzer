@@ -36,6 +36,23 @@ class PayloadAnalysisAnalyzer(BaseAnalyzer):
                 r"\.\./\.\./",                    # Directory traversal
                 r"/etc/passwd",                   # Sensitive file access
                 r"C:\\Windows\\System32"          # Sensitive file access
+            ],
+            'malware': [
+                r"malware",                       # Generic malware
+                r"cobalt\s*strike",               # Post-exploitation
+                r"metasploit",                    # Exploit framework
+                r"reverse\s*shell",               # Shell pattern
+                r"mimikatz",                      # Credential dump
+                r"trojan",                        # Trojan
+                r"ransomware"                     # Ransomware
+            ],
+            'c2_communication': [
+                r"c2\s*communication",            # Command & Control
+                r"beacon",                        # Cobalt Strike beacon
+                r"shodan",                        # Recon tool
+                r"censys",                        # Recon tool
+                r"tor\s*exit",                    # TOR network
+                r"\.onion"                        # Hidden service
             ]
         }
         

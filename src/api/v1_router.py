@@ -620,7 +620,7 @@ async def get_my_devices(request: Request):
             if auth_header:
                 headers["Authorization"] = auth_header
                 
-            response = await client.get(f"{repo1_url}/api/logs/my-devices", headers=headers)
+            response = await client.get(f"{repo1_url}/api/tenant/devices", headers=headers)
             return response.json()
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Identity server unreachable: {e}")
@@ -637,10 +637,17 @@ async def register_user_device(request: Request, payload: dict):
             headers = {"Content-Type": "application/json"}
             if auth_header:
                 headers["Authorization"] = auth_header
+            
+            # Map frontend payload to Repo 1 spec
+            repo1_payload = {
+                "action": "add",
+                "device_ip": payload.get("device_ip") or payload.get("ip"),
+                "device_name": payload.get("device_name") or payload.get("name")
+            }
                 
             response = await client.post(
-                f"{repo1_url}/api/logs/devices", 
-                json=payload, 
+                f"{repo1_url}/api/tenant/devices", 
+                json=repo1_payload, 
                 headers=headers
             )
             return response.json()
@@ -659,8 +666,18 @@ async def remove_user_device(ip: str, request: Request):
             headers = {"Content-Type": "application/json"}
             if auth_header:
                 headers["Authorization"] = auth_header
+            
+            # Use the new Repo 1 remove pattern
+            payload = {
+                "action": "remove",
+                "device_ip": ip
+            }
                 
-            response = await client.delete(f"{repo1_url}/api/logs/devices/{ip}", headers=headers)
+            response = await client.post(
+                f"{repo1_url}/api/tenant/devices", 
+                json=payload, 
+                headers=headers
+            )
             return response.json()
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Identity server unreachable: {e}")

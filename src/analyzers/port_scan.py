@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION
 # =============================================================================
 # Threshold: Number of unique ports to trigger alert
-PORT_SCAN_THRESHOLD = int(os.getenv('PORT_SCAN_THRESHOLD', 10))
+PORT_SCAN_THRESHOLD = int(os.getenv('PORT_SCAN_THRESHOLD', 5))
 # Window: Time period in seconds
 PORT_SCAN_WINDOW = int(os.getenv('PORT_SCAN_WINDOW', 60))  # 1 minute
 

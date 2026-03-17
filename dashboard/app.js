@@ -445,7 +445,7 @@ function updateStatsFromSummary(summary) {
 
     const el3 = document.getElementById('stats-critical-high');
     if (el3) {
-        const val = (Number(summary.active_threats?.critical) || 0) + (Number(summary.active_threats?.high) || 0);
+        const val = summary.affected_assets?.count || 0;
         el3.textContent = formatNumber(val);
     }
 

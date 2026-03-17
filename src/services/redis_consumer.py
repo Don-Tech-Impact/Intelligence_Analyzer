@@ -28,6 +28,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List, Set
 from collections import defaultdict
 import redis
+import httpx
 from redis.exceptions import RedisError, ConnectionError
 
 from src.core.config import config
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 # BATCH CONFIGURATION
 # =============================================================================
 BATCH_SIZE = int(os.getenv('BATCH_SIZE', 100))
-BATCH_TIMEOUT_MS = int(os.getenv('BATCH_TIMEOUT_MS', 1000))
+BATCH_TIMEOUT_MS = int(os.getenv('BATCH_TIMEOUT_MS', 500))
 
 
 class RedisConsumer:
@@ -70,7 +71,7 @@ class RedisConsumer:
         try:
             self.scan_interval = int(config.redis_queue_scan_interval)
         except (ValueError, TypeError):
-            self.scan_interval = 30
+            self.scan_interval = 10
         
         # Batch accumulators (one per log type)
         self.batch_ingest: List[Dict] = []
@@ -94,6 +95,9 @@ class RedisConsumer:
         
         # Log adapter for normalization
         self.log_adapter = LogAdapter()
+        
+        # Device discovery cache: {tenant_id: set(known_ips)}
+        self.known_devices: Dict[str, Set[str]] = defaultdict(set)
         
     def connect(self):
         """Establish connection to Redis using URL."""
@@ -136,24 +140,28 @@ class RedisConsumer:
         try:
             new_tenants: Set[str] = set()
             
-            # Scan for all tenant ingest queues
+            # 1. Primary Source: Formal tenant index from Redis (Managed by Admin API)
+            try:
+                formal_tenants = self.redis_client.smembers("tenant:index")
+                if formal_tenants:
+                    for t in formal_tenants:
+                        if isinstance(t, bytes):
+                            new_tenants.add(t.decode('utf-8'))
+                        else:
+                            new_tenants.add(str(t))
+            except Exception as e:
+                logger.debug(f"Could not read tenant:index, falling back to scanning: {e}")
+
+            # 2. Fallback/Complementary Source: Scan for active queues
+            # This ensures we don't miss logs for tenants not in the formal index
             for key in self.redis_client.scan_iter(match='logs:*:ingest', count=100):
-                # key format: "logs:EBK:ingest" → extract "EBK"
-                parts = key.split(':')
-                if len(parts) == 3:
-                    tenant_id = parts[1]
-                    new_tenants.add(tenant_id)
-            
-            # Also check for dead and clean queues (tenant may only have dead)
-            for key in self.redis_client.scan_iter(match='logs:*:dead', count=100):
                 parts = key.split(':')
                 if len(parts) == 3:
                     new_tenants.add(parts[1])
             
-            for key in self.redis_client.scan_iter(match='logs:*:clean', count=100):
-                parts = key.split(':')
-                if len(parts) == 3:
-                    new_tenants.add(parts[1])
+            # Always keep existing tenants to avoid the 'disappearing queue' race condition
+            # Once a tenant is discovered, we monitor it until worker restart
+            new_tenants.update(self.known_tenants)
             
             # Check if new tenants were discovered or if we need to initialize
             if new_tenants != self.known_tenants or not self.discovered_queues:
@@ -318,6 +326,67 @@ class RedisConsumer:
         
         return True
 
+    def _auto_register_device(self, tenant_id: str, source_ip: str, log_info: Dict[str, Any]):
+        """
+        Auto-register a device with Repo 1 if it's new.
+        Matches the workflow provided by the user.
+        """
+        if not source_ip or source_ip == "0.0.0.0" or source_ip == "127.0.0.1":
+            return
+
+        # 1. Check local cache first to avoid redundant API calls
+        if source_ip in self.known_devices[tenant_id]:
+            return
+
+        try:
+            repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
+            admin_key = os.getenv("ADMIN_KEY") or "changeme-admin-key"
+            
+            import requests
+            # 2. Check if device already exists in Repo 1
+            try:
+                response = requests.get(
+                    f"{repo1_url}/api/tenant/devices",
+                    headers={"X-Admin-Key": admin_key},
+                    timeout=2.0
+                )
+                
+                if response.status_code == 200:
+                    devices = response.json().get("devices", [])
+                    existing_ips = {d.get("ip") for d in devices}
+                    
+                    if source_ip in existing_ips:
+                        # Add to local cache and skip
+                        self.known_devices[tenant_id].add(source_ip)
+                        return
+            except Exception as check_err:
+                logger.debug(f"Repo1 device check failed, assuming new: {check_err}")
+
+            # 3. Create new device if not found
+            device_name = f"Auto-Device-{source_ip}"
+            if log_info.get("device_hostname"):
+                device_name = f"{log_info['device_hostname']}-{log_info.get('vendor', 'unknown')}"
+            
+            reg_payload = {
+                "action": "add",
+                "device_ip": source_ip,
+                "device_name": device_name
+            }
+            
+            logger.info(f"Auto-registering new device: {device_name} ({source_ip})")
+            requests.post(
+                f"{repo1_url}/api/tenant/devices",
+                json=reg_payload,
+                headers={"X-Admin-Key": admin_key},
+                timeout=2.0
+            )
+            
+            # Add to local cache
+            self.known_devices[tenant_id].add(source_ip)
+            
+        except Exception as e:
+            logger.error(f"Auto-registration failed for {source_ip}: {e}")
+
     def _handle_ingest_log(self, log_data: Dict[str, Any], tenant_id: Optional[str] = None) -> bool:
         """
         Handle raw ingest logs (full pipeline).
@@ -349,6 +418,10 @@ class RedisConsumer:
             }
             
             self.batch_ingest.append(log_dict)
+            
+            # 3. Auto-register if new device
+            self._auto_register_device(normalized.tenant_id, normalized.source_ip, log_dict)
+            
             return True
             
         except Exception as e:
@@ -391,6 +464,10 @@ class RedisConsumer:
             }
             
             self.batch_clean.append(log_dict)
+            
+            # 3. Auto-register if new device
+            self._auto_register_device(normalized.tenant_id, normalized.source_ip, log_dict)
+            
             return True
             
         except Exception as e:

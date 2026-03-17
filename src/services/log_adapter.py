@@ -21,6 +21,7 @@ This adapter handles multiple log formats from Repo1:
 """
 
 import logging
+import re
 from typing import Dict, Any, Optional
 from datetime import datetime
 from src.models.schemas import NormalizedLogSchema
@@ -140,22 +141,26 @@ class LogAdapter:
         if severity not in ['low', 'medium', 'high', 'critical', 'info', 'warning', 'error']:
             severity = 'info'
             
+        # Attempt to extract networking fields from raw message
+        message = log.get('raw_log', '')
+        network = LogAdapter._parse_network_fields(message)
+        
         return NormalizedLogSchema(
             tenant_id=str(log.get('tenant_id', 'default')).strip('[]'),
             company_id=log.get('tenant_id'),
             device_id=metadata.get('device_id') or f"{vendor}_{device_type}",
             timestamp=LogAdapter._parse_timestamp(log.get('timestamp')),
-            source_ip=metadata.get('source_ip'),
-            destination_ip=None,
-            source_port=None,
-            destination_port=None,
-            protocol=None,
-            action=None,
-            log_type='raw_ingest',
+            source_ip=metadata.get('source_ip') or network.get('source_ip'),
+            destination_ip=network.get('destination_ip'),
+            source_port=network.get('source_port'),
+            destination_port=network.get('destination_port'),
+            protocol=network.get('protocol'),
+            action=network.get('action') or ('blocked' if 'BLOCK' in message.upper() else None),
+            log_type='firewall' if 'firewall' in device_type.lower() or 'UFW' in message.upper() else 'raw_ingest',
             vendor=vendor,
             device_hostname=None,
             severity=severity,
-            message=log.get('raw_log', ''),
+            message=message,
             raw_data=log,
             business_context={}
         )
@@ -303,6 +308,37 @@ class LogAdapter:
             severity='low',
             log_type='error'
         )
+
+    @staticmethod
+    def _parse_network_fields(message: str) -> Dict[str, Any]:
+        """Try to extract networking fields (IPs, Ports) from raw syslog string."""
+        fields = {}
+        if not message or not isinstance(message, str):
+            return fields
+            
+        # Common pattern: SRC=1.2.3.4 DST=5.6.7.8 SPT=123 DPT=456 PROTO=TCP
+        # Matches UFW, iptables, most firewalls
+        src_ip = re.search(r'SRC=([0-9\.]+)', message)
+        dst_ip = re.search(r'DST=([0-9\.]+)', message)
+        src_port = re.search(r'SPT=([0-9]+)', message)
+        dst_port = re.search(r'DPT=([0-9]+)', message)
+        proto = re.search(r'PROTO=([A-Z0-9]+)', message)
+        
+        if src_ip: fields['source_ip'] = src_ip.group(1)
+        if dst_ip: fields['destination_ip'] = dst_ip.group(1)
+        if src_port: fields['source_port'] = int(src_port.group(1))
+        if dst_port: fields['destination_port'] = int(dst_port.group(1))
+        if proto: fields['protocol'] = proto.group(1).lower()
+        
+        # If destination_ip found but source_ip not in SRC=, look for generic IP
+        if 'source_ip' not in fields:
+            ips = re.findall(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', message)
+            if ips:
+                fields['source_ip'] = ips[0]
+                if len(ips) > 1 and 'destination_ip' not in fields:
+                    fields['destination_ip'] = ips[1]
+                    
+        return fields
 
     # =========================================================================
     # UTILITIES
