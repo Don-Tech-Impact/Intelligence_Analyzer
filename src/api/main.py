@@ -108,8 +108,7 @@ async def root_redirect():
 async def custom_swagger_ui_html():
     if not EXPOSE_DOCS:
         raise HTTPException(status_code=404, detail="Not Found")
-    return HTMLResponse(
-        """
+    return HTMLResponse("""
 <!DOCTYPE html>
 <html>
 <head>
@@ -135,8 +134,7 @@ async def custom_swagger_ui_html():
     </script>
 </body>
 </html>
-    """
-    )
+    """)
 
 
 # Global Exception Handler

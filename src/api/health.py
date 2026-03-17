@@ -31,7 +31,12 @@ def health_check():
     Returns:
         Health status with component checks.
     """
-    health: Dict[str, Any] = {"status": "healthy", "timestamp": datetime.utcnow().isoformat(), "version": "1.0.0", "components": {}}
+    health: Dict[str, Any] = {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "version": "1.0.0",
+        "components": {},
+    }
 
     # Check database
     try:

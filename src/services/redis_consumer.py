@@ -573,6 +573,7 @@ class RedisConsumer:
                             setattr(self, k, v)
 
                 from typing import cast
+
                 log_proxy = LogProxy(log_dict)
                 alerts = analyzer_manager.analyze_log(cast(NormalizedLog, log_proxy))
 
