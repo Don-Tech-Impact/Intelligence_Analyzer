@@ -55,6 +55,24 @@ window.addEventListener('click', function(event) {
     }
 });
 
+/**
+ * Toggles the sidebar on mobile devices
+ */
+window.toggleSidebar = function() {
+    const aside = document.querySelector('aside');
+    const backdrop = document.getElementById('sidebar-backdrop');
+    if (aside && backdrop) {
+        aside.classList.toggle('active');
+        backdrop.classList.toggle('active');
+        // Re-trigger icons in case they were hidden
+        if (window.lucide) window.lucide.createIcons();
+    }
+}
+
+window.addEventListener('load', () => {
+    if (window.lucide) window.lucide.createIcons();
+});
+
 // ===== Global State =====
 const urlParams = new URLSearchParams(window.location.search);
 
@@ -1031,12 +1049,12 @@ function populateTable(tbodyId, alerts, mode) {
     tbody.innerHTML = alerts.map(a => {
         const sev = (a.severity || 'medium').toLowerCase();
         return `<tr class="severity-${sev}">
-            <td>${formatTime(a.created_at || a.timestamp)}</td>
-            <td>${escapeHtml(a.alert_type || a.type || '')}</td>
-            <td><span class="mono">${escapeHtml(a.source_ip || '')}</span></td>
-            <td><span class="badge badge-${sev}">${sev}</span></td>
-            ${mode === 'full' ? `<td>${escapeHtml(a.description || '')}</td>` : ''}
-            <td><span class="badge-status ${a.status || 'open'}">${a.status || 'open'}</span></td>
+            <td data-label="Time">${formatTime(a.created_at || a.timestamp)}</td>
+            <td data-label="Type">${escapeHtml(a.alert_type || a.type || '')}</td>
+            <td data-label="Source"><span class="mono">${escapeHtml(a.source_ip || '')}</span></td>
+            <td data-label="Severity"><span class="badge badge-${sev}">${sev}</span></td>
+            ${mode === 'full' ? `<td data-label="Description">${escapeHtml(a.description || '')}</td>` : ''}
+            <td data-label="Status"><span class="badge-status ${a.status || 'open'}">${a.status || 'open'}</span></td>
         </tr>`;
     }).join('');
 }
@@ -1115,6 +1133,14 @@ function switchView(view) {
     if (view === 'profile') renderProfile();
     if (view === 'api-keys') loadApiKeys();
     fetchData();
+
+    // Close sidebar on mobile
+    const aside = document.querySelector('aside');
+    const backdrop = document.getElementById('sidebar-backdrop');
+    if (aside && aside.classList.contains('active')) {
+        aside.classList.remove('active');
+        backdrop?.classList.remove('active');
+    }
 
     // Fix ApexCharts rendering bug when container goes from display:none to block
     setTimeout(() => {
@@ -1649,7 +1675,7 @@ async function renderAssets() {
         if (userDevicesBody) {
             userDevicesBody.innerHTML = userDevices.length ? userDevices.map(d => `
                 <tr>
-                    <td>
+                    <td data-label="Device">
                         <div style="display:flex; align-items:center; gap:10px;">
                             <div class="avatar" style="background: rgba(0, 167, 111, 0.1); color: var(--primary);">
                                 <i data-lucide="smartphone" style="width:14px;height:14px;"></i>
@@ -1657,9 +1683,9 @@ async function renderAssets() {
                             <span style="font-weight:600;">${escapeHtml(d.device_name || 'My Device')}</span>
                         </div>
                     </td>
-                    <td><code>${escapeHtml(d.ip_address)}</code></td>
-                    <td style="font-size:0.75rem; color:var(--text-muted);">${formatTime(d.created_at)}</td>
-                    <td style="text-align:right;">
+                    <td data-label="IP Address"><code>${escapeHtml(d.ip_address)}</code></td>
+                    <td data-label="Registered">${formatTime(d.created_at)}</td>
+                    <td data-label="Actions" style="text-align:right;">
                         <button class="btn-secondary" style="padding:4px 8px; font-size:11px;" onclick="removeUserDevice('${d.ip_address}')">
                             <i data-lucide="trash-2" style="width:12px;height:12px;"></i> Remove
                         </button>
@@ -1675,7 +1701,7 @@ async function renderAssets() {
                 const isOnline = d.is_online || !!d.last_log_at; // Mock online status if logs exist
                 return `
                 <tr>
-                    <td>
+                    <td data-label="Name">
                         <div style="display:flex; align-items:center; gap:10px;">
                             <div class="avatar" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">
                                 <i data-lucide="${getCategoryIcon(d.category)}" style="width:14px;height:14px;"></i>
@@ -1686,16 +1712,16 @@ async function renderAssets() {
                             </div>
                         </div>
                     </td>
-                    <td><code>${d.ip_address}</code></td>
-                    <td><span class="badge-beta" style="background:rgba(148,163,184,0.1); color:var(--text-muted); padding:2px 6px;">${d.category.toUpperCase()}</span></td>
-                    <td>
+                    <td data-label="IP Address"><code>${d.ip_address}</code></td>
+                    <td data-label="Category"><span class="badge-beta" style="background:rgba(148,163,184,0.1); color:var(--text-muted); padding:2px 6px;">${d.category.toUpperCase()}</span></td>
+                    <td data-label="Status">
                         <span class="status-badge ${isOnline ? 'online' : 'offline'}">
                             <i data-lucide="${isOnline ? 'zap' : 'zap-off'}"></i>
                             ${isOnline ? 'Online' : 'Offline'}
                         </span>
                     </td>
-                    <td style="font-size:0.75rem; color:var(--text-muted);">${d.last_log_at ? formatTime(d.last_log_at) : 'No logs yet'}</td>
-                    <td>
+                    <td data-label="Last Seen" style="font-size:0.75rem; color:var(--text-muted);">${d.last_log_at ? formatTime(d.last_log_at) : 'No logs yet'}</td>
+                    <td data-label="Actions">
                         <button class="btn-secondary" style="padding:4px 8px; font-size:11px;" onclick="deleteManagedDevice(${d.id})">
                             <i data-lucide="trash-2" style="width:12px;height:12px;"></i> Unregister
                         </button>
@@ -1709,21 +1735,21 @@ async function renderAssets() {
         if (discoveredBody) {
             discoveredBody.innerHTML = discovered.length ? discovered.map(a => `
                 <tr>
-                    <td><code style="color:var(--accent-blue);">${a.source_ip || a.device_id}</code></td>
-                    <td>
+                    <td data-label="Source IP"><code style="color:var(--accent-blue);">${a.source_ip || a.device_id}</code></td>
+                    <td data-label="Identity">
                         <div style="display:flex; align-items:center; gap:8px;">
                             <span class="badge-beta" style="background:rgba(59,130,246,0.1); color:#3b82f6; padding:2px 6px;">${a.type.toUpperCase()}</span>
                             <span style="font-size:11px; color:var(--text-muted);">${a.vendor}</span>
                         </div>
                     </td>
-                    <td>${a.event_count}</td>
-                    <td>
+                    <td data-label="Events">${a.event_count}</td>
+                    <td data-label="Threats">
                         <span class="badge-threat ${a.threat_count > 0 ? 'high' : 'low'}" style="padding:2px 8px;">
                             ${a.threat_count} Alerts
                         </span>
                     </td>
-                    <td style="font-size:0.75rem; color:var(--text-muted);">${formatTime(a.last_seen)}</td>
-                    <td>
+                    <td data-label="Last Seen" style="font-size:0.75rem; color:var(--text-muted);">${formatTime(a.last_seen)}</td>
+                    <td data-label="Actions">
                         <button class="btn-primary" style="padding:4px 8px; font-size:11px;" 
                                 onclick="prefillRegistration('${a.source_ip || a.device_id}', '${a.vendor}', '${a.type}')">
                             <i data-lucide="plus" style="width:12px;height:12px;"></i> Register

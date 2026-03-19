@@ -8,7 +8,7 @@
     <meta name="description" content="Afric-Analyzer — Real-time threat monitoring and security intelligence">
     <link rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Public+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=2.2">
     <link rel="stylesheet" href="ai-assistant.css">
     <script src="lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
@@ -69,13 +69,21 @@
             </div>
         </aside>
 
+        <!-- Mobile Sidebar Backdrop -->
+        <div id="sidebar-backdrop" onclick="toggleSidebar()"></div>
+
         <!-- ===== Main Content ===== -->
         <main>
             <!-- Header -->
             <header>
-                <div class="header-title">
-                    <h1 id="view-title">Afric-Analyzer</h1>
-                    <p id="view-subtitle">Real-time threat monitoring and response</p>
+                <div class="header-left">
+                    <button id="sidebar-toggle" class="mobile-only-btn" onclick="toggleSidebar()">
+                        <i data-lucide="menu"></i>
+                    </button>
+                    <div class="header-title">
+                        <h1 id="view-title">Afric-Analyzer</h1>
+                        <p id="view-subtitle">Real-time threat monitoring and response</p>
+                    </div>
                 </div>
                 <div class="header-right">
                     <div class="status-badge offline" id="status-badge" onclick="toggleApiStatus()">
@@ -514,7 +522,7 @@
                             <i data-lucide="plus"></i> Register Personal Device
                         </button>
                     </div>
-                    <table>
+                    <table class="mobile-cards">
                         <thead>
                             <tr>
                                 <th>Device Name</th>
@@ -538,7 +546,7 @@
                             <h4 style="font-size: 0.9rem; font-weight: 700;">Infrastructure Assets (Managed)</h4>
                         </div>
                     </div>
-                    <table>
+                    <table class="mobile-cards">
                         <thead>
                             <tr>
                                 <th>Name</th>
@@ -560,7 +568,7 @@
                             <p>IPs detected in logs but not yet registered</p>
                         </div>
                     </div>
-                    <table>
+                    <table class="mobile-cards">
                         <thead>
                             <tr>
                                 <th>Source IP</th>
@@ -599,7 +607,7 @@
                             </div>
                         </div>
                     </div>
-                    <table>
+                    <table class="mobile-cards">
                         <thead>
                             <tr>
                                 <th>Time</th>

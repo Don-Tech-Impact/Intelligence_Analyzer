@@ -505,6 +505,9 @@ async def register_device(payload: dict, tenant_id: str = Depends(get_tenant_id)
             print(f"[SIEM] Device registered locally but failed to sync allowlist: {sync_err}")
 
         return ApiResponse(status="success", data=device.to_dict())
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
