@@ -3,7 +3,7 @@ import respx
 import httpx
 from fastapi.testclient import TestClient
 from src.api.main import app
-from src.api.v1_router import verify_jwt
+from src.api.v1_router import verify_jwt, get_tenant_id
 from src.core.database import db_manager
 from src.models.database import ManagedDevice, Base
 import os
@@ -11,12 +11,13 @@ import os
 # Mock JWT for V1 Router
 MOCK_JWT = {"sub": "test-uuid", "tenant_id": "test_tenant", "role": "admin"}
 app.dependency_overrides[verify_jwt] = lambda: MOCK_JWT
+app.dependency_overrides[get_tenant_id] = lambda: "test_tenant"
 
 client = TestClient(app)
 
 @pytest.fixture(scope="module", autouse=True)
 def test_db():
-    db_manager.initialize()
+    db_manager.initialize() 
     Base.metadata.create_all(db_manager.engine)
     yield
     db_manager.close()
