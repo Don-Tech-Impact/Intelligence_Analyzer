@@ -1,0 +1,70 @@
+# docker/docker-compose.staging.yml
+
+services:
+
+  app-staging:
+    image: ${DOCKER_ORG:-africanalyzer}/${APP_NAME:-afric_analyzer}:staging-latest
+    container_name: siem-analyzer-staging
+    ports:
+      - "8081:8000"
+    env_file:
+      - /opt/afric-analyzer-staging/config/.env.staging
+    depends_on:
+      postgres-staging:
+        condition: service_healthy
+      redis-staging:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - staging-net
+
+  worker-staging:
+    image: ${DOCKER_ORG:-africanalyzer}/${APP_NAME:-afric_analyzer}:staging-latest
+    container_name: afric-worker-staging
+    command: celery -A src.core.celery worker --loglevel=info
+    env_file:
+      - /opt/afric-analyzer-staging/config/.env.staging
+    depends_on:
+      postgres-staging:
+        condition: service_healthy
+      redis-staging:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - staging-net
+
+  postgres-staging:
+    image: postgres:15-alpine
+    container_name: siem-postgres-staging
+    ports:
+      - "5433:5432" # 5433 to avoid clash with prod on 5432
+    environment:
+      POSTGRES_USER: ${STAGING_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${STAGING_DB_PASSWORD}
+      POSTGRES_DB: ${STAGING_DB_NAME:-africanalyzer_staging}
+    volumes:
+      - staging_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - staging-net
+
+  redis-staging:
+    image: redis:7-alpine
+    container_name: siem-redis-staging
+    ports:
+      - "6380:6379" # 6380 to avoid clash with prod on 6379
+    restart: unless-stopped
+    networks:
+      - staging-net
+
+networks:
+  staging-net:
+    driver: bridge
+
+volumes:
+  staging_postgres_data:

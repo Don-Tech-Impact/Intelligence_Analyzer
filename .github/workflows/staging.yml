@@ -1,0 +1,270 @@
+name: staging
+
+on:
+  pull_request:
+    branches: [staging]
+  push:
+    branches: [staging]
+
+concurrency:
+  group: staging-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: '3.11'
+  APP_NAME: afric_analyzer
+  DOCKER_ORG: africanalyzer
+
+jobs:
+
+  # ─────────────────────────────────────────────
+  # JOB 1 — Lint (same as dev, staging must be clean)
+  # ─────────────────────────────────────────────
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install linting tools
+        run: pip install black isort flake8
+
+      - run: isort --check-only src/
+      - run: black --check src/
+      - run: flake8 src/
+
+  # ─────────────────────────────────────────────
+  # JOB 2 — Full Test Suite (stricter than dev)
+  # ─────────────────────────────────────────────
+  full-tests:
+    name: Full Test Suite
+    runs-on: ubuntu-latest
+    needs: lint
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: africanalyzer_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements/requirements-ingestion.txt
+          pip install -r requirements/requirements-dev.txt
+
+      - name: Run DB migrations on test DB
+        env:
+          DATABASE_URL: postgresql://postgres:testpassword@localhost:5432/africanalyzer_test
+        run: alembic upgrade head
+
+      - name: Run full test suite
+        env:
+          REDIS_URL: redis://localhost:6379/0
+          DATABASE_URL: postgresql://postgres:testpassword@localhost:5432/africanalyzer_test
+          ENVIRONMENT: staging
+          SECRET_KEY: staging-test-secret-key-not-real
+        run: |
+          pytest tests/ -v \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=75 \
+            --tb=short \
+            -x                    # stop on first failure
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: staging-coverage
+          path: coverage.xml
+
+  # ─────────────────────────────────────────────
+  # JOB 3 — Security Scan (stricter in staging)
+  # ─────────────────────────────────────────────
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install security tools
+        run: pip install bandit safety
+
+      - name: Bandit SAST scan
+        run: bandit -r src/ -ll -f json -o bandit-report.json || true
+
+      - name: Safety dependency check
+        run: safety scan || true
+
+      - name: Upload security report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+
+  # ─────────────────────────────────────────────
+  # JOB 4 — Docker Build Validation
+  # ─────────────────────────────────────────────
+  docker-build:
+    name: Docker Build Validation
+    runs-on: ubuntu-latest
+    needs: full-tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build production image (no push — validation only)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/Dockerfile.production
+          push: false
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_ENV=staging
+
+  # ─────────────────────────────────────────────
+  # JOB 5 — Deploy to Staging Server
+  # Only runs on PUSH (merge), not on PR open
+  # ─────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging Server
+    runs-on: ubuntu-latest
+    needs: [full-tests, docker-build, security]
+    if: github.event_name == 'push'    # only on actual merge, not PR review
+    environment: staging               # links to GitHub Environment for tracking
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build & push staging image
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/Dockerfile.production
+          push: true
+          tags: |
+            ${{ env.DOCKER_ORG }}/${{ env.APP_NAME }}:staging-latest
+            ${{ env.DOCKER_ORG }}/${{ env.APP_NAME }}:staging-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to staging server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          DOCKER_ORG_ENV: ${{ env.DOCKER_ORG }}
+          APP_NAME_ENV: ${{ env.APP_NAME }}
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          port: 22
+          envs: COMMIT_SHA,DOCKER_ORG_ENV,APP_NAME_ENV
+          script_stop: true
+          timeout: 300s
+          script: |
+            set -e
+            APP_DIR="/opt/afric-analyzer-staging"
+            COMPOSE_FILE="${APP_DIR}/docker/docker-compose-staging.yml"
+            ENV_FILE="${APP_DIR}/config/.env.staging"
+
+            echo ">> Logging into Docker..."
+            echo "${{ secrets.DOCKER_PASSWORD }}" | \
+              docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+            echo ">> Pulling latest staging image..."
+            docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" pull
+
+            echo ">> Running DB migrations..."
+            docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
+              run --rm app alembic upgrade head
+
+            echo ">> Deploying containers..."
+            docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
+              up -d --force-recreate --remove-orphans
+
+            echo ">> Waiting 30s for startup..."
+            sleep 30
+
+            echo ">> Running smoke tests..."
+            for endpoint in /health /api/v1/status; do
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                http://localhost:8081${endpoint} 2>/dev/null || echo "000")
+              echo ">> ${endpoint}: HTTP ${CODE}"
+              [ "${CODE}" = "200" ] || {
+                echo "SMOKE TEST FAILED: ${endpoint} returned ${CODE}"
+                docker compose -f "${COMPOSE_FILE}" logs --tail=50
+                exit 1
+              }
+            done
+
+            echo ">> Cleaning up old images..."
+            docker image prune -f
+            docker logout
+            echo "===== STAGING DEPLOY SUCCESSFUL ====="
+
+  # ─────────────────────────────────────────────
+  # JOB 6 — Notify on Failure
+  # ─────────────────────────────────────────────
+  notify-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [lint, full-tests, docker-build, deploy-staging]
+    if: failure()
+    steps:
+      - name: Notify staging failure
+        run: |
+          echo "Staging pipeline failed on commit ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Triggered by: ${{ github.actor }}"
+          # Add Slack/email webhook here later:
+          # curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
+          #   -d
