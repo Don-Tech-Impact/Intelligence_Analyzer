@@ -18,4 +18,12 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "strict"
+addopts = [
+    "-v",
+    "--tb=short",
+    "--cov=src",
+    "--cov-report=xml",
+    "--cov-report=term-missing",
+    "--cov-fail-under=10",     # ← lower this now, raise it as you add tests
+]
 
