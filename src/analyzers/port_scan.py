@@ -27,7 +27,7 @@ Accuracy:
 
 import logging
 import os
-from typing import List, Optional
+from typing import Optional
 
 import redis
 
@@ -41,10 +41,9 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-# Threshold: Number of unique ports to trigger alert
-PORT_SCAN_THRESHOLD = int(os.getenv("PORT_SCAN_THRESHOLD", 5))
-# Window: Time period in seconds
-PORT_SCAN_WINDOW = int(os.getenv("PORT_SCAN_WINDOW", 60))  # 1 minute
+# CONFIGURATION (Defaults; dynamic from config object)
+DEFAULT_THRESHOLD = 5
+DEFAULT_WINDOW = 60
 
 
 class PortScanAnalyzer(BaseAnalyzer):
@@ -68,8 +67,8 @@ class PortScanAnalyzer(BaseAnalyzer):
         self.enabled = True
 
         self.redis_client = redis_client
-        self.threshold = PORT_SCAN_THRESHOLD
-        self.window_seconds = PORT_SCAN_WINDOW
+        self.threshold = config.port_scan_threshold
+        self.window_seconds = config.port_scan_time_window
 
         if self.redis_client is None:
             self._connect_redis()

@@ -135,6 +135,7 @@ class TestAnalyzers:
     def test_port_scan_stateful(self, sample_log):
         mock_redis = MockRedis()
         analyzer = PortScanAnalyzer(redis_client=mock_redis)
+        analyzer.threshold = 5  # Ensure threshold is 5 for this test regardless of env
         sample_log.source_ip = "10.0.0.1"
         sample_log.destination_ip = "10.0.0.2"
 

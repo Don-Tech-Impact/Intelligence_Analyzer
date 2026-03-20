@@ -41,10 +41,9 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-# Threshold: Number of failed attempts to trigger alert
-BRUTE_FORCE_THRESHOLD = int(os.getenv("BRUTE_FORCE_THRESHOLD", 5))
-# Window: Time period in seconds
-BRUTE_FORCE_WINDOW = int(os.getenv("BRUTE_FORCE_WINDOW", 300))  # 5 minutes
+# CONFIGURATION (Defaults; dynamic from config object)
+DEFAULT_THRESHOLD = 5
+DEFAULT_WINDOW = 300
 
 
 class BruteForceAnalyzer(BaseAnalyzer):
@@ -67,8 +66,8 @@ class BruteForceAnalyzer(BaseAnalyzer):
         self.enabled = True
 
         self.redis_client = redis_client
-        self.threshold = BRUTE_FORCE_THRESHOLD
-        self.window_seconds = BRUTE_FORCE_WINDOW
+        self.threshold = config.brute_force_threshold
+        self.window_seconds = config.brute_force_time_window
 
         # Connect to Redis if not provided
         if self.redis_client is None:
