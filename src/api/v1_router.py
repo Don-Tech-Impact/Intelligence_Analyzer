@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy import create_engine, desc, func, text
+from sqlalchemy import desc, func, text
 from sqlalchemy.orm import Session
 
 from src.api.auth import verify_jwt
@@ -18,6 +18,13 @@ from src.models.schemas import ApiResponse
 from src.services.analytics import AnalyticsService
 from src.services.assets import AssetService
 from src.services.report_generator import ReportGenerator
+
+# We use a direct engine/session here to keep this dependency lightweight
+# and to avoid interfering with FastAPI's primary 'get_db' generator.
+from sqlalchemy import create_engine
+# from sqlalchemy.orm import Session as SyncSession
+
+# from src.models.database import Tenant
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +66,6 @@ def get_tenant_id(tenant_id: str = Query("default"), payload: dict = Depends(ver
     if not is_super:
         token_tenant = payload.get("tenant_id") or payload.get("sub")
         if token_tenant:
-            # We use a direct engine/session here to keep this dependency lightweight
-            # and to avoid interfering with FastAPI's primary 'get_db' generator.
-            from sqlalchemy import create_engine
-            from sqlalchemy.orm import Session as SyncSession
-
-            from src.models.database import Tenant
-
             try:
                 engine = create_engine(siem_config.database_url)
                 # Use a safer, independent connection to prevent session cross-talk
