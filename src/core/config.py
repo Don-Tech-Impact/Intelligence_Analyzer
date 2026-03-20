@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 
 import yaml
 from dotenv import load_dotenv
+
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 dotenv_path = os.path.join(project_root, "config", ".env.development")
 

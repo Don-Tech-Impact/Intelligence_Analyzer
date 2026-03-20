@@ -1,5 +1,7 @@
-import redis
 import logging
+
+import redis
+
 from src.core.config import config
 
 logger = logging.getLogger(__name__)

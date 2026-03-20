@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy import desc, func, text, create_engine
+from sqlalchemy import create_engine, desc, func, text
 from sqlalchemy.orm import Session
 
 from src.api.auth import verify_jwt
@@ -61,9 +61,10 @@ def get_tenant_id(tenant_id: str = Query("default"), payload: dict = Depends(ver
         if token_tenant:
             # We use a direct engine/session here to keep this dependency lightweight
             # and to avoid interfering with FastAPI's primary 'get_db' generator.
-            from src.models.database import Tenant
             from sqlalchemy import create_engine
             from sqlalchemy.orm import Session as SyncSession
+
+            from src.models.database import Tenant
             
             try:
                 engine = create_engine(siem_config.database_url)
