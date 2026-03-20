@@ -7,7 +7,10 @@ from typing import Any, Dict, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy import desc, func, text
+
+# We use a direct engine/session here to keep this dependency lightweight
+# and to avoid interfering with FastAPI's primary 'get_db' generator.
+from sqlalchemy import create_engine, desc, func, text
 from sqlalchemy.orm import Session
 
 from src.api.auth import verify_jwt
@@ -19,9 +22,6 @@ from src.services.analytics import AnalyticsService
 from src.services.assets import AssetService
 from src.services.report_generator import ReportGenerator
 
-# We use a direct engine/session here to keep this dependency lightweight
-# and to avoid interfering with FastAPI's primary 'get_db' generator.
-from sqlalchemy import create_engine
 # from sqlalchemy.orm import Session as SyncSession
 
 # from src.models.database import Tenant
