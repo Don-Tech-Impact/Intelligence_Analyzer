@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, text, create_engine
 from sqlalchemy.orm import Session
 
 from src.api.auth import verify_jwt
@@ -55,12 +55,45 @@ def get_tenant_id(tenant_id: str = Query("default"), payload: dict = Depends(ver
 
     is_super = role == "superadmin" or is_admin is True
 
-    # If not superadmin, strictly enforce token-based scoping
+    # If not superadmin, strictly enforce token-based scoping and existence
     if not is_super:
         token_tenant = payload.get("tenant_id") or payload.get("sub")
         if token_tenant:
-            return token_tenant
+            # We use a direct engine/session here to keep this dependency lightweight
+            # and to avoid interfering with FastAPI's primary 'get_db' generator.
+            from src.models.database import Tenant
+            from sqlalchemy import create_engine
+            from sqlalchemy.orm import Session as SyncSession
+            
+            try:
+                engine = create_engine(siem_config.database_url)
+                # Use a safer, independent connection to prevent session cross-talk
+                with engine.connect() as conn:
+                    result = conn.execute(
+                        text("SELECT tenant_id, is_active FROM tenants WHERE tenant_id = :tid"),
+                        # text("SELECT id, is_active FROM tenants WHERE id = :tid"),
+                        {"tid": token_tenant} # Use token_tenant here, not tenant_id from query
+                    ).fetchone()
+                    
+                    if not result:
+                        logger.warning(f"Access denied: Tenant '{token_tenant}' not found in database.")
+                        raise HTTPException(status_code=403, detail="Tenant access denied or not provisioned.")
+                    
+                    if not result[1]: # is_active
+                        logger.warning(f"Access denied: Tenant '{token_tenant}' is suspended.")
+                        raise HTTPException(status_code=403, detail="Tenant account is suspended.")
+                        
+                    return token_tenant
+            except HTTPException:
+                raise
+            except Exception as db_err:
+                logger.error(f"Tenant verification CRASHED: {db_err}")
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Identity verification system is currently unavailable. Please try again in 30 seconds."
+                )
 
+    # For superadmins, default can be used if no query param
     return tenant_id
 
 
@@ -487,24 +520,44 @@ async def register_device(payload: dict, tenant_id: str = Depends(get_tenant_id)
         db.commit()
 
         # 2. Sync with Repo 1 Allowlist
+        sync_status = "pending"
+        sync_error = None
         try:
-            import os
-
-            import httpx
-
             repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
-            admin_key = os.getenv("ADMIN_KEY") or "changeme-admin-key"
+            admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY") or "changeme-admin-key"
 
             async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post(
+                headers = {"X-Admin-Key": admin_key, "Content-Type": "application/json"}
+                # Repo 1 uses 'description' or 'label' for IP entries; we provide both for compatibility
+                payload_sync = {
+                    "ip_range": ip,
+                    "label": f"Managed Device: {name}",
+                    "description": f"Managed Device: {name}",
+                    "is_active": True
+                }
+                sync_res = await client.post(
                     f"{repo1_url}/admin/tenants/{tenant_id}/ips",
-                    json={"ip_range": ip, "label": f"Managed Device: {name}", "is_active": True},
-                    headers={"X-Admin-Key": admin_key},
+                    json=payload_sync,
+                    headers=headers,
                 )
+                if sync_res.is_error:
+                    sync_status = "failed"
+                    sync_error = f"Repo 1 returned {sync_res.status_code}"
+                    logger.error(f"[SIEM] Repo 1 Sync failed with status {sync_res.status_code}: {sync_res.text}")
+                else:
+                    sync_status = "success"
+                    logger.info(f"[SIEM] Device {name} ({ip}) synced successfully with Repo 1.")
         except Exception as sync_err:
-            print(f"[SIEM] Device registered locally but failed to sync allowlist: {sync_err}")
+            sync_status = "failed"
+            sync_error = str(sync_err)
+            logger.error(f"[SIEM] Device registered locally but failed to sync allowlist: {sync_err}")
 
-        return ApiResponse(status="success", data=device.to_dict())
+        res_data = device.to_dict()
+        res_data["sync_status"] = sync_status
+        if sync_error:
+            res_data["sync_error"] = sync_error
+            
+        return ApiResponse(status="success", data=res_data)
     except HTTPException:
         db.rollback()
         raise
@@ -837,16 +890,35 @@ async def get_tenant_metadata(tenant_id: str = Depends(get_tenant_id)):
     """
     Proxies a request to Repo 1 to fetch the tenant's current settings/metadata.
     """
-    repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
+    # Use verified paths from Repo 1 Swagger: /admin/tenants/{tid}
+    repo1_url = (os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080").rstrip('/')
     admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY") or "changeme-admin-key"
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             headers = {"X-Admin-Key": admin_key}
             res = await client.get(f"{repo1_url}/admin/tenants/{tenant_id}", headers=headers)
-            data = res.json()
-            # Support returning the full tenant object including name, description, config, etc.
-            return ApiResponse(status="success", data=data)
+
+            if res.status_code == 200:
+                try:
+                    data = res.json()
+                    return ApiResponse(status="success", data=data)
+                except Exception:
+                    logger.error(f"Repo 1 returned non-JSON for tenant {tenant_id}")
+                    raise HTTPException(status_code=502, detail="Upstream returned malformed response")
+
+            if res.status_code == 404:
+                # Fallback for new tenants without Repo 1 metadata yet
+                return ApiResponse(
+                    status="success", data={"config": {"compliance": [], "incident_response": {"channels": []}}}
+                )
+
+            logger.error(f"Repo 1 returned status {res.status_code} for tenant {tenant_id}")
+            raise HTTPException(status_code=res.status_code, detail="Remote control plane error")
+
         except httpx.RequestError as e:
-            logger.error(f"Failed to fetch metadata from Repo 1: {e}")
+            logger.error(f"Failed to reach Repo 1 for metadata: {e}")
             raise HTTPException(status_code=502, detail="Control plane unreachable")
+        except Exception as e:
+            logger.error(f"Unexpected error in metadata proxy: {e}")
+            raise HTTPException(status_code=500, detail="Internal proxy error")

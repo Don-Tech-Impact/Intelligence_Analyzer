@@ -4,7 +4,14 @@ from typing import Any, Dict, Optional
 
 import yaml
 from dotenv import load_dotenv
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+dotenv_path = os.path.join(project_root, "config", ".env.development")
 
+if os.path.exists(dotenv_path):
+    print(f"Loaded config from {dotenv_path}")
+    load_dotenv(dotenv_path)
+else:
+    print(f"FAILED to find config at {dotenv_path}")
 
 class Config:
     """Configuration manager that loads settings from YAML and environment variables."""
@@ -13,8 +20,8 @@ class Config:
 
         self._config: Dict[str, Any] = {}
 
-        # Load environment variables
-        load_dotenv()
+        # # Load environment variables
+        # load_dotenv()
 
         # Load YAML configuration
         if config_path is None:
@@ -129,26 +136,35 @@ class Config:
 
     @property
     def database_url(self) -> str:
-        """Get SQLAlchemy database URL."""
-        # Check for direct URL first
+        """Get SQLAlchemy database URL with full support for POSTGRES_ env vars."""
+        # 1. Check for explicit DATABASE_URL first
+        url = os.getenv("DATABASE_URL")
+        if url:
+            return url
+
+        # 2. Check for configured database.url in YAML
         url = self.get("database.url")
         if url:
             return url
 
         db_type = self.database_type
-        if db_type == "sqlite":
+        
+        # 3. Construct URL from components
+        if db_type == "postgresql":
+            # Prioritize POSTGRES_ variants commonly used in Docker
+            host = os.getenv("POSTGRES_HOST") or self.get("database.host", "localhost")
+            port = os.getenv("POSTGRES_PORT") or self.get("database.port", 5432)
+            name = os.getenv("POSTGRES_DB") or self.get("database.name", "siem_analyzer")
+            user = os.getenv("POSTGRES_USER") or self.get("database.user", "admin")
+            password = os.getenv("POSTGRES_PASSWORD") or self.get("database.password", "password")
+            
+            return f"postgresql://{user}:{password}@{host}:{port}/{name}"
+        
+        elif db_type == "sqlite":
             db_name = str(self.get("database.name", "siem_analyzer"))
             return f"sqlite:///{db_name}.db"
-
-        elif db_type == "postgresql":
-            host = self.get("database.host", "localhost")
-            port = self.get("database.port", 5432)
-            name = self.get("database.name", "siem_analyzer")
-            user = self.get("database.user", "admin")
-            password = self.get("database.password", "password")
-            return f"postgresql://{user}:{password}@{host}:{port}/{name}"
-
-        raise ValueError(f"Unsupported database type: {db_type}")
+        
+        raise ValueError(f"Unsupported or unconfigured database type: {db_type}")
 
     @property
     def redis_url(self) -> str:

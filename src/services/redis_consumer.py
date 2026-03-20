@@ -342,45 +342,62 @@ class RedisConsumer:
             return
 
         try:
-            repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
-            admin_key = os.getenv("ADMIN_KEY") or "changeme-admin-key"
+            repo1_url = (os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080").rstrip('/')
+            admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY") or "changeme-admin-key"
 
             import requests
 
-            # 2. Check if device already exists in Repo 1
+            # 2. Optimized: Check if device IP already exists in Repo 1's authoritative IP list
             try:
+                # Use the verified tenant-detail endpoint
                 response = requests.get(
-                    f"{repo1_url}/api/tenant/devices", headers={"X-Admin-Key": admin_key}, timeout=2.0
+                    f"{repo1_url}/admin/tenants/{tenant_id}", 
+                    headers={"X-Admin-Key": admin_key}, 
+                    timeout=3.0
                 )
 
                 if response.status_code == 200:
-                    devices = response.json().get("devices", [])
-                    existing_ips = {d.get("ip") for d in devices}
+                    tenant_data = response.json()
+                    # The subagent identified 'ip_allowlist' as the collection for allowed IPs
+                    existing_ips = {item.get("ip_range") for item in tenant_data.get("ip_allowlist", [])}
 
                     if source_ip in existing_ips:
                         # Add to local cache and skip
                         self.known_devices[tenant_id].add(source_ip)
                         return
             except Exception as check_err:
-                logger.debug(f"Repo1 device check failed, assuming new: {check_err}")
+                logger.debug(f"Repo1 IP check failed for {tenant_id}, assuming new: {check_err}")
 
-            # 3. Create new device if not found
+            # 3. Create new IP entry if not found
             device_name = f"Auto-Device-{source_ip}"
             if log_info.get("device_hostname"):
                 device_name = f"{log_info['device_hostname']}-{log_info.get('vendor', 'unknown')}"
 
-            reg_payload = {"action": "add", "device_ip": source_ip, "device_name": device_name}
+            # Standardized payload for authoritative allowlist sync
+            reg_payload = {
+                "ip_range": source_ip, 
+                "description": f"Auto-Registered: {device_name}",
+                "label": f"Auto-Registered: {device_name}", # Compatibility field
+                "is_active": True
+            }
 
-            logger.info(f"Auto-registering new device: {device_name} ({source_ip})")
-            requests.post(
-                f"{repo1_url}/api/tenant/devices", json=reg_payload, headers={"X-Admin-Key": admin_key}, timeout=2.0
+            logger.info(f"Syncing new IP to Repo 1 allowlist: {source_ip} (Tenant: {tenant_id})")
+            sync_res = requests.post(
+                f"{repo1_url}/admin/tenants/{tenant_id}/ips", 
+                json=reg_payload, 
+                headers={"X-Admin-Key": admin_key}, 
+                timeout=5.0
             )
-
-            # Add to local cache
-            self.known_devices[tenant_id].add(source_ip)
+            
+            if sync_res.status_code in (200, 201):
+                # Only cache if truly successful
+                self.known_devices[tenant_id].add(source_ip)
+                logger.debug(f"Successfully synced {source_ip} to Repo 1 allowlist.")
+            else:
+                logger.warning(f"Failed to sync IP {source_ip} to Repo 1: {sync_res.status_code}")
 
         except Exception as e:
-            logger.error(f"Auto-registration failed for {source_ip}: {e}")
+            logger.error(f"Auto-registration/sync failed for {source_ip}: {e}")
 
     def _handle_ingest_log(self, log_data: Dict[str, Any], tenant_id: Optional[str] = None) -> bool:
         """

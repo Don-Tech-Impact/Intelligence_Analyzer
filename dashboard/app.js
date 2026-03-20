@@ -217,7 +217,7 @@ async function apiFetch(url, options = {}) {
         try {
             body = await response.json();
         } catch (e) {
-            body = { status: 'error', message: 'Non-JSON response' };
+            body = { status: 'error', message: 'The security gateway is currently processing. Please try again in 5 seconds.' };
         }
 
         // Handle standard envelope {status: "success", data: ...}
@@ -1829,7 +1829,12 @@ async function submitRegisterDevice(e) {
         });
 
         if (res && res.ok) {
-            showToast('Device registered successfully!', false);
+            const data = await res.json();
+            if (data.sync_status === 'failed') {
+                showToast(`Device registered locally, but synchronization failed: ${data.sync_error}`, true);
+            } else {
+                showToast('Device registered and synchronized successfully!', false);
+            }
             closeRegisterDeviceModal();
             renderAssets();
         } else {

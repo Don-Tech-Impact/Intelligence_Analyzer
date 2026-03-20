@@ -64,9 +64,30 @@ async def verify_jwt(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
         if secret_key == "fallback-secret-key-for-diagnostic-suffix":
             logger.warning("CRITICAL: SECRET_KEY is using the HARDCODED FALLBACK. .env is NOT being loaded correctly!")
 
-        # Verify the token using HS256 and the shared secret
-        payload: Dict[str, Any] = jwt.decode(token, secret_key, algorithms=["HS256"], options={"verify_aud": False})
-        return payload
+        # 1. Primary Attempt: Verify using local config secret
+        try:
+            payload: Dict[str, Any] = jwt.decode(token, secret_key, algorithms=["HS256"], options={"verify_aud": False, "leeway": 60})
+            return payload
+        except JWTError as e:
+            # 2. Secondary Attempt: Fallback to Redis secret if Repo 1 updated it recently
+            if "signature verification failed" in str(e).lower():
+                logger.info("Local secret failed signature verification. Attempting Redis fallback...")
+                try:
+                    from src.services.redis_client import redis_client
+                    redis_secret = redis_client.get("admin:jwt_secret")
+                    if redis_secret:
+                        if isinstance(redis_secret, bytes):
+                            redis_secret = redis_secret.decode()
+                        
+                        payload = jwt.decode(token, str(redis_secret).strip(), algorithms=["HS256"], options={"verify_aud": False, "leeway": 60})
+                        logger.info("JWT verified successfully using sync'd Redis secret.")
+                        return payload
+                except Exception as redis_err:
+                    logger.error(f"Redis secret fallback failed: {redis_err}")
+            
+            # If both failed, re-raise the original error
+            raise e
+
     except jwt.ExpiredSignatureError:
         logger.warning("JWT Verification failed: Token expired")
         raise HTTPException(
@@ -75,7 +96,7 @@ async def verify_jwt(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
             headers={"WWW-Authenticate": "Bearer"},
         )
     except JWTError as e:
-        logger.warning(f"JWT Verification failed: Invalid signature or malformed token: {e}")
+        logger.warning(f"JWT Verification failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token",
@@ -127,7 +148,7 @@ def decode_token_payload(token: str) -> Optional[Dict[str, Any]]:
         if not secret_key:
             return None
 
-        payload = jwt.decode(token, secret_key, algorithms=["HS256"], options={"verify_aud": False})
+        payload = jwt.decode(token, secret_key, algorithms=["HS256"], options={"verify_aud": False, "leeway": 60})
         return payload
     except Exception as e:
         # Fallback to Redis secret if local config fails (Repo 1 source of truth)
