@@ -38,6 +38,19 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: siem_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -47,12 +60,14 @@ jobs:
       - run: |
           pip install -r requirements/requirements.txt
           pip install -r requirements/requirements-dev.txt
-      - name: Run unit tests
+      - name: Run all tests
         env:
           REDIS_URL: redis://localhost:6379/0
+          DATABASE_URL: postgresql://postgres:testpassword@localhost:5432/siem_test
+          DATABASE_TYPE: postgresql
           ENVIRONMENT: test
         run: |
-          pytest tests/unit/ -v \
+          pytest tests/ -v \
             --cov=src \
             --cov-report=xml \
             --cov-fail-under=4
