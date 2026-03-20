@@ -519,38 +519,21 @@ async def register_device(payload: dict, tenant_id: str = Depends(get_tenant_id)
         db.add(device)
         db.commit()
 
-        # 2. Sync with Repo 1 Allowlist
+        # 2. Sync with Redis Allowlist (Repo 1 Standard)
         sync_status = "pending"
         sync_error = None
         try:
-            repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
-            admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY") or "changeme-admin-key"
-
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                headers = {"X-Admin-Key": admin_key, "Content-Type": "application/json"}
-                # Repo 1 uses 'description' or 'label' for IP entries; we provide both for compatibility
-                payload_sync = {
-                    "ip_range": ip,
-                    "label": f"Managed Device: {name}",
-                    "description": f"Managed Device: {name}",
-                    "is_active": True
-                }
-                sync_res = await client.post(
-                    f"{repo1_url}/admin/tenants/{tenant_id}/ips",
-                    json=payload_sync,
-                    headers=headers,
-                )
-                if sync_res.is_error:
-                    sync_status = "failed"
-                    sync_error = f"Repo 1 returned {sync_res.status_code}"
-                    logger.error(f"[SIEM] Repo 1 Sync failed with status {sync_res.status_code}: {sync_res.text}")
-                else:
-                    sync_status = "success"
-                    logger.info(f"[SIEM] Device {name} ({ip}) synced successfully with Repo 1.")
+            from src.services.redis_client import redis_client
+            redis_key = f"ip_allowlist:{tenant_id}:devices"
+            
+            # Use SADD for the allowlist set
+            redis_client.sadd(redis_key, ip)
+            logger.info(f"[SIEM] IP {ip} added to Redis allowlist for tenant {tenant_id}")
+            sync_status = "success"
         except Exception as sync_err:
-            sync_status = "failed"
+            sync_status = "failed_redis"
             sync_error = str(sync_err)
-            logger.error(f"[SIEM] Device registered locally but failed to sync allowlist: {sync_err}")
+            logger.error(f"[SIEM] Device registered locally but failed to sync Redis allowlist: {sync_err}")
 
         res_data = device.to_dict()
         res_data["sync_status"] = sync_status
@@ -563,6 +546,7 @@ async def register_device(payload: dict, tenant_id: str = Depends(get_tenant_id)
         raise
     except Exception as e:
         db.rollback()
+        logger.error(f"[SIEM] Device registration failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -576,9 +560,22 @@ def delete_managed_device(device_id_int: int, tenant_id: str = Depends(get_tenan
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
+    ip_to_remove = device.ip_address
+    
+    # 1. Remove from PostgreSQL
     db.delete(device)
     db.commit()
-    return ApiResponse(status="success", message="Device unregistered")
+
+    # 2. Remove from Redis Allowlist
+    from src.services.redis_client import redis_client
+    redis_key = f"ip_allowlist:{tenant_id}:devices"
+    try:
+        redis_client.srem(redis_key, ip_to_remove)
+        logger.info(f"[SIEM] IP {ip_to_remove} removed from Redis allowlist for {tenant_id}")
+    except Exception as e:
+        logger.error(f"[SIEM] Failed to remove IP from Redis: {e}")
+
+    return ApiResponse(status="success", message="Device unregistered and removed from allowlist")
 
 
 @router.get("/assets/discovered")
@@ -634,10 +631,16 @@ async def get_my_devices(request: Request):
             if auth_header:
                 headers["Authorization"] = auth_header
 
-            response = await client.get(f"{repo1_url}/api/tenant/devices", headers=headers)
+            response = await client.get(f"{repo1_url}/api/logs/my-devices", headers=headers)
+            
+            if response.status_code != 200:
+                logger.error(f"Repo 1 returned {response.status_code} for my-devices: {response.text}")
+                return {"status": "error", "message": "Failed to fetch devices from identity server", "devices": []}
+                
             return response.json()
         except Exception as e:
-            raise HTTPException(status_code=502, detail=f"Identity server unreachable: {e}")
+            logger.error(f"Failed to reach Repo 1 for devices: {e}")
+            return {"status": "error", "message": f"Identity server unreachable: {e}", "devices": []}
 
 
 @router.post("/assets/devices")
@@ -652,15 +655,22 @@ async def register_user_device(request: Request, payload: dict):
             if auth_header:
                 headers["Authorization"] = auth_header
 
-            # Map frontend payload to Repo 1 spec
+            # Map frontend payload to Repo 1 spec (action-based)
             repo1_payload = {
                 "action": "add",
                 "device_ip": payload.get("device_ip") or payload.get("ip"),
                 "device_name": payload.get("device_name") or payload.get("name"),
             }
 
-            response = await client.post(f"{repo1_url}/api/tenant/devices", json=repo1_payload, headers=headers)
+            response = await client.post(f"{repo1_url}/api/logs/devices", json=repo1_payload, headers=headers)
+            
+            if response.status_code not in [200, 201]:
+                logger.error(f"Repo 1 returned {response.status_code} for device registration: {response.text}")
+                raise HTTPException(status_code=502, detail="Failed to register device with identity server")
+                
             return response.json()
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Identity server unreachable: {e}")
 
@@ -677,11 +687,18 @@ async def remove_user_device(ip: str, request: Request):
             if auth_header:
                 headers["Authorization"] = auth_header
 
-            # Use the new Repo 1 remove pattern
+            # Use the correct Repo 1 action pattern
             payload = {"action": "remove", "device_ip": ip}
 
-            response = await client.post(f"{repo1_url}/api/tenant/devices", json=payload, headers=headers)
+            response = await client.post(f"{repo1_url}/api/logs/devices", json=payload, headers=headers)
+            
+            if response.status_code not in [200, 204]:
+                 logger.error(f"Repo 1 returned {response.status_code} for device removal: {response.text}")
+                 raise HTTPException(status_code=502, detail="Failed to remove device from identity server")
+                 
             return response.json()
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Identity server unreachable: {e}")
 
@@ -707,6 +724,11 @@ async def get_primary_ip(request: Request):
             headers = {"X-Admin-Key": admin_key}
 
             response = await client.get(f"{repo1_url}/admin/tenants/{tenant_id}", headers=headers)
+            
+            if response.status_code != 200:
+                logger.error(f"Repo 1 returned {response.status_code} for tenant metadata: {response.text}")
+                return {"status": "success", "primary_ip": "Not Set", "warning": "Tenant details unavailable"}
+
             data = response.json()
 
             # Extract IP info (support string, or list of strings from 'primary_ips')
@@ -718,7 +740,8 @@ async def get_primary_ip(request: Request):
 
             return {"status": "success", "primary_ip": primary_ip or "Not Set"}
         except Exception as e:
-            raise HTTPException(status_code=502, detail=f"Identity server unreachable: {e}")
+            logger.error(f"Failed to reach Repo 1 for metadata: {e}")
+            return {"status": "success", "primary_ip": "Not Set", "error": str(e)}
 
 
 @router.get("/assets/telemetry/{device_id}")
