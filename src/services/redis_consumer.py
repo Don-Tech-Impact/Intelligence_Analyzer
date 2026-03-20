@@ -342,7 +342,7 @@ class RedisConsumer:
             return
 
         try:
-            repo1_url = (os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080").rstrip('/')
+            repo1_url = (os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080").rstrip("/")
             admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY") or "changeme-admin-key"
 
             import requests
@@ -351,9 +351,7 @@ class RedisConsumer:
             try:
                 # Use the verified tenant-detail endpoint
                 response = requests.get(
-                    f"{repo1_url}/admin/tenants/{tenant_id}", 
-                    headers={"X-Admin-Key": admin_key}, 
-                    timeout=3.0
+                    f"{repo1_url}/admin/tenants/{tenant_id}", headers={"X-Admin-Key": admin_key}, timeout=3.0
                 )
 
                 if response.status_code == 200:
@@ -375,20 +373,20 @@ class RedisConsumer:
 
             # Standardized payload for authoritative allowlist sync
             reg_payload = {
-                "ip_range": source_ip, 
+                "ip_range": source_ip,
                 "description": f"Auto-Registered: {device_name}",
-                "label": f"Auto-Registered: {device_name}", # Compatibility field
-                "is_active": True
+                "label": f"Auto-Registered: {device_name}",  # Compatibility field
+                "is_active": True,
             }
 
             logger.info(f"Syncing new IP to Repo 1 allowlist: {source_ip} (Tenant: {tenant_id})")
             sync_res = requests.post(
-                f"{repo1_url}/admin/tenants/{tenant_id}/ips", 
-                json=reg_payload, 
-                headers={"X-Admin-Key": admin_key}, 
-                timeout=5.0
+                f"{repo1_url}/admin/tenants/{tenant_id}/ips",
+                json=reg_payload,
+                headers={"X-Admin-Key": admin_key},
+                timeout=5.0,
             )
-            
+
             if sync_res.status_code in (200, 201):
                 # Only cache if truly successful
                 self.known_devices[tenant_id].add(source_ip)

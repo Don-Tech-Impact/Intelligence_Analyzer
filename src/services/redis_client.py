@@ -13,7 +13,7 @@ try:
         decode_responses=True,
         socket_connect_timeout=5,
         socket_keepalive=True,
-        health_check_interval=30
+        health_check_interval=30,
     )
     # Ping once to verify connection on startup
     # Note: We don't block the whole app if Redis is down, but we log the error

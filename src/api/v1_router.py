@@ -65,7 +65,7 @@ def get_tenant_id(tenant_id: str = Query("default"), payload: dict = Depends(ver
             from sqlalchemy.orm import Session as SyncSession
 
             from src.models.database import Tenant
-            
+
             try:
                 engine = create_engine(siem_config.database_url)
                 # Use a safer, independent connection to prevent session cross-talk
@@ -73,25 +73,25 @@ def get_tenant_id(tenant_id: str = Query("default"), payload: dict = Depends(ver
                     result = conn.execute(
                         text("SELECT tenant_id, is_active FROM tenants WHERE tenant_id = :tid"),
                         # text("SELECT id, is_active FROM tenants WHERE id = :tid"),
-                        {"tid": token_tenant} # Use token_tenant here, not tenant_id from query
+                        {"tid": token_tenant},  # Use token_tenant here, not tenant_id from query
                     ).fetchone()
-                    
+
                     if not result:
                         logger.warning(f"Access denied: Tenant '{token_tenant}' not found in database.")
                         raise HTTPException(status_code=403, detail="Tenant access denied or not provisioned.")
-                    
-                    if not result[1]: # is_active
+
+                    if not result[1]:  # is_active
                         logger.warning(f"Access denied: Tenant '{token_tenant}' is suspended.")
                         raise HTTPException(status_code=403, detail="Tenant account is suspended.")
-                        
+
                     return token_tenant
             except HTTPException:
                 raise
             except Exception as db_err:
                 logger.error(f"Tenant verification CRASHED: {db_err}")
                 raise HTTPException(
-                    status_code=500, 
-                    detail="Identity verification system is currently unavailable. Please try again in 30 seconds."
+                    status_code=500,
+                    detail="Identity verification system is currently unavailable. Please try again in 30 seconds.",
                 )
 
     # For superadmins, default can be used if no query param
@@ -525,8 +525,9 @@ async def register_device(payload: dict, tenant_id: str = Depends(get_tenant_id)
         sync_error = None
         try:
             from src.services.redis_client import redis_client
+
             redis_key = f"ip_allowlist:{tenant_id}:devices"
-            
+
             # Use SADD for the allowlist set
             redis_client.sadd(redis_key, ip)
             logger.info(f"[SIEM] IP {ip} added to Redis allowlist for tenant {tenant_id}")
@@ -540,7 +541,7 @@ async def register_device(payload: dict, tenant_id: str = Depends(get_tenant_id)
         res_data["sync_status"] = sync_status
         if sync_error:
             res_data["sync_error"] = sync_error
-            
+
         return ApiResponse(status="success", data=res_data)
     except HTTPException:
         db.rollback()
@@ -562,13 +563,14 @@ def delete_managed_device(device_id_int: int, tenant_id: str = Depends(get_tenan
         raise HTTPException(status_code=404, detail="Device not found")
 
     ip_to_remove = device.ip_address
-    
+
     # 1. Remove from PostgreSQL
     db.delete(device)
     db.commit()
 
     # 2. Remove from Redis Allowlist
     from src.services.redis_client import redis_client
+
     redis_key = f"ip_allowlist:{tenant_id}:devices"
     try:
         redis_client.srem(redis_key, ip_to_remove)
@@ -633,11 +635,11 @@ async def get_my_devices(request: Request):
                 headers["Authorization"] = auth_header
 
             response = await client.get(f"{repo1_url}/api/logs/my-devices", headers=headers)
-            
+
             if response.status_code != 200:
                 logger.error(f"Repo 1 returned {response.status_code} for my-devices: {response.text}")
                 return {"status": "error", "message": "Failed to fetch devices from identity server", "devices": []}
-                
+
             return response.json()
         except Exception as e:
             logger.error(f"Failed to reach Repo 1 for devices: {e}")
@@ -664,11 +666,11 @@ async def register_user_device(request: Request, payload: dict):
             }
 
             response = await client.post(f"{repo1_url}/api/logs/devices", json=repo1_payload, headers=headers)
-            
+
             if response.status_code not in [200, 201]:
                 logger.error(f"Repo 1 returned {response.status_code} for device registration: {response.text}")
                 raise HTTPException(status_code=502, detail="Failed to register device with identity server")
-                
+
             return response.json()
         except HTTPException:
             raise
@@ -692,11 +694,11 @@ async def remove_user_device(ip: str, request: Request):
             payload = {"action": "remove", "device_ip": ip}
 
             response = await client.post(f"{repo1_url}/api/logs/devices", json=payload, headers=headers)
-            
+
             if response.status_code not in [200, 204]:
-                 logger.error(f"Repo 1 returned {response.status_code} for device removal: {response.text}")
-                 raise HTTPException(status_code=502, detail="Failed to remove device from identity server")
-                 
+                logger.error(f"Repo 1 returned {response.status_code} for device removal: {response.text}")
+                raise HTTPException(status_code=502, detail="Failed to remove device from identity server")
+
             return response.json()
         except HTTPException:
             raise
@@ -725,7 +727,7 @@ async def get_primary_ip(request: Request):
             headers = {"X-Admin-Key": admin_key}
 
             response = await client.get(f"{repo1_url}/admin/tenants/{tenant_id}", headers=headers)
-            
+
             if response.status_code != 200:
                 logger.error(f"Repo 1 returned {response.status_code} for tenant metadata: {response.text}")
                 return {"status": "success", "primary_ip": "Not Set", "warning": "Tenant details unavailable"}
@@ -915,7 +917,7 @@ async def get_tenant_metadata(tenant_id: str = Depends(get_tenant_id)):
     Proxies a request to Repo 1 to fetch the tenant's current settings/metadata.
     """
     # Use verified paths from Repo 1 Swagger: /admin/tenants/{tid}
-    repo1_url = (os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080").rstrip('/')
+    repo1_url = (os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080").rstrip("/")
     admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY") or "changeme-admin-key"
 
     async with httpx.AsyncClient(timeout=10.0) as client:

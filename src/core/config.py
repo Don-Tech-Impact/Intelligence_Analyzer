@@ -14,6 +14,7 @@ if os.path.exists(dotenv_path):
 else:
     print(f"FAILED to find config at {dotenv_path}")
 
+
 class Config:
     """Configuration manager that loads settings from YAML and environment variables."""
 
@@ -149,7 +150,7 @@ class Config:
             return url
 
         db_type = self.database_type
-        
+
         # 3. Construct URL from components
         if db_type == "postgresql":
             # Prioritize POSTGRES_ variants commonly used in Docker
@@ -158,13 +159,13 @@ class Config:
             name = os.getenv("POSTGRES_DB") or self.get("database.name", "siem_analyzer")
             user = os.getenv("POSTGRES_USER") or self.get("database.user", "admin")
             password = os.getenv("POSTGRES_PASSWORD") or self.get("database.password", "password")
-            
+
             return f"postgresql://{user}:{password}@{host}:{port}/{name}"
-        
+
         elif db_type == "sqlite":
             db_name = str(self.get("database.name", "siem_analyzer"))
             return f"sqlite:///{db_name}.db"
-        
+
         raise ValueError(f"Unsupported or unconfigured database type: {db_type}")
 
     @property
