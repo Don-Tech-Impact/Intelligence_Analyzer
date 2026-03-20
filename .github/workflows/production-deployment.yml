@@ -656,31 +656,75 @@ jobs:
       #     rm -f "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
       #           "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz.sha256"
       #     trivy --version   # Confirm install succeeded
+
+      ## ANother 
+
+      # - name: Install Trivy binary (checksum-verified)
+      #   env:
+      #     TRIVY_VERSION: "0.69.1"
+      #   run: |
+      #     # Trivy publishes ONE combined checksums file for all artifacts —
+      #     # not individual .sha256 files. Download both, then grep for the
+      #     # specific artifact line before passing to sha256sum --check.
+      #     curl -sSLO \
+      #       "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+      #     curl -sSLO \
+      #       "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt"
+
+      #     # Extract only the line for the file we downloaded, then verify.
+      #     # sha256sum --check fails if the hash doesn't match — deploy is blocked.
+      #     grep "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+      #       "trivy_${TRIVY_VERSION}_checksums.txt" | sha256sum --check
+
+      #     tar -xzf "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" trivy
+      #     sudo mv trivy /usr/local/bin/trivy
+
+      #     # Cleanup — don't leave tarballs on the runner
+      #     rm -f "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+      #           "trivy_${TRIVY_VERSION}_checksums.txt"
+
+      #     trivy --version
+
       - name: Install Trivy binary (checksum-verified)
         env:
           TRIVY_VERSION: "0.69.1"
         run: |
-          # Trivy publishes ONE combined checksums file for all artifacts —
-          # not individual .sha256 files. Download both, then grep for the
-          # specific artifact line before passing to sha256sum --check.
-          curl -sSLO \
-            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
-          curl -sSLO \
-            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt"
+          TARBALL="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          CHECKSUMS="trivy_${TRIVY_VERSION}_checksums.txt"
 
-          # Extract only the line for the file we downloaded, then verify.
-          # sha256sum --check fails if the hash doesn't match — deploy is blocked.
-          grep "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
-            "trivy_${TRIVY_VERSION}_checksums.txt" | sha256sum --check
+          curl -sSLO \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${TARBALL}"
+          curl -sSLO \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${CHECKSUMS}"
 
-          tar -xzf "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" trivy
+          # Extract expected hash for this specific artifact, trim whitespace
+          EXPECTED=$(grep "${TARBALL}" "${CHECKSUMS}" | awk '{print $1}' | tr -d '[:space:]')
+
+          # Abort if grep found nothing (wrong filename / file not in checksums)
+          if [ -z "${EXPECTED}" ]; then
+            echo "ERROR: Could not find checksum for ${TARBALL} in ${CHECKSUMS}"
+            cat "${CHECKSUMS}"   # Print file so you can debug the format
+            exit 1
+          fi
+
+          # Compute actual hash of the downloaded tarball
+          ACTUAL=$(sha256sum "${TARBALL}" | awk '{print $1}' | tr -d '[:space:]')
+
+          echo "Expected : ${EXPECTED}"
+          echo "Actual   : ${ACTUAL}"
+
+          # Hard fail if they don't match — never proceed with a bad binary
+          if [ "${EXPECTED}" != "${ACTUAL}" ]; then
+            echo "CHECKSUM MISMATCH — aborting deploy"
+            exit 1
+          fi
+          echo "Checksum verified OK"
+
+          tar -xzf "${TARBALL}" trivy
           sudo mv trivy /usr/local/bin/trivy
-
-          # Cleanup — don't leave tarballs on the runner
-          rm -f "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
-                "trivy_${TRIVY_VERSION}_checksums.txt"
-
+          rm -f "${TARBALL}" "${CHECKSUMS}"
           trivy --version
+
 
       - name: Scan image for vulnerabilities
         id: trivy_scan
