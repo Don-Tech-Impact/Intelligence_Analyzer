@@ -687,43 +687,33 @@ jobs:
 
       - name: Install Trivy binary (checksum-verified)
         env:
-          TRIVY_VERSION: "0.69.1"
+          TRIVY_VERSION: "0.69.3"
+          # SHA256 sourced directly from GitHub Releases API asset digest field
+          # for trivy_0.69.3_Linux-64bit.tar.gz — immutable, hardcoded intentionally
+          TRIVY_SHA256: "1816b632dfe529869c740c0913e36bd1629cb7688bd5634f4a858c1d57c88b75"
         run: |
           TARBALL="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
-          CHECKSUMS="trivy_${TRIVY_VERSION}_checksums.txt"
 
           curl -sSLO \
             "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${TARBALL}"
-          curl -sSLO \
-            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${CHECKSUMS}"
 
-          # Extract expected hash for this specific artifact, trim whitespace
-          EXPECTED=$(grep "${TARBALL}" "${CHECKSUMS}" | awk '{print $1}' | tr -d '[:space:]')
-
-          # Abort if grep found nothing (wrong filename / file not in checksums)
-          if [ -z "${EXPECTED}" ]; then
-            echo "ERROR: Could not find checksum for ${TARBALL} in ${CHECKSUMS}"
-            cat "${CHECKSUMS}"   # Print file so you can debug the format
-            exit 1
-          fi
-
-          # Compute actual hash of the downloaded tarball
-          ACTUAL=$(sha256sum "${TARBALL}" | awk '{print $1}' | tr -d '[:space:]')
-
-          echo "Expected : ${EXPECTED}"
+          # Compute actual hash and compare directly — no checksums.txt to parse
+          ACTUAL=$(sha256sum "${TARBALL}" | awk '{print $1}')
+          echo "Expected : ${TRIVY_SHA256}"
           echo "Actual   : ${ACTUAL}"
 
-          # Hard fail if they don't match — never proceed with a bad binary
-          if [ "${EXPECTED}" != "${ACTUAL}" ]; then
-            echo "CHECKSUM MISMATCH — aborting deploy"
+          if [ "${ACTUAL}" != "${TRIVY_SHA256}" ]; then
+            echo "CHECKSUM MISMATCH — binary may be compromised, aborting"
             exit 1
           fi
-          echo "Checksum verified OK"
+          echo "Checksum OK"
 
           tar -xzf "${TARBALL}" trivy
           sudo mv trivy /usr/local/bin/trivy
-          rm -f "${TARBALL}" "${CHECKSUMS}"
+          rm -f "${TARBALL}"
           trivy --version
+
+
 
 
       - name: Scan image for vulnerabilities
