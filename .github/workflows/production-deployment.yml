@@ -641,23 +641,49 @@ jobs:
       # 2026-03-01 and again on 2026-03-19. Never use that action again.
       # Instead: download the binary directly from GitHub Releases and verify
       # the SHA-256 checksum before execution. This is immune to tag tampering.
+      # - name: Install Trivy binary (checksum-verified)
+      #   env:
+      #     TRIVY_VERSION: "0.69.1"   # Pin to known-safe version; NOT 0.69.4 (malicious)
+      #   run: |
+      #     curl -sSLO \
+      #       "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+      #     curl -sSLO \
+      #       "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz.sha256"
+      #     # Abort immediately if checksum does not match
+      #     sha256sum --check "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz.sha256"
+      #     tar -xzf "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" trivy
+      #     sudo mv trivy /usr/local/bin/trivy
+      #     rm -f "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+      #           "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz.sha256"
+      #     trivy --version   # Confirm install succeeded
       - name: Install Trivy binary (checksum-verified)
         env:
-          TRIVY_VERSION: "0.69.1"   # Pin to known-safe version; NOT 0.69.4 (malicious)
+          TRIVY_VERSION: "0.69.1"
         run: |
+          # Trivy publishes ONE combined checksums file for all artifacts —
+          # not individual .sha256 files. Download both, then grep for the
+          # specific artifact line before passing to sha256sum --check.
           curl -sSLO \
             "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
           curl -sSLO \
-            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz.sha256"
-          # Abort immediately if checksum does not match
-          sha256sum --check "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz.sha256"
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_checksums.txt"
+
+          # Extract only the line for the file we downloaded, then verify.
+          # sha256sum --check fails if the hash doesn't match — deploy is blocked.
+          grep "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            "trivy_${TRIVY_VERSION}_checksums.txt" | sha256sum --check
+
           tar -xzf "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" trivy
           sudo mv trivy /usr/local/bin/trivy
+
+          # Cleanup — don't leave tarballs on the runner
           rm -f "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
-                "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz.sha256"
-          trivy --version   # Confirm install succeeded
+                "trivy_${TRIVY_VERSION}_checksums.txt"
+
+          trivy --version
 
       - name: Scan image for vulnerabilities
+        id: trivy_scan
         env:
           IMAGE: ${{ env.DOCKER_ORG }}/${{ env.APP_NAME }}:sha-${{ steps.short_sha.outputs.sha }}
         run: |
@@ -667,17 +693,20 @@ jobs:
             --severity CRITICAL,HIGH \
             --exit-code 0 \
             "${IMAGE}"
-          # Set exit-code to 1 to block deploys on CVEs when you're ready
+        # exit-code 0 = warn only. Change to 1 to block deploys on CVEs.
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Trivy results artifact
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: trivy-results
           path: trivy-results.sarif
 
       - name: Upload Trivy scan to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3   # FIX: @v4 does not exist; use @v3
-        if: always()
+        uses: github/codeql-action/upload-sarif@v4   # FIX: v3 deprecated Dec 2026 → use v4
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        # hashFiles guard prevents the "Path does not exist" cascade failure
+        # if the scan step itself is ever skipped or errors out
         with:
           sarif_file: trivy-results.sarif
 
