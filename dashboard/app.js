@@ -8,22 +8,22 @@ const ADMIN_API_KEY = 'changeme-admin-key';
 // MODAL UTILITIES
 // ============================================
 
-window.openModal = function(modalId) {
+window.openModal = function (modalId) {
     console.log('[Modal] Opening:', modalId);
     const modal = document.getElementById(modalId);
     if (!modal) {
         console.error('[Modal] NOT FOUND:', modalId);
         return;
     }
-    
+
     // Clear any previous inline styles that might interfere
     modal.style.display = '';
     modal.style.opacity = '';
     modal.style.visibility = '';
-    
+
     // Use CSS classes for state
     modal.classList.add('active');
-    
+
     // Trigger Lucide icons inside modal if needed
     if (window.lucide) {
         window.lucide.createIcons();
@@ -37,7 +37,7 @@ window.openModal = function(modalId) {
     }
 }
 
-window.closeModal = function(modalId) {
+window.closeModal = function (modalId) {
     console.log('[Modal] Closing:', modalId);
     const modal = document.getElementById(modalId);
     if (modal) {
@@ -49,7 +49,7 @@ window.closeModal = function(modalId) {
 }
 
 // Close modals when clicking outside
-window.addEventListener('click', function(event) {
+window.addEventListener('click', function (event) {
     if (event.target.classList.contains('modal')) {
         closeModal(event.target.id);
     }
@@ -58,7 +58,7 @@ window.addEventListener('click', function(event) {
 /**
  * Toggles the sidebar on mobile devices
  */
-window.toggleSidebar = function() {
+window.toggleSidebar = function () {
     const aside = document.querySelector('aside');
     const backdrop = document.getElementById('sidebar-backdrop');
     if (aside && backdrop) {
@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(fetchData, 15000);
     setInterval(fetchStreamData, 8000);
     setInterval(checkApiStatus, 30000);
-    
+
     // Permanently remove checklist if dismissed
     if (localStorage.getItem('checklist_dismissed') === 'true') {
         const onboardingSection = document.querySelector('.onboarding-section');
@@ -621,7 +621,7 @@ async function fetchLogsData() {
 // ===== Stream View (V1) =====
 async function fetchStreamData() {
     if (currentView !== 'log-stream' && currentView !== 'overview') return;
-    
+
     const indicator = document.getElementById('stream-status-indicator');
     const statusText = document.getElementById('stream-status-text');
 
@@ -630,7 +630,7 @@ async function fetchStreamData() {
         if (res && res.ok) {
             const logs = await res.json();
             if (logs && currentView === 'log-stream') renderStreamLogs(Array.isArray(logs) ? logs : []);
-            
+
             if (indicator) {
                 indicator.classList.remove('offline');
                 if (statusText) statusText.textContent = 'STREAMING';
@@ -638,7 +638,7 @@ async function fetchStreamData() {
         } else {
             throw new Error('Stream request failed');
         }
-    } catch (e) { 
+    } catch (e) {
         if (indicator) {
             indicator.classList.add('offline');
             if (statusText) statusText.textContent = 'OFFLINE';
@@ -674,7 +674,7 @@ function renderStreamLogs(logs) {
 
     // Attach click handlers
     container.querySelectorAll('.stream-row').forEach(row => {
-        row.onclick = function() {
+        row.onclick = function () {
             const idx = this.getAttribute('data-index');
             inspectStreamEvent(logs[idx], this);
         };
@@ -1953,7 +1953,7 @@ async function loadApiKeys() {
         const res = await apiFetch(`${API_BASE_URL}/api/admin/tenants/${currentTenant}/api-keys`);
         if (res && res.ok) {
             const data = await res.json();
-            console.log(`[API Keys] Received data:`, data);
+            // console.log(`[API Keys] Received data:`, data);
 
             // Be extremely robust with data parsing
             const keys = data.api_keys || data.keys || (Array.isArray(data) ? data : []);
@@ -2150,10 +2150,10 @@ function updateCurlExamples() {
 function toggleAccordion(element) {
     const item = element.closest('.accordion-item');
     const items = document.querySelectorAll('.accordion-item');
-    
+
     // Switch chevron for the clicked item
     const chevron = element.querySelector('.chevron');
-    
+
     if (item.classList.contains('active')) {
         item.classList.remove('active');
         item.querySelector('.accordion-content').style.display = 'none';
@@ -2168,7 +2168,7 @@ function toggleAccordion(element) {
             const c = i.querySelector('.chevron');
             if (c) c.setAttribute('data-lucide', 'chevron-down');
         });
-        
+
         item.classList.add('active');
         item.querySelector('.accordion-content').style.display = 'block';
         if (chevron) {
@@ -2188,11 +2188,11 @@ function completeOnboardingStep(stepId) {
 
     item.classList.add('completed');
     item.classList.remove('active');
-    
+
     // Update the check icon and button if they exist
     const icon = item.querySelector('.checklist-item-info i');
     if (icon) icon.setAttribute('data-lucide', 'check-circle-2');
-    
+
     const btn = item.querySelector('button');
     if (btn) {
         btn.textContent = 'View';
@@ -2201,7 +2201,7 @@ function completeOnboardingStep(stepId) {
 
     // Refresh icons
     lucide.createIcons();
-    
+
     // Update global progress
     updateOnboardingProgress();
     showToast(`Security Control ${stepId} Verified`, false);
@@ -2210,13 +2210,13 @@ function completeOnboardingStep(stepId) {
 function updateOnboardingProgress() {
     const items = Array.from(document.querySelectorAll('.accordion-item'));
     const visibleItems = items.filter(i => i.style.display !== 'none');
-    
+
     const total = visibleItems.length;
     const completed = visibleItems.filter(i => i.classList.contains('completed')).length;
-    
+
     const countEl = document.getElementById('onboarding-step-count');
     const fillEl = document.querySelector('.progress-bar-fill');
-    
+
     if (countEl) countEl.textContent = `${completed} of ${total} completed`;
     if (fillEl) fillEl.style.width = `${(completed / total) * 100}%`;
 
@@ -2257,7 +2257,7 @@ function syncComplianceModalSelections() {
         const fwName = card.querySelector('h4').textContent.trim();
         const icon = card.querySelector('.checkbox-indicator i') || card.querySelector('.checkbox-indicator svg');
         const indicator = card.querySelector('.checkbox-indicator');
-        
+
         if (!icon || !indicator) return;
 
         if (selectedFrameworks.has(fwName)) {
@@ -2281,8 +2281,8 @@ function toggleFramework(element, frameworkName) {
     // Lucide replaces <i> with <svg>, so we must check for both
     const icon = element.querySelector('.checkbox-indicator i') || element.querySelector('.checkbox-indicator svg');
     const indicator = element.querySelector('.checkbox-indicator');
-    
-    if (!icon || !indicator) return; 
+
+    if (!icon || !indicator) return;
 
     if (selectedFrameworks.has(frameworkName)) {
         selectedFrameworks.delete(frameworkName);
@@ -2299,7 +2299,7 @@ function toggleFramework(element, frameworkName) {
         icon.style.display = 'block';
         element.classList.add('selected');
     }
-    
+
     updateComplianceSelectedList();
     // Persist selection
     localStorage.setItem(`fw_${currentTenant}`, JSON.stringify(Array.from(selectedFrameworks)));
@@ -2308,7 +2308,7 @@ function toggleFramework(element, frameworkName) {
 function addCustomFrameworkPrompt() {
     const name = prompt("Enter the name of the additional compliance framework (e.g. NIST 800-53):");
     if (!name || name.trim() === "") return;
-    
+
     const frameworkName = name.trim();
     if (selectedFrameworks.has(frameworkName)) {
         showToast("Framework already added", false);
@@ -2317,7 +2317,7 @@ function addCustomFrameworkPrompt() {
 
     selectedFrameworks.add(frameworkName);
     showToast(`Added ${frameworkName} to your requirements`, false);
-    
+
     updateComplianceSelectedList();
     localStorage.setItem(`fw_${currentTenant}`, JSON.stringify(Array.from(selectedFrameworks)));
 }
@@ -2327,12 +2327,12 @@ async function initInteractiveMocks() {
         const res = await apiFetch(`${API_BASE_URL}/api/v1/tenant/metadata`);
         if (res && res.ok && res.json) {
             const data = await res.json();
-            
+
             // Re-map fields based on whether we received the full tenant object or just settings
             const config = data.config || data.settings || data;
             const compliance = config.compliance_settings || config.compliance || {};
             const ir = config.incident_response || {};
-            
+
             // 1. Hydrate Compliance
             const frameworks = Array.isArray(compliance) ? compliance : (compliance.frameworks || []);
             // Use local storage as fallback/merge if we want but backend should be source of truth
@@ -2341,11 +2341,11 @@ async function initInteractiveMocks() {
                 const activeEl = document.getElementById('compliance-active-container');
                 if (emptyEl) emptyEl.style.display = 'none';
                 if (activeEl) activeEl.style.display = 'block';
-                
+
                 const list = document.getElementById('active-frameworks-list');
                 if (list) {
                     list.innerHTML = frameworks.map(fw => {
-                        const progress = Math.floor(Math.random() * (98 - 75) + 75); 
+                        const progress = Math.floor(Math.random() * (98 - 75) + 75);
                         return `
                         <div class="mini-card" style="border: 1px solid var(--primary-light);">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -2367,7 +2367,7 @@ async function initInteractiveMocks() {
                         </div>`;
                     }).join('');
                 }
-                
+
                 frameworks.forEach(fw => selectedFrameworks.add(fw));
                 completeOnboardingStep(3);
                 if (window.lucide) lucide.createIcons();
@@ -2378,14 +2378,14 @@ async function initInteractiveMocks() {
                 if (emptyEl) emptyEl.style.display = 'block';
                 if (activeEl) activeEl.style.display = 'none';
             }
-            
+
             // 2. Hydrate Incident Response
             if (ir && (ir.alert_email || ir.business_context)) {
                 const emptyEl = document.getElementById('ir-empty-state');
                 const activeRes = document.getElementById('ir-active-state');
                 if (emptyEl) emptyEl.style.display = 'none';
                 if (activeRes) activeRes.style.display = 'block';
-                
+
                 const ctxEl = document.getElementById('ir-display-context');
                 const emailEl = document.getElementById('ir-display-email');
                 const slackEl = document.getElementById('ir-display-slack');
@@ -2395,7 +2395,7 @@ async function initInteractiveMocks() {
                 if (emailEl) emailEl.textContent = ir.alert_email || '-';
                 if (slackEl) slackEl.textContent = ir.slack_webhook || '-';
                 if (slaEl) slaEl.textContent = `${ir.response_time_sla || 30} Minutes`;
-                
+
                 const profSla = document.getElementById('profile-sla-value');
                 if (profSla) profSla.textContent = `${ir.response_time_sla || 30}m`;
 
@@ -2458,7 +2458,7 @@ async function submitComplianceConfiguration() {
 
         // Ensure UI transitions even if backend sync fails (useful for onboarding/demo)
         let syncSuccess = res && res.ok;
-        
+
         if (!syncSuccess) {
             console.warn('[Compliance] Backend sync failed, but proceeding with UI transition for onboarding.');
             showToast("Frameworks selected locally. (Backend synchronization pending)", false);
@@ -2468,12 +2468,12 @@ async function submitComplianceConfiguration() {
 
         // Always show the "success page" (active state) as requested by user
         completeOnboardingStep(3);
-        
+
         const emptyEl = document.getElementById('compliance-setup-container');
         const activeEl = document.getElementById('compliance-active-container'); // Corrected ID
         if (emptyEl) emptyEl.style.display = 'none';
         if (activeEl) activeEl.style.display = 'block';
-        
+
         // Update Profile Badges immediately
         const profBadges = document.getElementById('profile-compliance-badges');
         if (profBadges) {
@@ -2483,7 +2483,7 @@ async function submitComplianceConfiguration() {
         const list = document.getElementById('active-frameworks-list');
         if (list) {
             list.innerHTML = Array.from(selectedFrameworks).map(fw => {
-                const progress = Math.floor(Math.random() * (98 - 75) + 75); 
+                const progress = Math.floor(Math.random() * (98 - 75) + 75);
                 return `
                 <div class="mini-card" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; border: 1px solid var(--primary-light);">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -2531,7 +2531,7 @@ function editComplianceConfiguration() {
 
 async function submitIRConfiguration(event) {
     event.preventDefault();
-    
+
     const context = document.getElementById('ir-context').value;
     const email = document.getElementById('ir-email').value;
     const slack = document.getElementById('ir-slack').value;
@@ -2568,11 +2568,11 @@ async function submitIRConfiguration(event) {
         let repo1Sync = false;
         try {
             const configPayload = {
-               business_context: context || null,
-               alert_email: email,
-               slack_webhook: slack || null,
-               response_time_sla: parseInt(sla),
-               enabled_channels: ["email"]
+                business_context: context || null,
+                alert_email: email,
+                slack_webhook: slack || null,
+                response_time_sla: parseInt(sla),
+                enabled_channels: ["email"]
             };
             if (slack) configPayload.enabled_channels.push("slack");
 
@@ -2581,7 +2581,7 @@ async function submitIRConfiguration(event) {
                 body: JSON.stringify(configPayload)
             });
             if (r1Res && r1Res.ok) repo1Sync = true;
-        } catch(e) {
+        } catch (e) {
             console.error('[IR Sync] Failed to sync config to Repo 1:', e);
         }
 
@@ -2592,7 +2592,7 @@ async function submitIRConfiguration(event) {
                 showToast("Incident Response saved locally (Repo 1 sync failed).");
             }
             completeOnboardingStep(4); // Auto-complete the UI step
-            
+
             // Keep user on the page and show success (disable inputs to indicate active state)
             btn.innerHTML = '<i data-lucide="check-circle"></i> Configuration Active';
             btn.classList.add('btn-success');
@@ -2600,14 +2600,14 @@ async function submitIRConfiguration(event) {
             document.getElementById('ir-email').disabled = true;
             document.getElementById('ir-slack').disabled = true;
             document.getElementById('ir-sla').disabled = true;
-            
+
         } else {
             throw new Error('Failed to sync with Control Plane');
         }
     } catch (err) {
         showToast("Error saving configuration: " + err.message, true);
         console.error(err);
-        
+
         btn.innerHTML = '<i data-lucide="check-circle"></i> Activate Incident Response';
         btn.disabled = false;
         lucide.createIcons();
