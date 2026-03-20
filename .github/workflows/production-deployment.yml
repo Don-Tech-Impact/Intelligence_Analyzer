@@ -26,6 +26,18 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      postgres:
+        image: postgres:15-alpine
+        ports: ['5432:5432']
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_afric
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
@@ -47,6 +59,7 @@ jobs:
         env:
           REDIS_URL: redis://localhost:6379/0
           ADMIN_API_KEY: test-key
+          DATABASE_URL: postgresql://test:test@localhost:5432/test_afric
         run: pytest tests/ -v --cov=src --cov-report=xml
 
       - name: Security scan (SAST + dependencies)
