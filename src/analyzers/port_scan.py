@@ -26,7 +26,7 @@ Accuracy:
 """
 
 import logging
-from typing import Optional
+from typing import Optional, List
 
 import redis
 
