@@ -168,6 +168,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     id              BIGSERIAL PRIMARY KEY,
     tenant_id       VARCHAR(64) UNIQUE NOT NULL,
     name            VARCHAR(128) NOT NULL,
+    description     TEXT,
     settings        JSONB DEFAULT '{}',
     is_active       BOOLEAN DEFAULT TRUE,
     created_at      TIMESTAMPTZ DEFAULT NOW()

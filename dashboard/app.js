@@ -2322,106 +2322,106 @@ function addCustomFrameworkPrompt() {
     localStorage.setItem(`fw_${currentTenant}`, JSON.stringify(Array.from(selectedFrameworks)));
 }
 
-async function initInteractiveMocks() {
-    try {
-        const res = await apiFetch(`${API_BASE_URL}/api/v1/tenant/metadata`);
-        if (res && res.ok && res.json) {
-            const data = await res.json();
+// async function initInteractiveMocks() {
+//     try {
+//         const res = await apiFetch(`${API_BASE_URL}/api/v1/tenant/metadata`);
+//         if (res && res.ok && res.json) {
+//             const data = await res.json();
 
-            // Re-map fields based on whether we received the full tenant object or just settings
-            const config = data.config || data.settings || data;
-            const compliance = config.compliance_settings || config.compliance || {};
-            const ir = config.incident_response || {};
+//             // Re-map fields based on whether we received the full tenant object or just settings
+//             const config = data.config || data.settings || data;
+//             const compliance = config.compliance_settings || config.compliance || {};
+//             const ir = config.incident_response || {};
 
-            // 1. Hydrate Compliance
-            const frameworks = Array.isArray(compliance) ? compliance : (compliance.frameworks || []);
-            // Use local storage as fallback/merge if we want but backend should be source of truth
-            if (frameworks.length > 0) {
-                const emptyEl = document.getElementById('compliance-setup-container');
-                const activeEl = document.getElementById('compliance-active-container');
-                if (emptyEl) emptyEl.style.display = 'none';
-                if (activeEl) activeEl.style.display = 'block';
+//             // 1. Hydrate Compliance
+//             const frameworks = Array.isArray(compliance) ? compliance : (compliance.frameworks || []);
+//             // Use local storage as fallback/merge if we want but backend should be source of truth
+//             if (frameworks.length > 0) {
+//                 const emptyEl = document.getElementById('compliance-setup-container');
+//                 const activeEl = document.getElementById('compliance-active-container');
+//                 if (emptyEl) emptyEl.style.display = 'none';
+//                 if (activeEl) activeEl.style.display = 'block';
 
-                const list = document.getElementById('active-frameworks-list');
-                if (list) {
-                    list.innerHTML = frameworks.map(fw => {
-                        const progress = Math.floor(Math.random() * (98 - 75) + 75);
-                        return `
-                        <div class="mini-card" style="border: 1px solid var(--primary-light);">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <i data-lucide="shield-check" class="icon-green" style="width:16px; height:16px;"></i>
-                                    <h4 style="margin: 0; font-size: 0.95rem; color: var(--text);">${fw}</h4>
-                                </div>
-                                <span class="badge" style="background: rgba(0, 167, 111, 0.1); color: var(--primary); font-size: 0.7rem; padding: 2px 6px;">Active</span>
-                            </div>
-                            <div>
-                                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">
-                                    <span>Health Score</span>
-                                    <span style="font-weight: 700; color: var(--text);">${progress}%</span>
-                                </div>
-                                <div class="progress-bar" style="height: 6px;">
-                                    <div class="progress-bar-fill" style="width: ${progress}%; background: var(--primary);"></div>
-                                </div>
-                            </div>
-                        </div>`;
-                    }).join('');
-                }
+//                 const list = document.getElementById('active-frameworks-list');
+//                 if (list) {
+//                     list.innerHTML = frameworks.map(fw => {
+//                         const progress = Math.floor(Math.random() * (98 - 75) + 75);
+//                         return `
+//                         <div class="mini-card" style="border: 1px solid var(--primary-light);">
+//                             <div style="display: flex; justify-content: space-between; align-items: center;">
+//                                 <div style="display: flex; align-items: center; gap: 8px;">
+//                                     <i data-lucide="shield-check" class="icon-green" style="width:16px; height:16px;"></i>
+//                                     <h4 style="margin: 0; font-size: 0.95rem; color: var(--text);">${fw}</h4>
+//                                 </div>
+//                                 <span class="badge" style="background: rgba(0, 167, 111, 0.1); color: var(--primary); font-size: 0.7rem; padding: 2px 6px;">Active</span>
+//                             </div>
+//                             <div>
+//                                 <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">
+//                                     <span>Health Score</span>
+//                                     <span style="font-weight: 700; color: var(--text);">${progress}%</span>
+//                                 </div>
+//                                 <div class="progress-bar" style="height: 6px;">
+//                                     <div class="progress-bar-fill" style="width: ${progress}%; background: var(--primary);"></div>
+//                                 </div>
+//                             </div>
+//                         </div>`;
+//                     }).join('');
+//                 }
 
-                frameworks.forEach(fw => selectedFrameworks.add(fw));
-                completeOnboardingStep(3);
-                if (window.lucide) lucide.createIcons();
-            } else {
-                // Show setup container if no frameworks
-                const emptyEl = document.getElementById('compliance-setup-container');
-                const activeEl = document.getElementById('compliance-active-container');
-                if (emptyEl) emptyEl.style.display = 'block';
-                if (activeEl) activeEl.style.display = 'none';
-            }
+//                 frameworks.forEach(fw => selectedFrameworks.add(fw));
+//                 completeOnboardingStep(3);
+//                 if (window.lucide) lucide.createIcons();
+//             } else {
+//                 // Show setup container if no frameworks
+//                 const emptyEl = document.getElementById('compliance-setup-container');
+//                 const activeEl = document.getElementById('compliance-active-container');
+//                 if (emptyEl) emptyEl.style.display = 'block';
+//                 if (activeEl) activeEl.style.display = 'none';
+//             }
 
-            // 2. Hydrate Incident Response
-            if (ir && (ir.alert_email || ir.business_context)) {
-                const emptyEl = document.getElementById('ir-empty-state');
-                const activeRes = document.getElementById('ir-active-state');
-                if (emptyEl) emptyEl.style.display = 'none';
-                if (activeRes) activeRes.style.display = 'block';
+//             // 2. Hydrate Incident Response
+//             if (ir && (ir.alert_email || ir.business_context)) {
+//                 const emptyEl = document.getElementById('ir-empty-state');
+//                 const activeRes = document.getElementById('ir-active-state');
+//                 if (emptyEl) emptyEl.style.display = 'none';
+//                 if (activeRes) activeRes.style.display = 'block';
 
-                const ctxEl = document.getElementById('ir-display-context');
-                const emailEl = document.getElementById('ir-display-email');
-                const slackEl = document.getElementById('ir-display-slack');
-                const slaEl = document.getElementById('ir-display-sla');
+//                 const ctxEl = document.getElementById('ir-display-context');
+//                 const emailEl = document.getElementById('ir-display-email');
+//                 const slackEl = document.getElementById('ir-display-slack');
+//                 const slaEl = document.getElementById('ir-display-sla');
 
-                if (ctxEl) ctxEl.textContent = ir.business_context || '-';
-                if (emailEl) emailEl.textContent = ir.alert_email || '-';
-                if (slackEl) slackEl.textContent = ir.slack_webhook || '-';
-                if (slaEl) slaEl.textContent = `${ir.response_time_sla || 30} Minutes`;
+//                 if (ctxEl) ctxEl.textContent = ir.business_context || '-';
+//                 if (emailEl) emailEl.textContent = ir.alert_email || '-';
+//                 if (slackEl) slackEl.textContent = ir.slack_webhook || '-';
+//                 if (slaEl) slaEl.textContent = `${ir.response_time_sla || 30} Minutes`;
 
-                const profSla = document.getElementById('profile-sla-value');
-                if (profSla) profSla.textContent = `${ir.response_time_sla || 30}m`;
+//                 const profSla = document.getElementById('profile-sla-value');
+//                 if (profSla) profSla.textContent = `${ir.response_time_sla || 30}m`;
 
-                completeOnboardingStep(4);
-            }
+//                 completeOnboardingStep(4);
+//             }
 
-            updateComplianceSelectedList();
+//             updateComplianceSelectedList();
 
-            // 3. Hydrate Profile View with Tenant Identity
-            if (data.name) {
-                const profileName = document.getElementById('profile-tenant-name');
-                const profileDesc = document.getElementById('profile-tenant-desc');
-                if (profileName) profileName.textContent = data.name;
-                if (profileDesc) profileDesc.textContent = data.description || 'Secure Infrastructure Environment';
-            }
+//             // 3. Hydrate Profile View with Tenant Identity
+//             if (data.name) {
+//                 const profileName = document.getElementById('profile-tenant-name');
+//                 const profileDesc = document.getElementById('profile-tenant-desc');
+//                 if (profileName) profileName.textContent = data.name;
+//                 if (profileDesc) profileDesc.textContent = data.description || 'Secure Infrastructure Environment';
+//             }
 
-            // 4. Hydrate Profile Compliance Badges
-            const profBadges = document.getElementById('profile-compliance-badges');
-            if (profBadges && frameworks.length > 0) {
-                profBadges.innerHTML = frameworks.map(fw => `<span class="badge-premium" style="margin-right: 5px;">${fw}</span>`).join('');
-            }
-        }
-    } catch (e) {
-        console.warn('Interactive mocks failed to initialize state:', e);
-    }
-}
+//             // 4. Hydrate Profile Compliance Badges
+//             const profBadges = document.getElementById('profile-compliance-badges');
+//             if (profBadges && frameworks.length > 0) {
+//                 profBadges.innerHTML = frameworks.map(fw => `<span class="badge-premium" style="margin-right: 5px;">${fw}</span>`).join('');
+//             }
+//         }
+//     } catch (e) {
+//         console.warn('Interactive mocks failed to initialize state:', e);
+//     }
+// }
 
 
 
