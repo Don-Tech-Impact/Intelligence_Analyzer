@@ -71,8 +71,9 @@ body {
     background-color: var(--bg-default);
     color: var(--text-primary);
     display: flex;
-    height: 100vh;
-    overflow: hidden;
+    min-height: 100vh;
+    overflow-x: hidden;
+    overflow-y: auto;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-size: 14px;
@@ -537,6 +538,7 @@ body {
 
 table {
     width: 100%;
+    min-width: 600px;
     border-collapse: collapse;
 }
 
@@ -1192,42 +1194,99 @@ tbody tr:hover {
 }
 
 @media (max-width: 900px) {
-    .sidebar {
-        width: 72px;
-        min-width: 72px;
-        padding: 16px 8px;
+    body {
+        flex-direction: column;
     }
 
-    .sidebar-logo span,
-    .nav-label,
-    .user-info {
+    .sidebar {
+        width: 100%;
+        min-width: 100%;
+        height: auto;
+        padding: 12px 16px;
+        flex-direction: row;
+        border-right: none;
+        border-bottom: 1px solid var(--grey-200);
+        overflow-y: visible;
+        overflow-x: auto;
+        justify-content: flex-start;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .sidebar-logo {
+        margin-bottom: 0;
+        padding-right: 20px;
+        border-right: 1px solid var(--grey-200);
+    }
+
+    .nav-group {
+        display: flex;
+        margin-bottom: 0;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .nav-label {
         display: none;
     }
 
     .nav-item {
-        padding: 10px;
-        justify-content: center;
+        padding: 8px 12px;
+        white-space: nowrap;
+    }
+
+    .sidebar-footer {
+        margin-top: 0;
+        padding-top: 0;
+        border-top: none;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+
+    .user-info {
+        display: none;
     }
 
     .main-content {
-        padding: 20px;
-    }
-
-    .stats-grid,
-    .charts-grid,
-    .health-grid,
-    .tenants-overview-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .notification-grid {
-        grid-template-columns: 1fr;
+        padding: 24px 16px;
+        overflow-y: visible;
     }
 
     .view-header {
         flex-direction: column;
         align-items: flex-start;
         gap: 16px;
+    }
+
+    .header-actions {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .search-box {
+        flex: 1;
+        min-width: 200px;
+    }
+
+    .btn-primary, .btn-secondary {
+        flex: 1;
+        white-space: nowrap;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 600px) {
+    .stats-grid, .health-grid, .tenants-overview-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .charts-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .sidebar-logo span {
+        display: none;
     }
 }
 
