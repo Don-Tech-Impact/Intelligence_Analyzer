@@ -2,7 +2,9 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import Optional
+import time
+import uuid
+from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -151,7 +153,63 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Security & Bot-Blocker Middleware
+logger = logging.getLogger(__name__)
+
+
+# --- 2. Diagnostic Logging Middleware ---
+@app.middleware("http")
+async def diagnostic_logging(request: Request, call_next):
+    """
+    Diagnostic middleware to capture detailed request/response data.
+    Helps troubleshoot 400/422/500 errors in production.
+    """
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    start_time = time.time()
+    
+    # 1. Capture Request Info
+    method = request.method
+    url = str(request.url)
+    client_ip = request.client.host if request.client else "unknown"
+    headers = dict(request.headers)
+    
+    # Redact sensitive headers
+    for h in ["authorization", "x-admin-key", "cookie"]:
+        if h in headers:
+            headers[h] = "REDACTED"
+            
+    logger.info(f"Request started: {method} {url} - ID: {request_id} - Client: {client_ip}")
+
+    # 2. Process Request
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        
+        # 3. Handle Logging based on Status
+        status_code = response.status_code
+        if status_code >= 400:
+            # For 4xx/5xx, log headers for debugging
+            logger.warning(
+                f"Request completed with error: {method} {url} - ID: {request_id} - "
+                f"Status: {status_code} - Time: {process_time:.3f}s - Headers: {headers}"
+            )
+        else:
+            logger.info(f"Request completed: {method} {url} - ID: {request_id} - Status: {status_code} - Time: {process_time:.3f}s")
+            
+        # Add Request ID to response headers for client-side tracking
+        response.headers["X-Request-ID"] = request_id
+        return response
+        
+    except Exception as exc:
+        process_time = time.time() - start_time
+        logger.error(
+            f"Request CRASHED: {method} {url} - ID: {request_id} - "
+            f"Error: {str(exc)} - Time: {process_time:.3f}s",
+            exc_info=True
+        )
+        raise exc
+
+
+# --- 3. CORS & Other Middlewares ---
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     # --- 1. Bot & Headless Browser Blocking ---
@@ -223,9 +281,6 @@ if os.path.exists(dashboard_path):
 app.include_router(v1_router)
 app.include_router(health_router)
 app.include_router(admin_router)
-
-
-logger = logging.getLogger(__name__)
 
 
 # Dependency to get DB session
