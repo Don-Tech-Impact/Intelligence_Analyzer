@@ -19,7 +19,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 # from src.api.auth import verify_superadmin
-from src.core.config import config
+from src.core.config import config as siem_config
 from src.core.database import db_manager
 from src.core.limiter import limiter
 from src.models.database import Alert, DeadLetter, NormalizedLog, Report, Tenant
@@ -33,18 +33,13 @@ router = APIRouter(prefix="/api/admin", tags=["Admin (Service-to-Service)"])
 
 
 def _get_admin_key() -> str:
-    """Get the admin API key from environment."""
-    key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY")
-    if not key:
-        # In production contexts, this should fail. We log a critical warning.
-        logger.warning("CRITICAL: No ADMIN_KEY configured. Falling back to default for development ONLY.")
-        return "changeme-admin-key"
-    return key
+    """Return the admin API key from config."""
+    return siem_config.admin_api_key
 
 
 def _get_repo1_base() -> str:
     """Return the base URL of Repo 1."""
-    return (os.getenv("REPO1_URL") or os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080").rstrip("/")
+    return siem_config.repo1_base_url.rstrip("/")
 
 
 def verify_admin_key(x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key")) -> str:

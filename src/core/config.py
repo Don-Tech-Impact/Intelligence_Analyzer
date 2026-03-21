@@ -6,13 +6,13 @@ import yaml
 from dotenv import load_dotenv
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-dotenv_path = os.path.join(project_root, "config", ".env.development")
+# Prioritize standard .env (Production/Docker), then fallback to .env.development
+dotenv_path = os.path.join(project_root, ".env")
+if not os.path.exists(dotenv_path):
+    dotenv_path = os.path.join(project_root, "config", ".env.development")
 
 if os.path.exists(dotenv_path):
-    print(f"Loaded config from {dotenv_path}")
     load_dotenv(dotenv_path)
-else:
-    print(f"FAILED to find config at {dotenv_path}")
 
 
 class Config:
@@ -362,7 +362,8 @@ class Config:
     @property
     def repo1_base_url(self) -> str:
         """Base URL for Repo 1 (Identity Provider) admin API."""
-        return self.get("repo1_url") or self.get("repo1_base_url") or "http://host.docker.internal:8080"
+        url = self.get("repo1_url") or self.get("repo1_base_url") or "http://ingestion-api:8080"
+        return str(url).strip().rstrip("/")
 
 
 # Global configuration instance

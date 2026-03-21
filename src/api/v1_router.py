@@ -336,8 +336,8 @@ async def get_business_insights(tenant_id: str = Depends(get_tenant_id), db: Ses
     # Attempt to fetch tenant config for business hours
     tenant_config: Dict[str, Any] = {}
     try:
-        repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
-        admin_key = os.getenv("ADMIN_KEY") or "changeme-admin-key"
+        repo1_url = siem_config.repo1_base_url
+        admin_key = siem_config.admin_api_key
         async with httpx.AsyncClient(timeout=2.0) as client:
             res = await client.get(f"{repo1_url}/admin/tenants/{tenant_id}", headers={"X-Admin-Key": admin_key})
             if res.status_code == 200:
@@ -670,7 +670,7 @@ def list_assets(
 @router.get("/assets/my-devices")
 async def get_my_devices(request: Request):
     """Get registered devices for the current user from Repo 1."""
-    repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
+    repo1_url = siem_config.repo1_base_url
     auth_header = request.headers.get("Authorization")
 
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -694,7 +694,7 @@ async def get_my_devices(request: Request):
 @router.post("/assets/devices")
 async def register_user_device(request: Request, payload: dict):
     """Register a personal device in Repo 1."""
-    repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
+    repo1_url = siem_config.repo1_base_url
     auth_header = request.headers.get("Authorization")
 
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -726,7 +726,7 @@ async def register_user_device(request: Request, payload: dict):
 @router.delete("/assets/devices/{ip}")
 async def remove_user_device(ip: str, request: Request):
     """Remove a registered device from Repo 1."""
-    repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
+    repo1_url = siem_config.repo1_base_url
     auth_header = request.headers.get("Authorization")
 
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -754,7 +754,7 @@ async def remove_user_device(ip: str, request: Request):
 @router.get("/assets/primary-ip")
 async def get_primary_ip(request: Request):
     """Get the primary office IP for the current tenant from Repo 1."""
-    repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
+    repo1_url = siem_config.repo1_base_url
     auth_header = request.headers.get("Authorization")
 
     # We need the tenant_id from the token to call the Repo 1 admin endpoint
@@ -768,7 +768,7 @@ async def get_primary_ip(request: Request):
         try:
             # Repo 1 doesn't have a public "get-primary-ip" for users yet,
             # so we use the admin endpoint with the analyzer's admin key
-            admin_key = os.getenv("ADMIN_KEY") or "changeme-admin-key"
+            admin_key = siem_config.admin_api_key
             headers = {"X-Admin-Key": admin_key}
 
             response = await client.get(f"{repo1_url}/admin/tenants/{tenant_id}", headers=headers)
