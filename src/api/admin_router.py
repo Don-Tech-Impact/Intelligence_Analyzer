@@ -442,6 +442,64 @@ async def sync_tenant(payload: dict, db: Session = Depends(get_db)):
     return {"status": "success", "message": f"Tenant {tenant_id} {action}"}
 
 
+@router.post("/users/sync", dependencies=[Depends(verify_admin_key)])
+async def sync_user(payload: dict, db: Session = Depends(get_db)):
+    """
+    Webhook endpoint for Repo 1 to synchronize user data.
+
+    Repo 1 POSTs here after every user.created / user.deleted event.
+    """
+    from src.models.database import User
+
+    event = payload.get("event")
+    user_data = payload.get("user", {})
+    username = user_data.get("username")
+
+    if not event or not username:
+        raise HTTPException(status_code=400, detail="Invalid webhook payload: missing 'event' or 'user.username'")
+
+    logger.info(f"Received sync event '{event}' for user '{username}'")
+
+    # Look up existing local user record
+    existing = db.query(User).filter(User.username == username).first()
+
+    if event == "user.deleted":
+        if existing:
+            existing.is_active = False
+            db.commit()
+            logger.info(f"User '{username}' deactivated locally via webhook")
+            return {"status": "success", "message": f"User {username} deactivated"}
+        return {"status": "ok", "message": "User not found — nothing to delete"}
+
+    # user.created or user.updated — upsert
+    role = user_data.get("role", "analyst")
+    is_active = user_data.get("status") == "active"
+
+    if not existing:
+        existing = User(
+            username=username,
+            email=user_data.get("email"),
+            tenant_id=user_data.get("tenant_id", "default"),
+            password_hash=user_data.get("password_hash", ""),
+            role=role,
+            is_active=is_active,
+            is_superadmin=(role == "superadmin"),
+        )
+        db.add(existing)
+        logger.info(f"Created local user record for '{username}'")
+    else:
+        existing.email = user_data.get("email", existing.email)
+        existing.tenant_id = user_data.get("tenant_id", existing.tenant_id)
+        existing.password_hash = user_data.get("password_hash", existing.password_hash)
+        existing.role = role
+        existing.is_active = is_active
+        existing.is_superadmin = (role == "superadmin")
+        logger.info(f"Updated local user record for '{username}'")
+
+    db.commit()
+    return {"status": "success", "message": f"User {username} synchronized"}
+
+
 # ==========================================================================
 # Auth proxy  (Repo 1 auth endpoints — no admin key required on login)
 # ==========================================================================

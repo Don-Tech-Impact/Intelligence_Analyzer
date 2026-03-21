@@ -12,6 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 # and to avoid interfering with FastAPI's primary 'get_db' generator.
 from sqlalchemy import create_engine, desc, func, text
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+import redis
 
 from src.api.auth import verify_jwt
 from src.core.config import config as siem_config
@@ -77,7 +79,37 @@ def get_tenant_id(tenant_id: str = Query("default"), payload: dict = Depends(ver
                     ).fetchone()
 
                     if not result:
-                        logger.warning(f"Access denied: Tenant '{token_tenant}' not found in database.")
+                        # FALLBACK: Check Redis. If it's in Redis, it's valid but hasn't synced yet.
+                        # We will auto-provision it here to avoid a logout/403.
+                        try:
+                            r = redis.from_url(siem_config.redis_url, decode_responses=True)
+                            redis_data = r.hgetall(f"tenant:{token_tenant}")
+                            
+                            if redis_data:
+                                logger.info(f"Auto-provisioning tenant '{token_tenant}' from Redis data.")
+                                try:
+                                    with engine.begin() as conn:  # Transactional block
+                                        conn.execute(
+                                            text("INSERT INTO tenants (tenant_id, name, is_active, created_at, description) "
+                                                 "VALUES (:tid, :name, :active, :now, :desc)"),
+                                            {
+                                                "tid": token_tenant,
+                                                "name": redis_data.get("name", token_tenant),
+                                                "active": True,
+                                                "now": datetime.now(),
+                                                "desc": redis_data.get("description", "Auto-provisioned from login")
+                                            }
+                                        )
+                                    return token_tenant
+                                except IntegrityError:
+                                    # This handles the case where a concurrent request just provisioned the tenant
+                                    # 1ms ago. We can safely proceed.
+                                    logger.info(f"Tenant '{token_tenant}' was provisioned by a concurrent request.")
+                                    return token_tenant
+                        except Exception as redis_err:
+                            logger.error(f"Redis fallback failed for {token_tenant}: {redis_err}")
+
+                        logger.warning(f"Access denied: Tenant '{token_tenant}' not found in database or Redis.")
                         raise HTTPException(status_code=403, detail="Tenant access denied or not provisioned.")
 
                     if not result[1]:  # is_active
@@ -91,7 +123,7 @@ def get_tenant_id(tenant_id: str = Query("default"), payload: dict = Depends(ver
                 logger.error(f"Tenant verification CRASHED: {db_err}")
                 raise HTTPException(
                     status_code=500,
-                    detail="Identity verification system is currently unavailable. Please try again in 30 seconds.",
+                    detail="Identity verification system is currently unavailable. Please try again later.",
                 )
 
     # For superadmins, default can be used if no query param
