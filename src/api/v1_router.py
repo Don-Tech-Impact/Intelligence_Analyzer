@@ -137,7 +137,9 @@ def get_db(tenant_id: str = Depends(get_tenant_id)):
         # Explicitly set the tenant context for PostgreSQL RLS.
         # This is more robust than using SQLAlchemy event listeners which can cause
         # recursive "session is provisioning a new connection" errors.
-        session.execute(text(f"SET app.current_tenant = '{tenant_id}'"))
+        if session.bind.dialect.name == "postgresql":
+            session.execute(text(f"SET app.current_tenant = '{tenant_id}'"))
+
         yield session
 
 
