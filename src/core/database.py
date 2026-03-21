@@ -106,11 +106,5 @@ class DatabaseManager:
 db_manager = DatabaseManager()
 
 
-# ================================================
-# MULTI-TENANCY SECURITY ENFORCEMENT
-# ================================================
-@event.listens_for(Session, "after_begin")
-def set_tenant_context(session, transaction, connection):
-    if hasattr(session, "info") and "tenant_id" in session.info:
-        tenant_id = session.info["tenant_id"]
-        session.execute(text(f"SET app.current_tenant = '{tenant_id}'"))
+# Note: Multi-tenancy RLS context is now explicitly set in the v1_router.py get_db dependency
+# to avoid recursive "session is provisioning a new connection" errors during after_begin events.

@@ -41,12 +41,6 @@ router = APIRouter(
 )
 
 
-# Dependency for getting DB session
-def get_db():
-    with db_manager.session_scope() as session:
-        yield session
-
-
 # Secure dependency to get tenant ID from JWT or Query
 def get_tenant_id(tenant_id: str = Query("default"), payload: dict = Depends(verify_jwt)) -> str:
     """
@@ -128,6 +122,20 @@ def get_tenant_id(tenant_id: str = Query("default"), payload: dict = Depends(ver
 
     # For superadmins, default can be used if no query param
     return tenant_id
+
+
+# Dependency for getting DB session with RLS enforcement
+def get_db(tenant_id: str = Depends(get_tenant_id)):
+    """
+    Get a database session with the tenant context set for Row-Level Security (RLS).
+    This ensures that the database physically limits access to only the current tenant's data.
+    """
+    with db_manager.session_scope() as session:
+        # Explicitly set the tenant context for PostgreSQL RLS.
+        # This is more robust than using SQLAlchemy event listeners which can cause 
+        # recursive "session is provisioning a new connection" errors.
+        session.execute(text(f"SET app.current_tenant = '{tenant_id}'"))
+        yield session
 
 
 # ============================================
