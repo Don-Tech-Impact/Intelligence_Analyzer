@@ -6,14 +6,14 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 import httpx
+import redis
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 # We use a direct engine/session here to keep this dependency lightweight
 # and to avoid interfering with FastAPI's primary 'get_db' generator.
 from sqlalchemy import create_engine, desc, func, text
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-import redis
+from sqlalchemy.orm import Session
 
 from src.api.auth import verify_jwt
 from src.core.config import config as siem_config
@@ -78,21 +78,24 @@ def get_tenant_id(tenant_id: str = Query("default"), payload: dict = Depends(ver
                         try:
                             r = redis.from_url(siem_config.redis_url, decode_responses=True)
                             redis_data = r.hgetall(f"tenant:{token_tenant}")
-                            
+
                             if redis_data:
                                 logger.info(f"Auto-provisioning tenant '{token_tenant}' from Redis data.")
                                 try:
                                     with engine.begin() as conn:  # Transactional block
                                         conn.execute(
-                                            text("INSERT INTO tenants (tenant_id, name, is_active, created_at, description) "
-                                                 "VALUES (:tid, :name, :active, :now, :desc)"),
+                                            text(
+                                                "INSERT INTO tenants (tenant_id, name, is_active, \
+                                                    created_at, description)"
+                                                "VALUES (:tid, :name, :active, :now, :desc)"
+                                            ),
                                             {
                                                 "tid": token_tenant,
                                                 "name": redis_data.get("name", token_tenant),
                                                 "active": True,
                                                 "now": datetime.now(),
-                                                "desc": redis_data.get("description", "Auto-provisioned from login")
-                                            }
+                                                "desc": redis_data.get("description", "Auto-provisioned from login"),
+                                            },
                                         )
                                     return token_tenant
                                 except IntegrityError:
@@ -132,7 +135,7 @@ def get_db(tenant_id: str = Depends(get_tenant_id)):
     """
     with db_manager.session_scope() as session:
         # Explicitly set the tenant context for PostgreSQL RLS.
-        # This is more robust than using SQLAlchemy event listeners which can cause 
+        # This is more robust than using SQLAlchemy event listeners which can cause
         # recursive "session is provisioning a new connection" errors.
         session.execute(text(f"SET app.current_tenant = '{tenant_id}'"))
         yield session

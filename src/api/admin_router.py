@@ -493,7 +493,7 @@ async def sync_user(payload: dict, db: Session = Depends(get_db)):
         existing.password_hash = user_data.get("password_hash", existing.password_hash)
         existing.role = role
         existing.is_active = is_active
-        existing.is_superadmin = (role == "superadmin")
+        existing.is_superadmin = role == "superadmin"
         logger.info(f"Updated local user record for '{username}'")
 
     db.commit()
