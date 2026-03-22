@@ -240,7 +240,7 @@ class Config:
 
     @property
     def allowed_hosts(self) -> List[str]:
-        hosts = self.get("ALLOWED_HOSTS", "localhost,127.0.0.1")
+        hosts = self.get("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver")
         return [h.strip() for h in hosts.split(",") if h.strip()]
 
     # Email configuration
