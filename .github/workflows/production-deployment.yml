@@ -883,7 +883,6 @@ jobs:
             HEALTHY=false
             for i in $(seq 1 12); do
               HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-                -H "Host: dashboard.africanalyzer.com" \
                 http://localhost:8000/health/live 2>/dev/null)
               echo ">> Attempt ${i}/12 - HTTP ${HTTP_CODE}"
               if [ "${HTTP_CODE}" = "200" ]; then
