@@ -534,9 +534,10 @@ async def proxy_login(request: Request, payload: dict, response: Response):
 
             # Relay the status code for other errors (e.g. 500)
             if r1_res.status_code >= 400:
+                logger.error(f"Repo 1 returned error {r1_res.status_code} for {url}: {r1_res.text}")
                 return JSONResponse(
                     status_code=r1_res.status_code,
-                    content={"status": "error", "detail": "Authentication system encountered an issue."},
+                    content={"status": "error", "detail": f"Identity system error: {r1_res.text[:200]}"},
                 )
 
             res_data = r1_res.json()

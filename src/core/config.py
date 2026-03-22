@@ -234,11 +234,14 @@ class Config:
         return self.get("jwt_public_key")
 
     @property
-    def allowed_origins(self) -> list:
-        origins = self.get("allowed_origins", "http://localhost:8000")
-        if isinstance(origins, str):
-            return origins.split(",")
-        return origins
+    def allowed_origins(self) -> List[str]:
+        origins = self.get("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000")
+        return [o.strip() for o in origins.split(",") if o.strip()]
+
+    @property
+    def allowed_hosts(self) -> List[str]:
+        hosts = self.get("ALLOWED_HOSTS", "localhost,127.0.0.1")
+        return [h.strip() for h in hosts.split(",") if h.strip()]
 
     # Email configuration
     @property

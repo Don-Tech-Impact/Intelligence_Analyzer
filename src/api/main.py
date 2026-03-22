@@ -1,4 +1,5 @@
 import logging
+import traceback
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -9,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from slowapi import _rate_limit_exceeded_handler
@@ -27,6 +29,7 @@ from src.api.health import router as health_router
 
 # V1 API Router, Health endpoints, and Admin API
 from src.api.v1_router import router as v1_router
+from src.core.config import config as siem_config
 from src.core.database import db_manager
 from src.core.limiter import limiter
 from src.models.database import Alert, NormalizedLog, Report
@@ -142,13 +145,14 @@ async def custom_swagger_ui_html():
 # Global Exception Handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Global Exception: {str(exc)}", exc_info=True)
+    # Log the full traceback to the terminal/console
+    traceback.print_exc()
     return JSONResponse(
         status_code=500,
         content={
             "status": "error",
             "message": "An unexpected internal server error occurred.",
-            "detail": str(exc) if app.debug else "Internal Server Error",
+            "detail": str(exc),  # Always show detail for debugging
         },
     )
 
@@ -159,115 +163,75 @@ logger = logging.getLogger(__name__)
 # --- 2. Diagnostic Logging Middleware ---
 @app.middleware("http")
 async def diagnostic_logging(request: Request, call_next):
-    """
-    Diagnostic middleware to capture detailed request/response data.
-    Helps troubleshoot 400/422/500 errors in production.
-    """
-    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
-    start_time = time.time()
+    """Simple diagnostic middleware using prefixed variables."""
+    r_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    r_start = time.time()
+    r_meth = request.method
+    r_url = str(request.url)
+    r_ip = request.client.host if request.client else "unknown"
     
-    # 1. Capture Request Info
-    method = request.method
-    url = str(request.url)
-    client_ip = request.client.host if request.client else "unknown"
-    headers = dict(request.headers)
-    
-    # Redact sensitive headers
-    for h in ["authorization", "x-admin-key", "cookie"]:
-        if h in headers:
-            headers[h] = "REDACTED"
-            
-    logger.info(f"Request started: {method} {url} - ID: {request_id} - Client: {client_ip}")
+    logger.info(f"Request started: {r_meth} {r_url} - ID: {r_id}")
 
-    # 2. Process Request
     try:
         response = await call_next(request)
-        process_time = time.time() - start_time
+        r_duration = time.time() - r_start
         
-        # 3. Handle Logging based on Status
-        status_code = response.status_code
-        if status_code >= 400:
-            # For 4xx/5xx, log headers for debugging
-            logger.warning(
-                f"Request completed with error: {method} {url} - ID: {request_id} - "
-                f"Status: {status_code} - Time: {process_time:.3f}s - Headers: {headers}"
-            )
+        if response.status_code >= 400:
+            logger.warning(f"Request failed: {r_meth} {r_url} - ID: {r_id} - Status: {response.status_code}")
         else:
-            logger.info(f"Request completed: {method} {url} - ID: {request_id} - Status: {status_code} - Time: {process_time:.3f}s")
+            logger.info(f"Request completed: {r_meth} {r_url} - ID: {r_id} - Status: {response.status_code}")
             
-        # Add Request ID to response headers for client-side tracking
-        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Request-ID"] = r_id
         return response
-        
-    except Exception as exc:
-        process_time = time.time() - start_time
-        logger.error(
-            f"Request CRASHED: {method} {url} - ID: {request_id} - "
-            f"Error: {str(exc)} - Time: {process_time:.3f}s",
-            exc_info=True
-        )
-        raise exc
+    except Exception as e:
+        logger.error(f"Request CRASHED: {r_meth} {r_url} - ID: {r_id} - {str(e)}", exc_info=True)
+        raise e
 
 
-# --- 3. CORS & Other Middlewares ---
+# --- 3. Security & Bot-Blocker Middleware ---
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
-    # --- 1. Bot & Headless Browser Blocking ---
-    user_agent = request.headers.get("user-agent", "").lower()
-    bot_keywords = ["headlesschrome", "scrapy", "nmap", "nikto", "sqlmap", "zgrab"]
+    # 1. Bot Blocking
+    ua = request.headers.get("user-agent", "").lower()
+    bot_list = ["headlesschrome", "scrapy", "nmap", "nikto", "sqlmap", "zgrab"]
+    is_bot_req = any(k in ua for k in bot_list) or not ua
 
-    # Check if a known bot keyword is in the User-Agent
-    is_bot = any(k in user_agent for k in bot_keywords)
+    # Allow local
+    c_host = request.client.host if request.client else ""
+    if c_host in ("127.0.0.1", "::1"):
+        is_bot_req = False
 
-    # Optional: If User-Agent is completely empty, it's often a bot
-    if not user_agent:
-        is_bot = True
-
-    # Allow local testing even if UA is bot-like
-    client_host = request.client.host if request.client else ""
-    if client_host in ("127.0.0.1", "::1"):
-        is_bot = False
-
-    if is_bot:
-        # Return a generic 403 or 404 to discourage further probing
-        # We add a small tarpit delay to slow down automated scanners
-        import asyncio
-
-        await asyncio.sleep(1.0)
+    if is_bot_req:
         return JSONResponse(status_code=403, content={"status": "error", "message": "Access Denied"})
 
     response = await call_next(request)
 
-    # Skip strict CSP for Swagger UI paths
-    if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
-        return response
-
-    # --- 2. Security Headers ---
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    response.headers["X-Robots-Tag"] = "noindex, nofollow"  # Discourage indexing
-
-    # Allow CDN resources for Swagger UI and Google Fonts
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
-        "img-src 'self' data: https://cdn.jsdelivr.net; "
-        "font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com;"
-    )
+    # 2. Security Headers
+    if request.url.path not in ["/docs", "/redoc", "/openapi.json"]:
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+            "img-src 'self' data: https://cdn.jsdelivr.net; "
+            "font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com;"
+        )
     return response
 
 
-# Enable CORS for frontend development
-# Strict CORS for Production
-import os
+# --- 4. CORS & Trusted Hosts ---
+app.add_middleware(
+    TrustedHostMiddleware, 
+    allowed_hosts=siem_config.allowed_hosts
+)
 
-origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=siem_config.allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
