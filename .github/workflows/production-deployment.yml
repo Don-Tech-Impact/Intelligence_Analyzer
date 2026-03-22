@@ -501,7 +501,7 @@ name: Production Deployment
 
 on:
   push:
-    branches: [mains]
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
