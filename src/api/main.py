@@ -1,12 +1,11 @@
 import logging
 import os
-
-# import time
+import time
 import traceback
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +13,6 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
@@ -42,7 +40,6 @@ from src.services.report_generator import ReportGenerator
 @asynccontextmanager
 async def lifespan(app):
     """FastAPI lifespan handler — runs on startup and shutdown."""
-    import os
     import sys
 
     # --- Startup ---
@@ -164,29 +161,25 @@ logger = logging.getLogger(__name__)
 # --- 2. Diagnostic Logging Middleware ---
 @app.middleware("http")
 async def diagnostic_logging(request: Request, call_next):
-    """Simple diagnostic middleware using prefixed variables."""
+    """Simple diagnostic middleware for production troubleshooting."""
     r_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
-    # r_start = time.time()
     r_meth = request.method
     r_url = str(request.url)
-    # r_ip = request.client.host if request.client else "unknown"
-
+    
     logger.info(f"Request started: {r_meth} {r_url} - ID: {r_id}")
 
     try:
         response = await call_next(request)
-        # r_duration = time.time() - r_start
-
         if response.status_code >= 400:
             logger.warning(f"Request failed: {r_meth} {r_url} - ID: {r_id} - Status: {response.status_code}")
         else:
             logger.info(f"Request completed: {r_meth} {r_url} - ID: {r_id} - Status: {response.status_code}")
-
+        
         response.headers["X-Request-ID"] = r_id
         return response
     except Exception as e:
-        logger.error(f"Request CRASHED: {r_meth} {r_url} - ID: {r_id} - {str(e)}", exc_info=True)
-        raise e
+        logger.error(f"Request crashed: {r_meth} {r_url} - ID: {r_id} - Error: {str(e)}")
+        raise
 
 
 # --- 3. Security & Bot-Blocker Middleware ---

@@ -235,13 +235,21 @@ class Config:
 
     @property
     def allowed_origins(self) -> List[str]:
-        origins = self.get("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000")
-        return [o.strip() for o in origins.split(",") if o.strip()]
+        origins_str = self.get("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000")
+        if not origins_str or origins_str == "*":
+            return ["*"]
+        # Handle JSON-style lists if present in .env
+        clean = str(origins_str).replace("[", "").replace("]", "").replace('"', "").replace("'", "")
+        return [o.strip() for o in clean.split(",") if o.strip()]
 
     @property
     def allowed_hosts(self) -> List[str]:
-        hosts = self.get("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver")
-        return [h.strip() for h in hosts.split(",") if h.strip()]
+        hosts_str = self.get("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver")
+        if not hosts_str or hosts_str == "*":
+            return ["*"]
+        # Handle JSON-style lists if present in .env
+        clean = str(hosts_str).replace("[", "").replace("]", "").replace('"', "").replace("'", "")
+        return [h.strip() for h in clean.split(",") if h.strip()]
 
     # Email configuration
     @property
