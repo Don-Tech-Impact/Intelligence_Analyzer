@@ -1,11 +1,11 @@
 import logging
-import traceback
 import os
+# import time
+import traceback
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-import time
-import uuid
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -165,22 +165,22 @@ logger = logging.getLogger(__name__)
 async def diagnostic_logging(request: Request, call_next):
     """Simple diagnostic middleware using prefixed variables."""
     r_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
-    r_start = time.time()
+    # r_start = time.time()
     r_meth = request.method
     r_url = str(request.url)
-    r_ip = request.client.host if request.client else "unknown"
-    
+    # r_ip = request.client.host if request.client else "unknown"
+
     logger.info(f"Request started: {r_meth} {r_url} - ID: {r_id}")
 
     try:
         response = await call_next(request)
-        r_duration = time.time() - r_start
-        
+        # r_duration = time.time() - r_start
+
         if response.status_code >= 400:
             logger.warning(f"Request failed: {r_meth} {r_url} - ID: {r_id} - Status: {response.status_code}")
         else:
             logger.info(f"Request completed: {r_meth} {r_url} - ID: {r_id} - Status: {response.status_code}")
-            
+
         response.headers["X-Request-ID"] = r_id
         return response
     except Exception as e:
@@ -224,10 +224,7 @@ async def add_security_headers(request: Request, call_next):
 
 
 # --- 4. CORS & Trusted Hosts ---
-app.add_middleware(
-    TrustedHostMiddleware, 
-    allowed_hosts=siem_config.allowed_hosts
-)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=siem_config.allowed_hosts)
 
 app.add_middleware(
     CORSMiddleware,

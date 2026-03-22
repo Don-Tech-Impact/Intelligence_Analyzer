@@ -573,7 +573,7 @@ async def proxy_logout(request: Request):
             token = auth_header.split(" ")[1]
             # We don't need to verify the signature strictly here just to route the logout,
             # but we can use the configured secret if available.
-            secret = getattr(config, "secret_key", "")
+            secret = getattr(siem_config, "secret_key", "")
             payload = jwt.decode(token, secret, algorithms=["HS256"], options={"verify_signature": False})
 
             user_type = payload.get("user_type", "")
@@ -604,7 +604,7 @@ async def verify_repo1_sync():
     """Diagnostic: Check if SECRET_KEY and config are aligned with Repo 1."""
     try:
         data = await _repo1_request("GET", "/admin/auth/jwt-public-config")
-        local_secret = getattr(config, "secret_key", None) or os.getenv("SECRET_KEY", "")
+        local_secret = getattr(siem_config, "secret_key", None) or os.getenv("SECRET_KEY", "")
         return {
             "status": "success",
             "repo1_config": data,
