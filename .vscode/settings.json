@@ -1,0 +1,7 @@
+{
+    "python.envFile": "${workspaceFolder}/.env",
+    "python.defaultInterpreterPath": "${workspaceFolder}/env/Scripts/python.exe",
+    "python.analysis.extraPaths": ["./"],
+    "python.analysis.autoSearchPaths": false,
+    "python.analysis.autoImportCompletions": true
+}

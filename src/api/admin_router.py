@@ -8,7 +8,6 @@ OR a valid Superadmin Bearer JWT.
 """
 
 import logging
-import os
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -39,6 +38,8 @@ def _get_admin_key() -> str:
 
 def _get_repo1_base() -> str:
     """Return the base URL of Repo 1."""
+    if hasattr(siem_config, "effective_repo1_url"):
+        return getattr(siem_config, "effective_repo1_url")
     return siem_config.repo1_base_url.rstrip("/")
 
 

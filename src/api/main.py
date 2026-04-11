@@ -225,11 +225,11 @@ async def add_security_headers(request: Request, call_next):
 
 
 # --- 4. CORS & Trusted Hosts ---
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=siem_config.allowed_hosts)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=siem_config.parsed_allowed_hosts)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=siem_config.allowed_origins,
+    allow_origins=siem_config.parsed_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

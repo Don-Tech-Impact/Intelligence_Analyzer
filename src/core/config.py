@@ -96,6 +96,9 @@ class RedisSettings(BaseModel):
     @computed_field
     @property
     def redis_url(self) -> str:
+        env_url = os.getenv("REDIS_URL")
+        if env_url:
+            return env_url
         if self.url:
             return self.url
         host = f"[{self.host}]" if ":" in self.host and not self.host.startswith("[") else self.host
