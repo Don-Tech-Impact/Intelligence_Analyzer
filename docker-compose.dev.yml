@@ -43,6 +43,8 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-siem_user}:${POSTGRES_PASSWORD:-siem_password}@db:5432/${POSTGRES_DB:-siem_db}
       - REDIS_URL=${REDIS_URL:-redis://afric-analyzer-redis-local:6379/0}
       - REPO1_BASE_URL=${REPO1_BASE_URL:-http://afric-analyzer-api-local:8080}
+      - SECRET_KEY=Fv2pkCopnlN9WkwjSjHWowOxjJfXSwdeOyDh_NLVaMNMcmL4uJTwPSwyz3XmMJZi
+      - ADMIN_KEY=4BltQka5aJ_EHKPvdf0zP_7eEyR7aETtSxW5X-ZMqJMVszhcaWqgFcmPoPkLDGf7
       - DEV_MODE=true
       - EXPOSE_DOCS=true
     volumes:

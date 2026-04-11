@@ -125,16 +125,16 @@ async def verify_tenant_access(
     role = payload.get("role")
     sub = payload.get("sub")
 
-    # Global roles
+    # Global roles (SuperAdmins)
     if role == "superadmin" or sub == "service-account":
         return payload
 
-    # Tenant-scoped roles
+    # Tenant-scoped roles (Admins and Users)
     user_tenant = payload.get("tenant_id")
-    if role == "tenant_user" and user_tenant == tenant_id:
+    if role in ("admin", "tenant_user") and user_tenant == tenant_id:
         return payload
 
-    logger.warning(f"Access Denied: User {sub} (tenant: {user_tenant}) tried to access tenant {tenant_id}")
+    logger.warning(f"Access Denied: User {sub} (role: {role}, tenant: {user_tenant}) tried to access tenant {tenant_id}")
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="You do not have permission to access this tenant's resources.",
