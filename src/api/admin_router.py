@@ -36,12 +36,17 @@ def _get_admin_key() -> str:
     return siem_config.admin_api_key
 
 
-def _get_repo1_base() -> str:
-    """Return the base URL of Repo 1."""
-    if hasattr(siem_config, "effective_repo1_url"):
-        return getattr(siem_config, "effective_repo1_url")
-    return siem_config.repo1_base_url.rstrip("/")
+# def _get_repo1_base() -> str:
+#     """Return the base URL of Repo 1."""
 
+#     if hasattr(siem_config, "effective_repo1_url"):
+#         return getattr(siem_config, "effective_repo1_url")
+#     return siem_config.repo1_base_url.rstrip("/")
+
+def _get_repo1_base() -> str:
+    base_url = "http://afric-analyzer-api-local:8080"
+    return base_url
+    
 
 def verify_admin_key(x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key")) -> str:
     """Validate X-Admin-Key header matches the configured secret."""
@@ -560,7 +565,8 @@ async def proxy_login(request: Request, payload: dict, response: Response):
     Proxy login request to Repo 1 to bypass browser CORS issues.
     Relays the status code and JSON body from Repo 1.
     """
-    repo1_base = _get_repo1_base()
+    # repo1_base = _get_repo1_base()
+    repo1_base = "http://afric-analyzer-api-local:8080"
 
     # Smart Routing: Check if this is an Admin (email) or Tenant (username) login
     if "username" in payload and "email" not in payload:

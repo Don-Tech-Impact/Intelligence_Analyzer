@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from src.services.redis_client import redis_client
 from jose import JWTError, jwt
 
 from src.core.config import config
@@ -81,10 +82,12 @@ async def verify_jwt(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
                     if redis_secret:
                         if isinstance(redis_secret, bytes):
                             redis_secret = redis_secret.decode()
+                        
+                        clean_secret = str(redis_secret).strip().strip('"').strip("'")
 
                         payload = jwt.decode(
                             token,
-                            str(redis_secret).strip(),
+                            clean_secret,
                             algorithms=["HS256"],
                             options={"verify_aud": False, "leeway": 60},
                         )
@@ -162,16 +165,17 @@ def decode_token_payload(token: str) -> Optional[Dict[str, Any]]:
         # Fallback to Redis secret if local config fails (Repo 1 source of truth)
         if "signature verification failed" in str(e).lower():
             try:
-                from src.services.redis_client import redis_client
 
                 redis_secret = redis_client.get("admin:jwt_secret")
                 if redis_secret:
                     if isinstance(redis_secret, bytes):
                         redis_secret = redis_secret.decode()
 
+                    clean_secret = redis_secret.strip().strip('"').strip("'")
+                    
                     # Try once more with Redis secret
                     payload = jwt.decode(
-                        token, redis_secret.strip(), algorithms=["HS256"], options={"verify_aud": False}
+                        token, clean_secret, algorithms=["HS256"], options={"verify_aud": False}
                     )
                     logger.info("JWT verified successfully using Redis secret fallback.")
                     return payload

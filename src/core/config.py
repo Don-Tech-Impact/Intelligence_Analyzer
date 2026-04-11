@@ -221,6 +221,7 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def effective_repo1_url(self) -> str:
+        """Returns the fully qualified URL for Repo 1 based on environment."""
         return str(self.repo1_url or self.repo1_base_url).strip().rstrip("/")
 
     # ── Backward-compatible shortcuts (keeps all original call sites working) ─
@@ -300,6 +301,9 @@ class Settings(BaseSettings):
     def default_tenant(self) -> str:              return self.multi_tenant.default_tenant
     @property
     def tenants(self) -> list:                    return self.multi_tenant.tenants
+
+    @property
+    def admin_api_key(self) -> str:               return self.ADMIN_KEY
 
     # ── Persistence ───────────────────────────────────────────────────────────
     def save(self, config_path: Optional[str] = None) -> None:
