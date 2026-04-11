@@ -343,7 +343,7 @@ class RedisConsumer:
 
         try:
             repo1_url = (os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080").rstrip("/")
-            admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY") or "changeme-admin-key"
+            admin_key = os.getenv("ADMIN_KEY") or os.getenv("admin_api_key") or "changeme-admin-key"
 
             import requests
 

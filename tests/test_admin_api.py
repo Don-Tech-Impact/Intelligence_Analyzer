@@ -11,7 +11,7 @@ from src.models.database import Alert, Base, Tenant
 
 # Force both env var names so _get_admin_key() in admin_router picks up "changeme-admin-key"
 os.environ["ADMIN_KEY"] = "changeme-admin-key"
-os.environ["ADMIN_API_KEY"] = "changeme-admin-key"
+os.environ["admin_api_key"] = "changeme-admin-key"
 
 ADMIN_KEY = "changeme-admin-key"
 ADMIN_HEADERS = {"X-Admin-Key": ADMIN_KEY}

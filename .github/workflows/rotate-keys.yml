@@ -31,6 +31,6 @@ jobs:
       - name: Rotate API Key
         env:
           API_BASE_URL: ${{ secrets.PROD_API_BASE_URL }}
-          ADMIN_API_KEY: ${{ secrets.PROD_ADMIN_API_KEY }}
+          ADMIN_KEY: ${{ secrets.PROD_ADMIN_KEY }}
         run: |
           python scripts/rotate_key.py rotate "${{ github.event.inputs.key_id }}"

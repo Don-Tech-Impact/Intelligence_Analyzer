@@ -1,373 +1,327 @@
+# config.py ─ Pydantic v2 rewrite
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import yaml
 from dotenv import load_dotenv
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-# Prioritize standard .env (Production/Docker), then fallback to .env.development
-dotenv_path = os.path.join(project_root, ".env")
-if not os.path.exists(dotenv_path):
-    dotenv_path = os.path.join(project_root, "config", ".env.development")
+# ─── .env loading (same precedence as original) ───────────────────────────────
+_project_root = Path(__file__).parents[2]
+for _env_path in [
+    _project_root / ".env",
+    _project_root / "config" / ".env.production",
+    _project_root / "config" / ".env.development",
+]:
+    if _env_path.exists():
+        load_dotenv(_env_path)
+        break
 
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path)
 
+# ─── Custom YAML settings source ──────────────────────────────────────────────
+class YamlConfigSource(PydanticBaseSettingsSource):
+    """Loads settings from a YAML file. Lowest priority — env vars override it."""
 
-class Config:
-    """Configuration manager that loads settings from YAML and environment variables."""
+    def get_field_value(self, field: Any, field_name: str) -> Any:
+        return None  # handled in __call__
 
-    def __init__(self, config_path: Optional[str] = None):
-
-        self._config: Dict[str, Any] = {}
-
-        # # Load environment variables
-        # load_dotenv()
-
-        # Load YAML configuration
-        if config_path is None:
-            config_path = os.getenv("CONFIG_PATH", "config/config.yaml")
-
+    def __call__(self) -> Dict[str, Any]:
+        config_path = os.getenv("CONFIG_PATH", "config/config.yaml")
         config_file = Path(config_path)
         if config_file.exists():
-            with open(config_file, "r") as f:
-                self._config = yaml.safe_load(f) or {}
+            with open(config_file) as f:
+                return yaml.safe_load(f) or {}
+        return {}
 
-        self._config_path = config_path
 
-        # Override with environment variables for specific queue names if needed
-        if os.getenv("REDIS_QUEUE_PATTERN"):
-            self.set("redis.queue_pattern", os.getenv("REDIS_QUEUE_PATTERN"))
-        if os.getenv("REDIS_QUEUE_SCAN_INTERVAL"):
-            self.set("redis.queue_scan_interval", os.getenv("REDIS_QUEUE_SCAN_INTERVAL"))
-        if os.getenv("REDIS_DEAD_QUEUE"):
-            self.set("redis.dead_queue", os.getenv("REDIS_DEAD_QUEUE"))
-        if os.getenv("REDIS_INGEST_QUEUE"):
-            self.set("redis.ingest_queue", os.getenv("REDIS_INGEST_QUEUE"))
-        if os.getenv("REDIS_CLEAN_QUEUE"):
-            self.set("redis.clean_queue", os.getenv("REDIS_CLEAN_QUEUE"))
+# ─── Nested sub-models ────────────────────────────────────────────────────────
 
-    def save(self):
-        """Save the current configuration back to the YAML file."""
-        config_file = Path(self._config_path)
-        # Ensure directory exists
-        config_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(config_file, "w") as f:
-            yaml.dump(self._config, f, default_flow_style=False)
+class DatabaseSettings(BaseModel):
+    model_config = ConfigDict(validate_assignment=True)
 
-    def set(self, key: str, value: Any):
-        """Set a configuration value using dot notation and save.
+    type: str = "sqlite"
+    url: Optional[str] = None
+    host: str = "localhost"
+    port: int = 5432
+    name: str = "siem_analyzer"
+    user: str = "admin"
+    password: str = "password"
 
-        Args:
-            key: Configuration key (supports dot notation: 'database.host')
-            value: Value to set
-        """
-        keys = key.split(".")
-        target = self._config
-        for k in keys[:-1]:
-            if k not in target or not isinstance(target[k], dict):
-                target[k] = {}
-            target = target[k]
-        target[keys[-1]] = value
-        self.save()
-
-    def get(self, key: str, default: Any = None) -> Any:
-        """Get configuration value with support for nested keys.
-
-        Args:
-            key: Configuration key (supports dot notation: 'database.host')
-            default: Default value if key not found
-
-        Returns:
-            Configuration value
-        """
-        # Check environment variable first (convert dot notation to underscore uppercase)
-        env_key = key.upper().replace(".", "_")
-        env_value = os.getenv(env_key)
-        if env_value is not None:
-            return self._cast_value(env_value)
-
-        # Navigate nested dictionary
-        keys = key.split(".")
-        current_val: Any = self._config
-        for k in keys:
-            if isinstance(current_val, dict):
-                current_val = current_val.get(k)
-            else:
-                return default
-            if current_val is None:
-                return default
-
-        return current_val
-
-    def _cast_value(self, value: str) -> Any:
-        """Cast string value to appropriate type."""
-        # Boolean
-        if value.lower() in ("true", "yes", "1"):
-            return True
-        if value.lower() in ("false", "no", "0"):
-            return False
-
-        # Integer
-        try:
-            return int(value)
-        except ValueError:
-            pass
-
-        # Float
-        try:
-            return float(value)
-        except ValueError:
-            pass
-
-        return value
-
-    # Database configuration
+    @computed_field
     @property
-    def database_type(self) -> str:
-        # First check if we can infer from DATABASE_URL env var
-        db_url = os.getenv("DATABASE_URL", "")
-        if db_url.startswith("postgresql"):
+    def resolved_type(self) -> str:
+        raw = os.getenv("DATABASE_URL", "")
+        if raw.startswith("postgresql"):
             return "postgresql"
-        elif db_url.startswith("sqlite"):
+        if raw.startswith("sqlite"):
             return "sqlite"
+        return self.type
 
-        # Then check config
-        return str(self.get("database.type", "sqlite"))
-
+    @computed_field
     @property
     def database_url(self) -> str:
-        """Get SQLAlchemy database URL with full support for POSTGRES_ env vars."""
-        # 1. Check for explicit DATABASE_URL first
-        url = os.getenv("DATABASE_URL")
-        if url:
-            return url
+        env_url = os.getenv("DATABASE_URL")
+        if env_url:
+            return env_url
+        if self.url:
+            return self.url
+        if self.resolved_type == "postgresql":
+            host = os.getenv("POSTGRES_HOST") or self.host
+            port = os.getenv("POSTGRES_PORT") or str(self.port)
+            name = os.getenv("POSTGRES_DB") or self.name
+            user = os.getenv("POSTGRES_USER") or self.user
+            pwd  = os.getenv("POSTGRES_PASSWORD") or self.password
+            return f"postgresql://{user}:{pwd}@{host}:{port}/{name}"
+        if self.resolved_type == "sqlite":
+            return f"sqlite:///{self.name}.db"
+        raise ValueError(f"Unsupported database type: {self.resolved_type}")
 
-        # 2. Check for configured database.url in YAML
-        url = self.get("database.url")
-        if url:
-            return url
 
-        db_type = self.database_type
+class RedisSettings(BaseModel):
+    model_config = ConfigDict(validate_assignment=True)
 
-        # 3. Construct URL from components
-        if db_type == "postgresql":
-            # Prioritize POSTGRES_ variants commonly used in Docker
-            host = os.getenv("POSTGRES_HOST") or self.get("database.host", "localhost")
-            port = os.getenv("POSTGRES_PORT") or self.get("database.port", 5432)
-            name = os.getenv("POSTGRES_DB") or self.get("database.name", "siem_analyzer")
-            user = os.getenv("POSTGRES_USER") or self.get("database.user", "admin")
-            password = os.getenv("POSTGRES_PASSWORD") or self.get("database.password", "password")
+    url: Optional[str] = None
+    host: str = "localhost"
+    port: int = 6379
+    db: int = 0
+    password: Optional[str] = None
+    queue_pattern: str = "logs:*"
+    queue_scan_interval: int = 30
+    ingest_queue: str = "ingest_logs"
+    clean_queue: str = "clean_logs"
+    dead_queue: str = "dead_logs"
 
-            return f"postgresql://{user}:{password}@{host}:{port}/{name}"
-
-        elif db_type == "sqlite":
-            db_name = str(self.get("database.name", "siem_analyzer"))
-            return f"sqlite:///{db_name}.db"
-
-        raise ValueError(f"Unsupported or unconfigured database type: {db_type}")
-
+    @computed_field
     @property
     def redis_url(self) -> str:
-        """Get Redis URL, prioritizing REDIS_URL environment variable."""
-        url = self.get("redis.url")
-        if url:
-            return url
+        if self.url:
+            return self.url
+        host = f"[{self.host}]" if ":" in self.host and not self.host.startswith("[") else self.host
+        auth = f":{self.password}@" if self.password else ""
+        return f"redis://{auth}{host}:{self.port}/{self.db}"
 
-        # Fallback to constructing from parts (legacy)
-        host = self.get("redis.host", "localhost")
-        port = self.get("redis.port", 6379)
-        db = self.get("redis.db", 0)
-        password = self.get("redis.password")
 
-        # Wrap IPv6 address in brackets if it contains colons
-        if ":" in host and not host.startswith("["):
-            host = f"[{host}]"
+class SmtpSettings(BaseModel):
+    host: str = "smtp.gmail.com"
+    port: int = 587
+    user: str = ""
+    password: str = ""
+    use_tls: bool = True
 
-        auth = f":{password}@" if password else ""
-        return f"redis://{auth}{host}:{port}/{db}"
 
+class EmailSettings(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    enabled: bool = False
+    smtp: SmtpSettings = Field(default_factory=SmtpSettings)
+    from_address: str = Field("siem-alerts@company.com", alias="from")
+    to: List[str] = Field(default_factory=lambda: ["security-team@company.com"])
+
+
+class BruteForceSettings(BaseModel):
+    threshold: int = 5
+    time_window: int = 300
+
+class PortScanSettings(BaseModel):
+    threshold: int = 10
+    time_window: int = 60
+
+class DetectionSettings(BaseModel):
+    brute_force: BruteForceSettings = Field(default_factory=BruteForceSettings)
+    port_scan: PortScanSettings = Field(default_factory=PortScanSettings)
+
+
+class ThreatIntelSettings(BaseModel):
+    enabled: bool = True
+    update_interval: int = 3600
+    feeds: List[Any] = Field(default_factory=list)
+
+
+class ReportingSettings(BaseModel):
+    enabled: bool = True
+    schedule: str = "0 9 * * *"
+    email_to: List[str] = Field(default_factory=lambda: ["reports@company.com"])
+
+
+class WebhookSettings(BaseModel):
+    enabled: bool = False
+    discord: str = ""
+    slack: str = ""
+
+
+class LoggingSettings(BaseModel):
+    level: str = "INFO"
+    file: str = "logs/siem_analyzer.log"
+    max_bytes: int = 10_485_760
+    backup_count: int = 5
+
+
+class MultiTenantSettings(BaseModel):
+    enabled: bool = False
+    default_tenant: str = "default"
+    tenants: List[Any] = Field(default_factory=list)
+
+
+# ─── Root settings (env vars take priority over YAML) ─────────────────────────
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_nested_delimiter="__",   # REDIS__QUEUE_PATTERN → redis.queue_pattern
+        populate_by_name=True,
+        extra="ignore",
+    )
+
+    # Top-level secrets
+    secret_key: str = "fallback-secret-key-for-diagnostic-suffix"
+    ADMIN_KEY: str = "changeme-admin-key"
+    jwt_public_key: Optional[str] = None
+    allowed_origins: str = "http://localhost:3000,http://localhost:8000"
+    allowed_hosts: str = "localhost,127.0.0.1,testserver"
+    repo1_url: Optional[str] = None
+    repo1_base_url: str = "http://ingestion-api:8080"
+
+    # Nested sections
+    database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    redis: RedisSettings = Field(default_factory=RedisSettings)
+    email: EmailSettings = Field(default_factory=EmailSettings)
+    detection: DetectionSettings = Field(default_factory=DetectionSettings)
+    threat_intelligence: ThreatIntelSettings = Field(default_factory=ThreatIntelSettings)
+    reporting: ReportingSettings = Field(default_factory=ReportingSettings)
+    webhooks: WebhookSettings = Field(default_factory=WebhookSettings)
+    logging: LoggingSettings = Field(default_factory=LoggingSettings)
+    multi_tenant: MultiTenantSettings = Field(default_factory=MultiTenantSettings)
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: Type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> Tuple[PydanticBaseSettingsSource, ...]:
+        # Priority order: init kwargs → env vars → YAML file
+        return (init_settings, env_settings, YamlConfigSource(settings_cls))
+
+    # ── Parsed list properties ────────────────────────────────────────────────
+    @computed_field
     @property
-    def redis_host(self) -> str:
-        # Parsed from URL if needed, or legacy
-        return self.get("redis.host", "localhost")
+    def parsed_allowed_origins(self) -> List[str]:
+        return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
 
+    @computed_field
     @property
-    def redis_port(self) -> int:
-        return self.get("redis.port", 6379)
+    def parsed_allowed_hosts(self) -> List[str]:
+        return [h.strip() for h in self.allowed_hosts.split(",") if h.strip()]
 
+    @computed_field
     @property
-    def redis_queue_pattern(self) -> str:
-        """Pattern for discovering tenant queues. Default: logs:*"""
-        return self.get("redis.queue_pattern", "logs:*")
+    def effective_repo1_url(self) -> str:
+        return str(self.repo1_url or self.repo1_base_url).strip().rstrip("/")
 
+    # ── Backward-compatible shortcuts (keeps all original call sites working) ─
     @property
-    def redis_queue_scan_interval(self) -> int:
-        """How often (seconds) to re-scan for new tenant queues."""
-        return int(self.get("redis.queue_scan_interval", 30))
-
+    def database_type(self) -> str:               return self.database.resolved_type
     @property
-    def redis_ingest_queue(self) -> str:
-        return self.get("redis.ingest_queue", "ingest_logs")
-
+    def database_url(self) -> str:                return self.database.database_url
     @property
-    def redis_clean_queue(self) -> str:
-        return self.get("redis.clean_queue", "clean_logs")
-
+    def redis_url(self) -> str:                   return self.redis.redis_url
     @property
-    def redis_dead_queue(self) -> str:
-        return self.get("redis.dead_queue", "dead_logs")
-
-    # Security & Auth configuration
+    def redis_host(self) -> str:                  return self.redis.host
     @property
-    def secret_key(self) -> str:
-        return self.get("secret_key", "fallback-secret-key-for-diagnostic-suffix")
-
+    def redis_port(self) -> int:                  return self.redis.port
     @property
-    def admin_api_key(self) -> str:
-        return self.get("admin_api_key", "changeme-admin-key")
-
+    def redis_queue_pattern(self) -> str:         return self.redis.queue_pattern
     @property
-    def jwt_public_key(self) -> Optional[str]:
-        """Public key for RS256 JWT verification (provided by Repo1)."""
-        return self.get("jwt_public_key")
-
+    def redis_queue_scan_interval(self) -> int:   return self.redis.queue_scan_interval
     @property
-    def allowed_origins(self) -> List[str]:
-        origins = self.get("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000")
-        return [o.strip() for o in origins.split(",") if o.strip()]
-
+    def redis_ingest_queue(self) -> str:          return self.redis.ingest_queue
     @property
-    def allowed_hosts(self) -> List[str]:
-        hosts = self.get("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver")
-        return [h.strip() for h in hosts.split(",") if h.strip()]
-
-    # Email configuration
+    def redis_clean_queue(self) -> str:           return self.redis.clean_queue
     @property
-    def email_enabled(self) -> bool:
-        return self.get("email.enabled", False)
-
+    def redis_dead_queue(self) -> str:            return self.redis.dead_queue
     @property
-    def smtp_host(self) -> str:
-        return self.get("email.smtp.host", "smtp.gmail.com")
-
+    def email_enabled(self) -> bool:              return self.email.enabled
     @property
-    def smtp_port(self) -> int:
-        return self.get("email.smtp.port", 587)
-
+    def smtp_host(self) -> str:                   return self.email.smtp.host
     @property
-    def smtp_user(self) -> str:
-        return self.get("email.smtp.user", "")
-
+    def smtp_port(self) -> int:                   return self.email.smtp.port
     @property
-    def smtp_password(self) -> str:
-        return self.get("email.smtp.password", "")
-
+    def smtp_user(self) -> str:                   return self.email.smtp.user
     @property
-    def smtp_use_tls(self) -> bool:
-        return self.get("email.smtp.use_tls", True)
-
+    def smtp_password(self) -> str:               return self.email.smtp.password
     @property
-    def email_from(self) -> str:
-        return self.get("email.from", "siem-alerts@company.com")
-
+    def smtp_use_tls(self) -> bool:               return self.email.smtp.use_tls
     @property
-    def email_to(self) -> list:
-        return self.get("email.to", ["security-team@company.com"])
-
-    # Detection configuration
+    def email_from(self) -> str:                  return self.email.from_address
     @property
-    def brute_force_threshold(self) -> int:
-        return self.get("detection.brute_force.threshold", 5)
-
+    def email_to(self) -> List[str]:              return self.email.to
     @property
-    def brute_force_time_window(self) -> int:
-        return self.get("detection.brute_force.time_window", 300)
-
+    def brute_force_threshold(self) -> int:       return self.detection.brute_force.threshold
     @property
-    def port_scan_threshold(self) -> int:
-        return self.get("detection.port_scan.threshold", 10)
-
+    def brute_force_time_window(self) -> int:     return self.detection.brute_force.time_window
     @property
-    def port_scan_time_window(self) -> int:
-        return self.get("detection.port_scan.time_window", 60)
-
-    # Threat Intelligence configuration
+    def port_scan_threshold(self) -> int:         return self.detection.port_scan.threshold
     @property
-    def threat_intel_enabled(self) -> bool:
-        return self.get("threat_intelligence.enabled", True)
-
+    def port_scan_time_window(self) -> int:       return self.detection.port_scan.time_window
     @property
-    def threat_intel_update_interval(self) -> int:
-        return self.get("threat_intelligence.update_interval", 3600)
-
+    def threat_intel_enabled(self) -> bool:       return self.threat_intelligence.enabled
     @property
-    def threat_intel_feeds(self) -> list:
-        return self.get("threat_intelligence.feeds", [])
-
-    # Reporting configuration
+    def threat_intel_update_interval(self) -> int: return self.threat_intelligence.update_interval
     @property
-    def report_enabled(self) -> bool:
-        return self.get("reporting.enabled", True)
-
+    def threat_intel_feeds(self) -> list:         return self.threat_intelligence.feeds
     @property
-    def report_schedule(self) -> str:
-        return self.get("reporting.schedule", "0 9 * * *")
-
+    def report_enabled(self) -> bool:             return self.reporting.enabled
     @property
-    def report_email_to(self) -> list:
-        return self.get("reporting.email_to", ["reports@company.com"])
-
-    # Webhook configuration
+    def report_schedule(self) -> str:             return self.reporting.schedule
     @property
-    def webhooks_enabled(self) -> bool:
-        return self.get("webhooks.enabled", False)
-
+    def report_email_to(self) -> list:            return self.reporting.email_to
     @property
-    def discord_webhook_url(self) -> str:
-        return self.get("webhooks.discord", "")
-
+    def webhooks_enabled(self) -> bool:           return self.webhooks.enabled
     @property
-    def slack_webhook_url(self) -> str:
-        return self.get("webhooks.slack", "")
-
-    # Logging configuration
+    def discord_webhook_url(self) -> str:         return self.webhooks.discord
     @property
-    def log_level(self) -> str:
-        return self.get("logging.level", "INFO")
-
+    def slack_webhook_url(self) -> str:           return self.webhooks.slack
     @property
-    def log_file(self) -> str:
-        return self.get("logging.file", "logs/siem_analyzer.log")
-
+    def log_level(self) -> str:                   return self.logging.level
     @property
-    def log_max_bytes(self) -> int:
-        return self.get("logging.max_bytes", 10485760)
-
+    def log_file(self) -> str:                    return self.logging.file
     @property
-    def log_backup_count(self) -> int:
-        return self.get("logging.backup_count", 5)
-
-    # Multi-tenant configuration
+    def log_max_bytes(self) -> int:               return self.logging.max_bytes
     @property
-    def multi_tenant_enabled(self) -> bool:
-        return self.get("multi_tenant.enabled", False)
-
+    def log_backup_count(self) -> int:            return self.logging.backup_count
     @property
-    def default_tenant(self) -> str:
-        return self.get("multi_tenant.default_tenant", "default")
-
+    def multi_tenant_enabled(self) -> bool:       return self.multi_tenant.enabled
     @property
-    def tenants(self) -> list:
-        return self.get("multi_tenant.tenants", [])
-
+    def default_tenant(self) -> str:              return self.multi_tenant.default_tenant
     @property
-    def repo1_base_url(self) -> str:
-        """Base URL for Repo 1 (Identity Provider) admin API."""
-        url = self.get("repo1_url") or self.get("repo1_base_url") or "http://ingestion-api:8080"
-        return str(url).strip().rstrip("/")
+    def tenants(self) -> list:                    return self.multi_tenant.tenants
 
+    # ── Persistence ───────────────────────────────────────────────────────────
+    def save(self, config_path: Optional[str] = None) -> None:
+        """Serialize current settings to YAML, stripping computed fields."""
+        path = Path(config_path or os.getenv("CONFIG_PATH", "config/config.yaml"))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = self.model_dump(
+            exclude={"parsed_allowed_origins", "parsed_allowed_hosts", "effective_repo1_url"}
+        )
+        data["database"].pop("database_url", None)
+        data["database"].pop("resolved_type", None)
+        data["redis"].pop("redis_url", None)
+        with open(path, "w") as f:
+            yaml.dump(data, f, default_flow_style=False)
 
-# Global configuration instance
-config = Config()
+    def set(self, key: str, value: Any) -> None:
+        """Update a nested setting via dot-notation, then persist.
+
+        Example: config.set("redis.queue_pattern", "events:*")
+        """
+        parts = key.split(".")
+        target: Any = self
+        for part in parts[:-1]:
+            target = getattr(target, part)
+        setattr(target, parts[-1], value)
+        self.save()
+
+config = Settings()

@@ -564,7 +564,7 @@ jobs:
       - name: Run tests
         env:
           REDIS_URL: redis://localhost:6379/0
-          ADMIN_API_KEY: test-key
+          ADMIN_KEY: 4BltQka5aJ_EHKPvdf0zP_7eEyR7aETtSxW5X-ZMqJMVszhcaWqgFcmPoPkLDGf7
           DATABASE_URL: postgresql://test:test@localhost:5432/test_afric  # FIX: was missing, caused all 21 ERRORs
         run: pytest tests/ -v --cov=src --cov-report=xml
 

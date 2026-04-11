@@ -39,3 +39,10 @@ test = [
     "respx>=0.21.0",       # ← add this
     "coverage[toml]>=7.4.0",
 ]
+
+[tool.pyright]
+include = ["src"]
+extraPaths = ["."]
+executionEnvironments = [
+  { root = "." }
+]

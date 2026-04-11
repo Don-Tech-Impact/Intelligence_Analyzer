@@ -63,7 +63,7 @@ def verify_admin_or_superadmin(
     x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key"),
     request: Request = None,  # type: ignore
 ):
-    """Allow either the service API key or a verified Superadmin Bearer JWT."""
+    """Allow either the service API key or a verified Superadmin/Tenant Bearer JWT."""
     # --- Option A: X-Admin-Key ---
     if x_admin_key and x_admin_key == _get_admin_key():
         return {"sub": "service-account", "role": "superadmin"}
@@ -79,26 +79,78 @@ def verify_admin_or_superadmin(
                 payload = decode_token_payload(token)
                 if payload:
                     role = str(payload.get("role", "")).lower()
-                    is_admin = payload.get("is_admin", False)
+                    user_type = str(payload.get("user_type", "")).lower()
 
-                    # Handle nested Repo 1 admin object
+                    # Allowed roles: Platform SuperAdmin, Platform Admin, or scoped Tenant User
+                    is_tenant_user = user_type == "tenant_user" or "tenant_id" in payload
+                    if role in ("superadmin", "admin") or is_tenant_user:
+                        # Standardize role for downstream dependencies if it's a tenant user
+                        if role not in ("superadmin", "admin") and is_tenant_user:
+                            payload["role"] = "tenant_user"
+                        return payload
+
+                    # Backward compatibility for nested admin objects
                     admin_obj = payload.get("admin", {})
                     if isinstance(admin_obj, dict):
-                        role = role or str(admin_obj.get("role", "")).lower()
-                        is_admin = is_admin or admin_obj.get("is_admin", False)
+                        role = str(admin_obj.get("role", "")).lower()
+                        if role in ("superadmin", "admin"):
+                            return payload
 
-                    if role in ("superadmin", "admin") or is_admin:
-                        return payload
             except Exception as e:
                 logger.error(f"Auth Trace: Error during JWT verification: {e}")
         else:
             logger.warning(f"Auth Trace: Authorization header does not start with Bearer: {auth_header[:20]}...")
-    else:
-        logger.warning("Auth Trace: Request object is None")
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Missing or invalid authentication. Provide X-Admin-Key or a valid Bearer JWT.",
+        detail="Session expired or invalid authentication. Please log in again.",
+    )
+
+
+async def verify_tenant_access(
+    tenant_id: str,
+    payload: dict = Depends(verify_admin_or_superadmin),
+):
+    """
+    Enforce strict tenant isolation:
+    - SuperAdmins/Service-Accounts have global access.
+    - TenantUsers can only access their own tenant_id.
+    """
+    role = payload.get("role")
+    sub = payload.get("sub")
+
+    # Global roles
+    if role == "superadmin" or sub == "service-account":
+        return payload
+
+    # Tenant-scoped roles
+    user_tenant = payload.get("tenant_id")
+    if role == "tenant_user" and user_tenant == tenant_id:
+        return payload
+
+    logger.warning(f"Access Denied: User {sub} (tenant: {user_tenant}) tried to access tenant {tenant_id}")
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="You do not have permission to access this tenant's resources.",
+    )
+
+
+async def verify_superadmin_access(
+    payload: dict = Depends(verify_admin_or_superadmin),
+):
+    """
+    Enforce global SuperAdmin access for non-tenant-specific routes.
+    """
+    role = payload.get("role")
+    sub = payload.get("sub")
+
+    if role == "superadmin" or sub == "service-account":
+        return payload
+
+    logger.warning(f"Access Denied: Non-SuperAdmin {sub} (role: {role}) tried to access global route.")
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="SuperAdmin permissions required for this administrative resource.",
     )
 
 
@@ -519,17 +571,25 @@ async def proxy_login(request: Request, payload: dict, response: Response):
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
+            # Mask password for logs
+            safe_payload = {k: ("********" if k == "password" else v) for k, v in payload.items()}
+            logger.info(f"Relaying login to Repo 1: {url} with payload {safe_payload}")
+            
             r1_res = await client.post(
                 url,
                 json=payload,
                 headers={"Content-Type": "application/json"},
             )
 
+            logger.info(f"Repo 1 response: status={r1_res.status_code}")
+
             # Standardize all auth errors (401/403) to a generic message
             if r1_res.status_code in [401, 403]:
+                r1_detail = r1_res.json().get("detail", "Invalid credentials or unauthorized access.")
+                logger.warning(f"Repo 1 rejected login: {r1_detail}")
                 return JSONResponse(
                     status_code=401,
-                    content={"status": "error", "detail": "Invalid credentials or unauthorized access."},
+                    content={"status": "error", "detail": r1_detail},
                 )
 
             # Relay the status code for other errors (e.g. 500)
@@ -547,10 +607,10 @@ async def proxy_login(request: Request, payload: dict, response: Response):
 
             return res_data
         except Exception as exc:
-            logger.error(f"Proxy login failed: {exc}")
+            logger.error(f"Proxy login CRITIALLY FAILED: {exc}")
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication currently unavailable.",
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Identity server connectivity issue: {exc}",
             )
 
 
@@ -700,14 +760,14 @@ async def get_user_detail(user_id: str):
     return await _repo1_request("GET", f"/admin/users/{user_id}")
 
 
-@router.put("/users/{user_id}", dependencies=[Depends(verify_admin_or_superadmin)])
-async def update_user(user_id: str, payload: dict):
+@router.put("/users/{user_id}")
+async def update_user(user_id: str, payload: dict, _auth=Depends(verify_superadmin_access)):
     """Update user privileges/metadata in Repo 1."""
     return await _repo1_request("PUT", f"/admin/users/{user_id}", body=payload)
 
 
-@router.delete("/users/{username}", dependencies=[Depends(verify_admin_or_superadmin)])
-async def delete_user(username: str):
+@router.delete("/users/{username}")
+async def delete_user(username: str, _auth=Depends(verify_superadmin_access)):
     """Soft-delete a user by username in Repo 1."""
     return await _repo1_request("DELETE", f"/admin/users/{username}")
 
@@ -717,8 +777,8 @@ async def delete_user(username: str):
 # ==========================================================================
 
 
-@router.get("/allowlist/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
-async def get_ip_allowlist(tenant_id: str):
+@router.get("/allowlist/{tenant_id}")
+async def get_ip_allowlist(tenant_id: str, _auth=Depends(verify_tenant_access)):
     """
     Get the runtime flat IP allowlist for a tenant from Repo 1.
 
@@ -736,39 +796,39 @@ async def get_ip_allowlist(tenant_id: str):
     }
 
 
-@router.get("/tenants/{tenant_id}/ips", dependencies=[Depends(verify_admin_or_superadmin)])
-async def get_tenant_ips(tenant_id: str):
+@router.get("/tenants/{tenant_id}/ips")
+async def get_tenant_ips(tenant_id: str, _auth=Depends(verify_tenant_access)):
     """Get rich IP metadata for a tenant from Repo 1."""
     return await _repo1_request("GET", f"/admin/tenants/{tenant_id}/ips")
 
 
-@router.post("/tenants/{tenant_id}/ips", dependencies=[Depends(verify_admin_or_superadmin)])
-async def add_tenant_ip(tenant_id: str, payload: dict):
+@router.post("/tenants/{tenant_id}/ips")
+async def add_tenant_ip(tenant_id: str, payload: dict, _auth=Depends(verify_tenant_access)):
     """Add an IP / CIDR range to a tenant's allowlist in Repo 1."""
     return await _repo1_request("POST", f"/admin/tenants/{tenant_id}/ips", body=payload)
 
 
-@router.delete("/tenants/{tenant_id}/ips/{ip_id}", dependencies=[Depends(verify_admin_or_superadmin)])
-async def remove_tenant_ip(tenant_id: str, ip_id: str):
+@router.delete("/tenants/{tenant_id}/ips/{ip_id}")
+async def remove_tenant_ip(tenant_id: str, ip_id: str, _auth=Depends(verify_tenant_access)):
     """Remove an IP entry from a tenant's allowlist in Repo 1."""
     return await _repo1_request("DELETE", f"/admin/tenants/{tenant_id}/ips/{ip_id}")
 
 
-@router.post("/tenants/{tenant_id}/primary-ip", dependencies=[Depends(verify_admin_or_superadmin)])
-async def set_primary_ip(tenant_id: str, payload: dict):
+@router.post("/tenants/{tenant_id}/primary-ip")
+async def set_primary_ip(tenant_id: str, payload: dict, _auth=Depends(verify_tenant_access)):
     """Set a single primary office IP for a tenant in Repo 1 (Backward Compatibility)."""
     return await _repo1_request("POST", f"/admin/tenants/{tenant_id}/primary-ip", body=payload)
 
 
-@router.post("/tenants/{tenant_id}/primary-ips", dependencies=[Depends(verify_admin_or_superadmin)])
-async def set_primary_ips(tenant_id: str, payload: list[str]):
+@router.post("/tenants/{tenant_id}/primary-ips")
+async def set_primary_ips(tenant_id: str, payload: list[str], _auth=Depends(verify_tenant_access)):
     """Set up to 3 primary office IPs for a tenant in Repo 1."""
     return await _repo1_request("POST", f"/admin/tenants/{tenant_id}/primary-ips", body=payload)
 
 
 # Keep legacy allowlist delete route for backward compatibility
-@router.delete("/allowlist/{tenant_id}/{ip:path}", dependencies=[Depends(verify_admin_or_superadmin)])
-async def remove_from_allowlist_legacy(tenant_id: str, ip: str):
+@router.delete("/allowlist/{tenant_id}/{ip:path}")
+async def remove_from_allowlist_legacy(tenant_id: str, ip: str, _auth=Depends(verify_tenant_access)):
     """Legacy route: remove an IP from allowlist. Prefer /tenants/{id}/ips/{ip_id}."""
     return await _repo1_request("DELETE", f"/admin/allowlist/{tenant_id}/{ip}")
 
@@ -778,20 +838,20 @@ async def remove_from_allowlist_legacy(tenant_id: str, ip: str):
 # ==========================================================================
 
 
-@router.post("/tenants/{tenant_id}/api-keys", dependencies=[Depends(verify_admin_or_superadmin)])
-async def create_api_key(tenant_id: str, payload: dict):
+@router.post("/tenants/{tenant_id}/api-keys")
+async def create_api_key(tenant_id: str, payload: dict, _auth=Depends(verify_tenant_access)):
     """Create an API key for a tenant in Repo 1."""
     return await _repo1_request("POST", f"/admin/tenants/{tenant_id}/api-keys", body=payload)
 
 
-@router.get("/tenants/{tenant_id}/api-keys", dependencies=[Depends(verify_admin_or_superadmin)])
-async def list_api_keys(tenant_id: str):
+@router.get("/tenants/{tenant_id}/api-keys")
+async def list_api_keys(tenant_id: str, _auth=Depends(verify_tenant_access)):
     """List all API keys for a tenant from Repo 1."""
     return await _repo1_request("GET", f"/admin/tenants/{tenant_id}/api-keys")
 
 
-@router.get("/api-keys", dependencies=[Depends(verify_admin_or_superadmin)])
-async def list_all_api_keys():
+@router.get("/api-keys")
+async def list_all_api_keys(_auth=Depends(verify_superadmin_access)):
     """List all active API keys across the platform (Aggregated from all tenants)."""
     try:
         # Fetch tenants first
@@ -824,15 +884,29 @@ async def list_all_api_keys():
         return {"total": 0, "keys": [], "error": str(exc)}
 
 
-@router.delete("/api-keys/{key_id}", dependencies=[Depends(verify_admin_or_superadmin)])
-async def revoke_api_key(key_id: str):
+@router.delete("/api-keys/{key_id}")
+async def revoke_api_key(key_id: str, _auth=Depends(verify_admin_or_superadmin)):
     """Revoke an API key in Repo 1."""
+    if _auth.get("role") not in ("superadmin", "admin"):
+        tenant_id = _auth.get("tenant_id")
+        res = await _repo1_request("GET", f"/admin/tenants/{tenant_id}/api-keys")
+        keys = res.get("api_keys", res) if isinstance(res, dict) else res
+        if not isinstance(keys, list) or not any(k.get("id") == key_id for k in keys):
+            raise HTTPException(status_code=403, detail="Permission denied to modify this key.")
+            
     return await _repo1_request("DELETE", f"/admin/api-keys/{key_id}")
 
 
-@router.post("/api-keys/{key_id}/rotate", dependencies=[Depends(verify_admin_or_superadmin)])
-async def rotate_api_key(key_id: str):
+@router.post("/api-keys/{key_id}/rotate")
+async def rotate_api_key(key_id: str, _auth=Depends(verify_admin_or_superadmin)):
     """Rotate an API key in Repo 1 (generate new secret)."""
+    if _auth.get("role") not in ("superadmin", "admin"):
+        tenant_id = _auth.get("tenant_id")
+        res = await _repo1_request("GET", f"/admin/tenants/{tenant_id}/api-keys")
+        keys = res.get("api_keys", res) if isinstance(res, dict) else res
+        if not isinstance(keys, list) or not any(k.get("id") == key_id for k in keys):
+            raise HTTPException(status_code=403, detail="Permission denied to modify this key.")
+
     return await _repo1_request("POST", f"/admin/api-keys/{key_id}/rotate")
 
 
@@ -841,8 +915,8 @@ async def rotate_api_key(key_id: str):
 # ==========================================================================
 
 
-@router.post("/webhooks/configure", dependencies=[Depends(verify_admin_or_superadmin)])
-async def configure_webhook(payload: dict):
+@router.post("/webhooks/configure")
+async def configure_webhook(payload: dict, _auth=Depends(verify_superadmin_access)):
     """Set or override the webhook URL that Repo 1 sends tenant events to."""
     return await _repo1_request("POST", "/admin/webhooks/configure", body=payload)
 
@@ -852,8 +926,8 @@ async def configure_webhook(payload: dict):
 # ==========================================================================
 
 
-@router.get("/system/health/unified", dependencies=[Depends(verify_admin_or_superadmin)])
-async def get_unified_health():
+@router.get("/system/health/unified")
+async def get_unified_health(_auth=Depends(verify_superadmin_access)):
     """Combined health overview of Repo 1 and Repo 2."""
     from src.api.health import health_check
 
@@ -898,8 +972,8 @@ async def get_unified_health():
     }
 
 
-@router.get("/monitoring/health", dependencies=[Depends(verify_admin_or_superadmin)])
-async def proxy_monitoring_health():
+@router.get("/monitoring/health")
+async def proxy_monitoring_health(_auth=Depends(verify_superadmin_access)):
     """Proxy health check from Repo 1 monitoring."""
     return await _repo1_request("GET", "/api/monitoring/health")
 
@@ -949,26 +1023,26 @@ async def proxy_monitoring_alerts(severity: Optional[str] = None, limit: int = 5
 # ==========================================================================
 
 
-@router.get("/incidents/config/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
-async def get_incident_config(tenant_id: str):
+@router.get("/incidents/config/{tenant_id}")
+async def get_incident_config(tenant_id: str, _auth=Depends(verify_tenant_access)):
     """Get tenant alert configuration."""
     return await _repo1_request("GET", f"/api/incidents/config/{tenant_id}")
 
 
-@router.put("/incidents/config/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
-async def update_incident_config(tenant_id: str, payload: dict):
+@router.put("/incidents/config/{tenant_id}")
+async def update_incident_config(tenant_id: str, payload: dict, _auth=Depends(verify_tenant_access)):
     """Update tenant alert configuration."""
     return await _repo1_request("PUT", f"/api/incidents/config/{tenant_id}", body=payload)
 
 
-@router.post("/incidents/test/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
-async def test_incident_alert(tenant_id: str, payload: dict):
+@router.post("/incidents/test/{tenant_id}")
+async def test_incident_alert(tenant_id: str, payload: dict, _auth=Depends(verify_tenant_access)):
     """Test alert delivery."""
     return await _repo1_request("POST", f"/api/incidents/test/{tenant_id}", body=payload)
 
 
-@router.get("/incidents/history/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
-async def get_incident_history(tenant_id: str, limit: int = 100, severity: Optional[str] = None):
+@router.get("/incidents/history/{tenant_id}")
+async def get_incident_history(tenant_id: str, limit: int = 100, severity: Optional[str] = None, _auth=Depends(verify_tenant_access)):
     """Get alert history."""
     params = {"limit": limit}
     if severity:
@@ -976,14 +1050,14 @@ async def get_incident_history(tenant_id: str, limit: int = 100, severity: Optio
     return await _repo1_request("GET", f"/api/incidents/history/{tenant_id}", params=params)
 
 
-@router.get("/incidents/stats/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
-async def get_incident_stats(tenant_id: str, days: int = 7):
+@router.get("/incidents/stats/{tenant_id}")
+async def get_incident_stats(tenant_id: str, days: int = 7, _auth=Depends(verify_tenant_access)):
     """Get alert analytics."""
     return await _repo1_request("GET", f"/api/incidents/stats/{tenant_id}", params={"days": days})
 
 
-@router.post("/incidents/simulate/{tenant_id}", dependencies=[Depends(verify_admin_or_superadmin)])
-async def simulate_incident(tenant_id: str, payload: dict):
+@router.post("/incidents/simulate/{tenant_id}")
+async def simulate_incident(tenant_id: str, payload: dict, _auth=Depends(verify_tenant_access)):
     """Simulate alert for testing."""
     return await _repo1_request("POST", f"/api/incidents/simulate/{tenant_id}", body=payload)
 
@@ -1020,11 +1094,12 @@ async def delete_webhook_override():
 # ==========================================================================
 
 
-@router.get("/audit-log", dependencies=[Depends(verify_admin_or_superadmin)])
+@router.get("/audit-log")
 async def get_audit_log(
     page: int = 1,
     page_size: int = 20,
     tenant_id: Optional[str] = None,
+    _auth=Depends(verify_superadmin_access),
 ):
     """Retrieve the admin audit log from Repo 1."""
     params: dict = {"page": page, "page_size": page_size}

@@ -16,14 +16,14 @@ load_dotenv()
 
 # Configuration
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
-ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
+ADMIN_KEY = os.getenv("ADMIN_KEY")
 
 
 def get_headers():
-    if not ADMIN_API_KEY:
-        print("Error: ADMIN_API_KEY environment variable not set.")
+    if not ADMIN_KEY:
+        print("Error: ADMIN_KEY environment variable not set.")
         sys.exit(1)
-    return {"X-Admin-Key": ADMIN_API_KEY, "Content-Type": "application/json"}
+    return {"X-Admin-Key": ADMIN_KEY, "Content-Type": "application/json"}
 
 
 def list_keys(tenant_id: str):

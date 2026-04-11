@@ -14,7 +14,7 @@ def test_config():
     print("--- Configuration ---")
     print(f"SECRET_KEY: {config.secret_key[:10]}...")
     print(f"REDIS_URL: {config.redis_url}")
-    print(f"ADMIN_KEY: {config.admin_api_key[:10]}...")
+    print(f"ADMIN_KEY: {config.ADMIN_KEY[:10]}...")
 
 
 def test_redis():

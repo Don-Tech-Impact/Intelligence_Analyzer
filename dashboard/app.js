@@ -2,7 +2,7 @@ const API_BASE_URL = (window.location.origin === 'null' || window.location.proto
     ? 'http://localhost:8000'
     : window.location.origin;
 const REPO1_BASE_URL = 'http://localhost:8080';
-const ADMIN_API_KEY = 'changeme-admin-key';
+// const ADMIN_KEY = '4BltQka5aJ_EHKPvdf0zP_7eEyR7aETtSxW5X-ZMqJMVszhcaWqgFcmPoPkLDGf7'; to be checked later
 
 // ============================================
 // MODAL UTILITIES

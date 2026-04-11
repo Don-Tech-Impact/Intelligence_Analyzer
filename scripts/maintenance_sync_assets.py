@@ -27,7 +27,7 @@ def sync_assets():
     # 1. Config
     db_url = config.database_url
     repo1_url = (os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080").rstrip('/')
-    admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY") or "changeme-admin-key"
+    admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_KEY") or "changeme-admin-key"
     
     logger.info(f"Target Repo 1: {repo1_url}")
     logger.info(f"Syncing from: {db_url}")
