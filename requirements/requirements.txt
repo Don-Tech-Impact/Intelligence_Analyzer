@@ -1,5 +1,6 @@
 # Core dependencies
 psycopg2-binary
+alembic
 
 # Email support
 email-validator

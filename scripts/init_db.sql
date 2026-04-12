@@ -139,6 +139,36 @@ CREATE INDEX IF NOT EXISTS idx_alerts_tenant_status
 CREATE INDEX IF NOT EXISTS idx_alerts_severity 
     ON alerts (severity, created_at DESC);
 
+CREATE INDEX IF NOT EXISTS idx_alerts_device 
+    ON alerts (device_id, tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_logs_device 
+    ON logs (device_id, tenant_id);
+
+-- =============================================================================
+-- MANAGED DEVICES TABLE (Asset Inventory)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS managed_devices (
+    id              BIGSERIAL PRIMARY KEY,
+    tenant_id       VARCHAR(64) NOT NULL,
+    name            VARCHAR(128) NOT NULL,
+    ip_address      VARCHAR(45) NOT NULL,
+    device_id       VARCHAR(100),
+    category        VARCHAR(32) DEFAULT 'other',
+    status          VARCHAR(20) DEFAULT 'active',
+    description     TEXT,
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ DEFAULT NOW(),
+    last_log_at     TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_managed_devices_tenant_ip 
+    ON managed_devices (tenant_id, ip_address);
+
+CREATE INDEX IF NOT EXISTS idx_managed_devices_device_id 
+    ON managed_devices (tenant_id, device_id);
+
 -- =============================================================================
 -- THREAT INTELLIGENCE TABLE
 -- =============================================================================
