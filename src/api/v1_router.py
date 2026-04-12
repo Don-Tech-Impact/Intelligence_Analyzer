@@ -446,9 +446,11 @@ def get_alert_detail(alert_id: int, tenant_id: str = Depends(get_tenant_id), db:
         data={
             "id": alert.id,
             "type": alert.alert_type,
+            "alert_type": alert.alert_type,
             "severity": alert.severity,
             "source_ip": alert.source_ip,
             "destination_ip": alert.destination_ip,
+            "device_id": alert.device_id,
             "description": alert.description,
             "status": alert.status,
             "details": alert.details,

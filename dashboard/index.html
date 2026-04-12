@@ -363,7 +363,7 @@
                     <div class="chart-container">
                         <div class="chart-header">
                             <div class="chart-header-left">
-                                <h3>Vendor Coverage</h3>
+                                <h3>Device Coverage</h3>
                                 <p>Security logic distribution</p>
                             </div>
                             <i data-lucide="database" class="icon-indigo"></i>
@@ -420,7 +420,7 @@
                         </div>
                         <div class="bi-tabs">
                             <button id="tab-vendor" class="active"
-                                onclick="toggleAnalyticsChart('vendor')">Vendors</button>
+                                onclick="toggleAnalyticsChart('device')">Devices</button>
                             <button id="tab-patterns" onclick="toggleAnalyticsChart('patterns')">Patterns</button>
                         </div>
                         <div id="infra-chart-container">
@@ -452,7 +452,7 @@
                     <div class="chart-container">
                         <div class="chart-header">
                             <h3>Security Coverage</h3>
-                            <p>Logic distribution by vendor</p>
+                            <p>Logic distribution by device</p>
                         </div>
                         <div id="vendor-radar-chart"></div>
                     </div>
@@ -580,7 +580,7 @@
                         <thead>
                             <tr>
                                 <th>Source IP</th>
-                                <th>Vendor/Type</th>
+                                <th>Device/Type</th>
                                 <th>Event Count</th>
                                 <th>Threat Count</th>
                                 <th>Last Seen</th>
@@ -621,6 +621,7 @@
                                 <th>Time</th>
                                 <th>Type</th>
                                 <th>Source IP</th>
+                                <th>Device</th>
                                 <th>Severity</th>
                                 <th>Description</th>
                                 <th>Status</th>
@@ -863,7 +864,7 @@ curl -X POST "${API_BASE_URL}/ingest/batch" \
                             <div class="filter-group">
                                 <i data-lucide="filter" class="filter-icon"></i>
                                 <select id="log-filter-vendor" class="glass-input" onchange="fetchLogsData()">
-                                    <option value="">All Vendors</option>
+                                    <option value="">All Devices</option>
                                     <option value="pfsense">pfSense</option>
                                     <option value="ubiquiti_edge">Ubiquiti</option>
                                     <option value="cisco_meraki">Cisco</option>
@@ -925,6 +926,7 @@ curl -X POST "${API_BASE_URL}/ingest/batch" \
                                     <th class="col-dest">Destination</th>
                                     <th class="col-proto">Protocol</th>
                                     <th class="col-vendor">Vendor</th>
+                                    <th class="col-device">Device</th>
                                     <th class="col-action">Action</th>
                                     <th class="col-info">Info</th>
                                 </tr>
@@ -1198,7 +1200,7 @@ curl -X POST "${API_BASE_URL}/ingest/batch" \
                 <div class="form-group-with-icon">
                     <label><i data-lucide="hash"></i> Correlation Device ID (Optional)</label>
                     <input type="text" id="reg-device-id" class="glass-input" style="width:100%;"
-                        placeholder="From logs/vendor system">
+                        placeholder="From logs or device identifier">
                 </div>
                 <div class="form-group-with-icon">
                     <label><i data-lucide="layers"></i> Category</label>
@@ -1414,6 +1416,52 @@ curl -X POST "${API_BASE_URL}/ingest/batch" \
                     <button type="submit" class="btn-primary" id="btn-save-ir">Activate Alerts</button>
                 </div>
             </form>
+        </div>
+    </div>
+    <!-- Alert Details Modal -->
+    <div id="alert-details-modal" class="modal">
+        <div class="modal-content glass-card" style="width:700px; padding:0; overflow:hidden;">
+            <div id="alert-details-header" style="padding: 2rem; background: rgba(255, 86, 48, 0.1); border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                <!-- Populated by JS -->
+            </div>
+            
+            <div class="modal-body" style="padding: 2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                <div id="alert-details-left">
+                     <h4 style="margin-bottom: 1rem; color: var(--primary); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">Attack Path & Source</h4>
+                     <div id="alert-source-info"></div>
+                </div>
+                <div id="alert-details-right">
+                     <h4 style="margin-bottom: 1rem; color: var(--primary); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">Targeted Device</h4>
+                     <div id="alert-device-info"></div>
+                </div>
+            </div>
+            
+            <div style="padding: 0 2rem 2rem;">
+                <h4 style="margin-bottom: 1rem; color: var(--primary); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">Triggering Message</h4>
+                <div id="alert-message-box" style="padding: 1rem; background: rgba(0,0,0,0.2); border-radius: 8px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; border: 1px solid rgba(255,255,255,0.05);">
+                </div>
+            </div>
+
+            <!-- NEW: AI Advice Section -->
+            <div id="ai-advice-section" style="margin: 0 2rem 2rem; padding: 1.5rem; background: rgba(0, 167, 111, 0.05); border: 1px solid var(--primary-light); border-radius: 12px; display:none;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                    <h4 style="margin:0; color: var(--primary);"><i data-lucide="sparkles" style="width:16px; margin-right:5px;"></i> AI Remediation Advice</h4>
+                    <span class="badge" style="background:var(--primary); color:black;">Pro Insight</span>
+                </div>
+                <div id="ai-advice-content" style="font-size: 0.9rem; line-height: 1.5; color: var(--text);">
+                    <!-- AI advice will be populated here -->
+                </div>
+            </div>
+
+            <div class="modal-footer" style="padding: 1.5rem 2rem; background: rgba(255,255,255,0.02); display: flex; justify-content: space-between; align-items: center;">
+                <button class="btn-secondary" onclick="analyzeAlertWithAI()">
+                    <i data-lucide="zap"></i> Analyze with AI
+                </button>
+                <div style="display:flex; gap:10px;">
+                    <button class="btn-secondary" onclick="closeModal('alert-details-modal')">Close</button>
+                    <button class="btn-primary" id="btn-acknowledge-alert">Acknowledge Alert</button>
+                </div>
+            </div>
         </div>
     </div>
     <!-- Create API Key Modal -->

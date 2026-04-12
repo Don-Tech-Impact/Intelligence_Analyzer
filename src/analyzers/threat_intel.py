@@ -119,4 +119,5 @@ class ThreatIntelAnalyzer(BaseAnalyzer):
             details=details,
             tenant_id=str(log.tenant_id),
             destination_ip=str(log.destination_ip) if log.destination_ip else None,
+            device_id=getattr(log, "device_id", None),
         )

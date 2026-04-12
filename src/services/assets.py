@@ -87,6 +87,27 @@ class AssetService:
         }
 
     @staticmethod
+    def resolve_device_identifier(tenant_id: str, identifier: str, db: Session) -> Optional[ManagedDevice]:
+        """
+        Look up a managed device by its device_id or ip_address.
+        Used to enrich logs during ingestion.
+        """
+        try:
+            from sqlalchemy import or_
+
+            return (
+                db.query(ManagedDevice)
+                .filter(
+                    ManagedDevice.tenant_id == tenant_id,
+                    or_(ManagedDevice.device_id == identifier, ManagedDevice.ip_address == identifier),
+                )
+                .first()
+            )
+        except Exception as e:
+            logger.error(f"Failed to resolve device identifier: {e}")
+            return None
+
+    @staticmethod
     def update_heartbeats(tenant_id: str, device_ids: List[str], db: Session):
         """Update last_log_at for managed devices when logs are received."""
         if not device_ids:

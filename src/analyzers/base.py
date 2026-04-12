@@ -44,6 +44,7 @@ class BaseAnalyzer(ABC):
         details: dict,
         tenant_id: str = "default",
         destination_ip: Optional[str] = None,
+        device_id: Optional[str] = None,
     ) -> Optional[Alert]:
         """Create and store an alert.
 
@@ -89,6 +90,7 @@ class BaseAnalyzer(ABC):
                     severity=severity,
                     source_ip=source_ip,
                     destination_ip=destination_ip,
+                    device_id=device_id,
                     description=description,
                     details=details,
                     status="open",

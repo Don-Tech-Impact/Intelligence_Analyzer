@@ -1651,6 +1651,7 @@ header {
 .col-dest { width: 140px; }
 .col-proto { width: 80px; }
 .col-vendor { width: 100px; }
+.col-device { width: 120px; }
 .col-action { width: 90px; }
 .col-info { width: auto; }
 
