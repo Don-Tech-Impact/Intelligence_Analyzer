@@ -31,6 +31,7 @@ from src.api.health import router as health_router
 # V1 API Router, Health endpoints, and Admin API
 from src.api.v1_router import router as v1_router
 from src.core.config import config as siem_config
+from src.core.config import config
 from src.core.database import db_manager
 from src.core.limiter import limiter
 from src.models.database import Alert, NormalizedLog, Report
@@ -71,6 +72,7 @@ async def lifespan(app):
 # Determine if documentation should be exposed (default: False in production)
 EXPOSE_DOCS = os.getenv("EXPOSE_DOCS", "false").lower() == "true"
 
+IP_ADDRESS = "192.168.56.1:8000"
 app = FastAPI(
     title="Intelligence Analyzer API",
     version="1.0.0",
