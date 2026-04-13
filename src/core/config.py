@@ -180,7 +180,7 @@ class Settings(BaseSettings):
 
     # Top-level secrets
     secret_key: str = "fallback-secret-key-for-diagnostic-suffix"
-    ADMIN_KEY: str = "changeme-admin-key"
+    admin_api_key: str = "changeme-admin-key"
     jwt_public_key: Optional[str] = None
     allowed_origins: str = "http://localhost:3000,http://localhost:8000"
     allowed_hosts: str = "localhost,127.0.0.1,testserver"

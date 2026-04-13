@@ -17,6 +17,7 @@ client = TestClient(app)
 
 @pytest.fixture(scope="module", autouse=True)
 def test_db():
+    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
     db_manager.initialize() 
     Base.metadata.create_all(db_manager.engine)
     yield

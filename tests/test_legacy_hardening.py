@@ -15,8 +15,11 @@ ADMIN_KEY = "changeme-admin-key"
 
 @pytest.fixture(autouse=True)
 def setup_env():
+    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
     os.environ["admin_api_key"] = ADMIN_KEY
     db_manager.initialize()
+    from src.models.database import Base
+    Base.metadata.create_all(db_manager.engine)
 
 
 @pytest.mark.parametrize(
