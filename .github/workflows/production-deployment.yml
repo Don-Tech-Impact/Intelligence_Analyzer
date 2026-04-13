@@ -64,9 +64,9 @@ jobs:
 
       - name: Run tests
         env:
-          REDIS_URL: ${{ secrets.REDIS_URL }}
-          ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDIS_URL: redis://localhost:6379/0
+          ADMIN_KEY: 4BltQka5aJ_EHKPvdf0zP_7eEyR7aETtSxW5X-ZMqJMVszhcaWqgFcmPoPkLDGf7
+          DATABASE_URL: postgresql://postgres:testpassword@localhost:5432/siem_test
         run: pytest tests/ -v --cov=src --cov-report=xml
 
       - name: Security scan (SAST + dependencies)
@@ -213,8 +213,6 @@ jobs:
           sudo mv trivy /usr/local/bin/trivy
           rm -f "${TARBALL}"
           trivy --version
-
-
 
 
       - name: Scan image for vulnerabilities
@@ -371,7 +369,28 @@ jobs:
               --env-file "${ENV_FILE}" \
               pull
 
-            echo ">> Step 6: bring stack up"
+            echo ">> Step 6: start postgres first"
+            IMAGE_TAG="${IMAGE_TAG}" docker compose \
+              -f "${COMPOSE_FILE}" \
+              --env-file "${ENV_FILE}" \
+              up -d postgres
+
+            echo ">> Step 6a: wait for postgres to be healthy"
+            for i in $(seq 1 12); do
+              STATUS=$(docker inspect siem-postgres-prod \
+                --format '{{.State.Health.Status}}' 2>/dev/null || echo "unknown")
+              echo ">> Postgres: ${STATUS}"
+              [ "${STATUS}" = "healthy" ] && break
+              sleep 5
+            done
+
+            echo ">> Step 6b: run database migrations"
+            IMAGE_TAG="${IMAGE_TAG}" docker compose \
+              -f "${COMPOSE_FILE}" \
+              --env-file "${ENV_FILE}" \
+              run --rm --no-deps analyzer python -m alembic upgrade head
+
+            echo ">> Step 7: bring full stack up"
             IMAGE_TAG="${IMAGE_TAG}" docker compose \
               -f "${COMPOSE_FILE}" \
               --env-file "${ENV_FILE}" \
@@ -380,14 +399,12 @@ jobs:
             echo ">> Step 7: waiting 45s for app to start..."
             sleep 45
 
-            echo ">> Step 7b: run migrations"
-            docker exec siem-analyzer-prod python -m alembic upgrade head
 
             echo ">> Step 8: health check (12 attempts × 10s = 2 min budget)"
             HEALTHY=false
             for i in $(seq 1 12); do
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health/live 2>/dev/null)
-              
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                http://localhost:8000/health/live 2>/dev/null)
               echo ">> Attempt ${i}/12 - HTTP ${HTTP_CODE}"
               if [ "${HTTP_CODE}" = "200" ]; then
                 HEALTHY=true
@@ -410,10 +427,41 @@ jobs:
               exit 1
             fi
 
-            echo ">> Cleaning up old images (safe — never prunes networks or volumes)..."
             docker image prune -f
             docker logout
             echo ">> Done."
+
+            # echo ">> Step 8: health check (12 attempts × 10s = 2 min budget)"
+            # HEALTHY=false
+            # for i in $(seq 1 12); do
+            #   HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health/live 2>/dev/null)
+              
+            #   echo ">> Attempt ${i}/12 - HTTP ${HTTP_CODE}"
+            #   if [ "${HTTP_CODE}" = "200" ]; then
+            #     HEALTHY=true
+            #     echo ">> Health check passed on attempt ${i}"
+            #     break
+            #   fi
+            #   sleep 10
+            # done
+
+            # if [ "${HEALTHY}" = "true" ]; then
+            #   echo "========================================"
+            #   echo "  DEPLOYMENT SUCCESSFUL"
+            #   echo "========================================"
+            #   docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" ps
+            # else
+            #   echo "========================================"
+            #   echo "  DEPLOYMENT FAILED"
+            #   echo "========================================"
+            #   docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" logs --tail=80
+            #   exit 1
+            # fi
+
+            # echo ">> Cleaning up old images (safe — never prunes networks or volumes)..."
+            # docker image prune -f
+            # docker logout
+            # echo ">> Done."
 
 
   # ── Job 4: Deployment Summary ──────────────────────────────────────────────
