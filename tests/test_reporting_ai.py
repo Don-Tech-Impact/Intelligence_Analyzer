@@ -21,7 +21,10 @@ admin_api_key = "changeme-admin-key"
 @pytest.fixture(scope="module")
 def setup_db():
     """Initialize database for tests."""
+    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
     db_manager.initialize()
+    from src.models.database import Base
+    Base.metadata.create_all(db_manager.engine)
     yield
     # Cleanup after tests
     if db_manager.engine:
