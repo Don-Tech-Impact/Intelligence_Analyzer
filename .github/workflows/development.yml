@@ -81,9 +81,8 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install --no-cache-dir \
-            pip install -r requirements/requirements.txt
-          pip install -r requirements/requirements-dev.txt
+          pip install --no-cache-dir -r requirements/requirements.txt
+          pip install --no-cache-dir -r requirements/requirements-dev.txt
 
       - name: Run all tests
         env:
