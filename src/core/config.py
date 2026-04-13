@@ -380,10 +380,6 @@ class Settings(BaseSettings):
     def tenants(self) -> list:
         return self.multi_tenant.tenants
 
-    @property
-    def admin_api_key(self) -> str:
-        return self.ADMIN_KEY
-
     # ── Persistence ───────────────────────────────────────────────────────────
     def save(self, config_path: Optional[str] = None) -> None:
         """Serialize current settings to YAML, stripping computed fields."""
