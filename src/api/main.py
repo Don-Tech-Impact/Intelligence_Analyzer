@@ -30,7 +30,6 @@ from src.api.health import router as health_router
 
 # V1 API Router, Health endpoints, and Admin API
 from src.api.v1_router import router as v1_router
-from src.core.config import config
 from src.core.config import config as siem_config
 from src.core.database import db_manager
 from src.core.limiter import limiter
