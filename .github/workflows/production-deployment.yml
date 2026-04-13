@@ -368,20 +368,25 @@ jobs:
               --env-file "${ENV_FILE}" \
               pull
 
-            echo ">> Step 6: start postgres first"
-            IMAGE_TAG="${IMAGE_TAG}" docker compose \
-              -f "${COMPOSE_FILE}" \
-              --env-file "${ENV_FILE}" \
-              up -d postgres
-
             echo ">> Step 6a: wait for postgres to be healthy"
+            POSTGRES_READY=false
             for i in $(seq 1 12); do
               STATUS=$(docker inspect siem-postgres-prod \
                 --format '{{.State.Health.Status}}' 2>/dev/null || echo "unknown")
-              echo ">> Postgres: ${STATUS}"
-              [ "${STATUS}" = "healthy" ] && break
-              sleep 5
+              echo ">> Postgres attempt ${i}/12: ${STATUS}"
+              if [ "${STATUS}" = "healthy" ]; then
+                POSTGRES_READY=true
+                  echo ">> Postgres is healthy"
+                  break
+              fi
+              sleep 8
             done
+
+            if [ "${POSTGRES_READY}" != "true" ]; then
+              echo "ERROR: Postgres did not become healthy in time"
+              docker logs siem-postgres-prod --tail=30
+              exit 1
+            fi
 
             echo ">> Step 6b: run database migrations"
             IMAGE_TAG="${IMAGE_TAG}" docker compose \
