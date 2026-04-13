@@ -368,6 +368,12 @@ jobs:
               --env-file "${ENV_FILE}" \
               pull
 
+            echo ">> Step 6: start postgres first"
+            IMAGE_TAG="${IMAGE_TAG}" docker compose \
+              -f "${COMPOSE_FILE}" \
+              --env-file "${ENV_FILE}" \
+              up -d postgres
+
             echo ">> Step 6a: wait for postgres to be healthy"
             POSTGRES_READY=false
             for i in $(seq 1 12); do
