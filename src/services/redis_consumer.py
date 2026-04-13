@@ -375,12 +375,12 @@ class RedisConsumer:
                 # If the log already has a specific ID but no hostname, or vice versa
                 if not log_dict.get("device_id"):
                     log_dict["device_id"] = device_info.get("device_id") or device_info.get("name")
-                
+
                 # Prioritize showing the human-readable Managed Name in the device field
                 # This directly answers the user's request
                 log_dict["device_id"] = device_info["name"]
                 logger.debug(f"Enriched log with managed device: {device_info['name']}")
-                
+
                 if not log_dict.get("log_type") or log_dict["log_type"] == "generic":
                     log_dict["log_type"] = device_info.get("category")
                 break

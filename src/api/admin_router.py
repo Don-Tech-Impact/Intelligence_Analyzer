@@ -43,10 +43,11 @@ def _get_admin_key() -> str:
 #         return getattr(siem_config, "effective_repo1_url")
 #     return siem_config.repo1_base_url.rstrip("/")
 
+
 def _get_repo1_base() -> str:
     base_url = "http://afric-analyzer-api-local:8080"
     return base_url
-    
+
 
 def verify_admin_key(x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key")) -> str:
     """Validate X-Admin-Key header matches the configured secret."""
@@ -134,7 +135,9 @@ async def verify_tenant_access(
     if role in ("admin", "tenant_user") and user_tenant == tenant_id:
         return payload
 
-    logger.warning(f"Access Denied: User {sub} (role: {role}, tenant: {user_tenant}) tried to access tenant {tenant_id}")
+    logger.warning(
+        f"Access Denied: User {sub} (role: {role}, tenant: {user_tenant}) tried to access tenant {tenant_id}"
+    )
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="You do not have permission to access this tenant's resources.",
@@ -581,7 +584,7 @@ async def proxy_login(request: Request, payload: dict, response: Response):
             # Mask password for logs
             safe_payload = {k: ("********" if k == "password" else v) for k, v in payload.items()}
             logger.info(f"Relaying login to Repo 1: {url} with payload {safe_payload}")
-            
+
             r1_res = await client.post(
                 url,
                 json=payload,
@@ -900,7 +903,7 @@ async def revoke_api_key(key_id: str, _auth=Depends(verify_admin_or_superadmin))
         keys = res.get("api_keys", res) if isinstance(res, dict) else res
         if not isinstance(keys, list) or not any(k.get("id") == key_id for k in keys):
             raise HTTPException(status_code=403, detail="Permission denied to modify this key.")
-            
+
     return await _repo1_request("DELETE", f"/admin/api-keys/{key_id}")
 
 
@@ -1049,7 +1052,9 @@ async def test_incident_alert(tenant_id: str, payload: dict, _auth=Depends(verif
 
 
 @router.get("/incidents/history/{tenant_id}")
-async def get_incident_history(tenant_id: str, limit: int = 100, severity: Optional[str] = None, _auth=Depends(verify_tenant_access)):
+async def get_incident_history(
+    tenant_id: str, limit: int = 100, severity: Optional[str] = None, _auth=Depends(verify_tenant_access)
+):
     """Get alert history."""
     params = {"limit": limit}
     if severity:

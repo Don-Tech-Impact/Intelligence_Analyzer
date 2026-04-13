@@ -150,18 +150,21 @@ class LogAdapter:
 
         # Ultimate Fallback: Scrape the raw message for anything that looks like a hostname
         if (not device_hostname or device_hostname == "unknown") and message:
-             # Look for common host patterns or specifically 'LOCAL-TEST-DEVICE' mentioned by user
-             if "LOCAL-TEST-DEVICE" in message.upper():
-                 device_hostname = "LOCAL-TEST-DEVICE"
-             else:
-                 parts = message.split()
-                 if len(parts) >= 4 and ":" in parts[2]:
-                     device_hostname = parts[3]
+            # Look for common host patterns or specifically 'LOCAL-TEST-DEVICE' mentioned by user
+            if "LOCAL-TEST-DEVICE" in message.upper():
+                device_hostname = "LOCAL-TEST-DEVICE"
+            else:
+                parts = message.split()
+                if len(parts) >= 4 and ":" in parts[2]:
+                    device_hostname = parts[3]
 
         return NormalizedLogSchema(
             tenant_id=str(log.get("tenant_id", "default")).strip("[]"),
             company_id=log.get("tenant_id"),
-            device_id=metadata.get("device_id") or metadata.get("device_name") or device_hostname or f"{vendor}_{device_type}",
+            device_id=metadata.get("device_id")
+            or metadata.get("device_name")
+            or device_hostname
+            or f"{vendor}_{device_type}",
             timestamp=LogAdapter._parse_timestamp(log.get("timestamp")),
             source_ip=metadata.get("source_ip") or network.get("source_ip"),
             destination_ip=network.get("destination_ip"),
@@ -289,11 +292,11 @@ class LogAdapter:
     def _normalize_flat(data: Dict[str, Any], original: Dict[str, Any]) -> NormalizedLogSchema:
         """Normalize flat format where fields are at root level."""
         metadata = data.get("metadata", {}) if isinstance(data.get("metadata"), dict) else {}
-        
+
         # Priority: root field > metadata field
         device_id = data.get("device_id") or metadata.get("device_id") or metadata.get("device_name")
         device_hostname = data.get("device_hostname") or metadata.get("device_name") or metadata.get("hostname")
-        
+
         # Fallback to parsing raw_log if everything else is empty
         message = data.get("message") or data.get("raw_log") or ""
         if not device_id and not device_hostname and message:

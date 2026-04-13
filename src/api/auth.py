@@ -3,10 +3,10 @@ from typing import Any, Dict, Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from src.services.redis_client import redis_client
 from jose import JWTError, jwt
 
 from src.core.config import config
+from src.services.redis_client import redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ async def verify_jwt(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
                     if redis_secret:
                         if isinstance(redis_secret, bytes):
                             redis_secret = redis_secret.decode()
-                        
+
                         clean_secret = str(redis_secret).strip().strip('"').strip("'")
 
                         payload = jwt.decode(
@@ -172,11 +172,9 @@ def decode_token_payload(token: str) -> Optional[Dict[str, Any]]:
                         redis_secret = redis_secret.decode()
 
                     clean_secret = redis_secret.strip().strip('"').strip("'")
-                    
+
                     # Try once more with Redis secret
-                    payload = jwt.decode(
-                        token, clean_secret, algorithms=["HS256"], options={"verify_aud": False}
-                    )
+                    payload = jwt.decode(token, clean_secret, algorithms=["HS256"], options={"verify_aud": False})
                     logger.info("JWT verified successfully using Redis secret fallback.")
                     return payload
             except Exception as e2:

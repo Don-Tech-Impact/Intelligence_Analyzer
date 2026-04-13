@@ -38,6 +38,7 @@ class YamlConfigSource(PydanticBaseSettingsSource):
 
 # ─── Nested sub-models ────────────────────────────────────────────────────────
 
+
 class DatabaseSettings(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
@@ -72,7 +73,7 @@ class DatabaseSettings(BaseModel):
             port = os.getenv("POSTGRES_PORT") or str(self.port)
             name = os.getenv("POSTGRES_DB") or self.name
             user = os.getenv("POSTGRES_USER") or self.user
-            pwd  = os.getenv("POSTGRES_PASSWORD") or self.password
+            pwd = os.getenv("POSTGRES_PASSWORD") or self.password
             return f"postgresql://{user}:{pwd}@{host}:{port}/{name}"
         if self.resolved_type == "sqlite":
             return f"sqlite:///{self.name}.db"
@@ -127,9 +128,11 @@ class BruteForceSettings(BaseModel):
     threshold: int = 5
     time_window: int = 300
 
+
 class PortScanSettings(BaseModel):
     threshold: int = 10
     time_window: int = 60
+
 
 class DetectionSettings(BaseModel):
     brute_force: BruteForceSettings = Field(default_factory=BruteForceSettings)
@@ -170,7 +173,7 @@ class MultiTenantSettings(BaseModel):
 # ─── Root settings (env vars take priority over YAML) ─────────────────────────
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_nested_delimiter="__",   # REDIS__QUEUE_PATTERN → redis.queue_pattern
+        env_nested_delimiter="__",  # REDIS__QUEUE_PATTERN → redis.queue_pattern
         populate_by_name=True,
         extra="ignore",
     )
@@ -226,93 +229,167 @@ class Settings(BaseSettings):
 
     # ── Backward-compatible shortcuts (keeps all original call sites working) ─
     @property
-    def database_type(self) -> str:               return self.database.resolved_type
-    @property
-    def database_url(self) -> str:                return self.database.database_url
-    @property
-    def redis_url(self) -> str:                   return self.redis.redis_url
-    @property
-    def redis_host(self) -> str:                  return self.redis.host
-    @property
-    def redis_port(self) -> int:                  return self.redis.port
-    @property
-    def redis_queue_pattern(self) -> str:         return self.redis.queue_pattern
-    @property
-    def redis_queue_scan_interval(self) -> int:   return self.redis.queue_scan_interval
-    @property
-    def redis_ingest_queue(self) -> str:          return self.redis.ingest_queue
-    @property
-    def redis_clean_queue(self) -> str:           return self.redis.clean_queue
-    @property
-    def redis_dead_queue(self) -> str:            return self.redis.dead_queue
-    @property
-    def email_enabled(self) -> bool:              return self.email.enabled
-    @property
-    def smtp_host(self) -> str:                   return self.email.smtp.host
-    @property
-    def smtp_port(self) -> int:                   return self.email.smtp.port
-    @property
-    def smtp_user(self) -> str:                   return self.email.smtp.user
-    @property
-    def smtp_password(self) -> str:               return self.email.smtp.password
-    @property
-    def smtp_use_tls(self) -> bool:               return self.email.smtp.use_tls
-    @property
-    def email_from(self) -> str:                  return self.email.from_address
-    @property
-    def email_to(self) -> List[str]:              return self.email.to
-    @property
-    def brute_force_threshold(self) -> int:       return self.detection.brute_force.threshold
-    @property
-    def brute_force_time_window(self) -> int:     return self.detection.brute_force.time_window
-    @property
-    def port_scan_threshold(self) -> int:         return self.detection.port_scan.threshold
-    @property
-    def port_scan_time_window(self) -> int:       return self.detection.port_scan.time_window
-    @property
-    def threat_intel_enabled(self) -> bool:       return self.threat_intelligence.enabled
-    @property
-    def threat_intel_update_interval(self) -> int: return self.threat_intelligence.update_interval
-    @property
-    def threat_intel_feeds(self) -> list:         return self.threat_intelligence.feeds
-    @property
-    def report_enabled(self) -> bool:             return self.reporting.enabled
-    @property
-    def report_schedule(self) -> str:             return self.reporting.schedule
-    @property
-    def report_email_to(self) -> list:            return self.reporting.email_to
-    @property
-    def webhooks_enabled(self) -> bool:           return self.webhooks.enabled
-    @property
-    def discord_webhook_url(self) -> str:         return self.webhooks.discord
-    @property
-    def slack_webhook_url(self) -> str:           return self.webhooks.slack
-    @property
-    def log_level(self) -> str:                   return self.logging.level
-    @property
-    def log_file(self) -> str:                    return self.logging.file
-    @property
-    def log_max_bytes(self) -> int:               return self.logging.max_bytes
-    @property
-    def log_backup_count(self) -> int:            return self.logging.backup_count
-    @property
-    def multi_tenant_enabled(self) -> bool:       return self.multi_tenant.enabled
-    @property
-    def default_tenant(self) -> str:              return self.multi_tenant.default_tenant
-    @property
-    def tenants(self) -> list:                    return self.multi_tenant.tenants
+    def database_type(self) -> str:
+        return self.database.resolved_type
 
     @property
-    def admin_api_key(self) -> str:               return self.ADMIN_KEY
+    def database_url(self) -> str:
+        return self.database.database_url
+
+    @property
+    def redis_url(self) -> str:
+        return self.redis.redis_url
+
+    @property
+    def redis_host(self) -> str:
+        return self.redis.host
+
+    @property
+    def redis_port(self) -> int:
+        return self.redis.port
+
+    @property
+    def redis_queue_pattern(self) -> str:
+        return self.redis.queue_pattern
+
+    @property
+    def redis_queue_scan_interval(self) -> int:
+        return self.redis.queue_scan_interval
+
+    @property
+    def redis_ingest_queue(self) -> str:
+        return self.redis.ingest_queue
+
+    @property
+    def redis_clean_queue(self) -> str:
+        return self.redis.clean_queue
+
+    @property
+    def redis_dead_queue(self) -> str:
+        return self.redis.dead_queue
+
+    @property
+    def email_enabled(self) -> bool:
+        return self.email.enabled
+
+    @property
+    def smtp_host(self) -> str:
+        return self.email.smtp.host
+
+    @property
+    def smtp_port(self) -> int:
+        return self.email.smtp.port
+
+    @property
+    def smtp_user(self) -> str:
+        return self.email.smtp.user
+
+    @property
+    def smtp_password(self) -> str:
+        return self.email.smtp.password
+
+    @property
+    def smtp_use_tls(self) -> bool:
+        return self.email.smtp.use_tls
+
+    @property
+    def email_from(self) -> str:
+        return self.email.from_address
+
+    @property
+    def email_to(self) -> List[str]:
+        return self.email.to
+
+    @property
+    def brute_force_threshold(self) -> int:
+        return self.detection.brute_force.threshold
+
+    @property
+    def brute_force_time_window(self) -> int:
+        return self.detection.brute_force.time_window
+
+    @property
+    def port_scan_threshold(self) -> int:
+        return self.detection.port_scan.threshold
+
+    @property
+    def port_scan_time_window(self) -> int:
+        return self.detection.port_scan.time_window
+
+    @property
+    def threat_intel_enabled(self) -> bool:
+        return self.threat_intelligence.enabled
+
+    @property
+    def threat_intel_update_interval(self) -> int:
+        return self.threat_intelligence.update_interval
+
+    @property
+    def threat_intel_feeds(self) -> list:
+        return self.threat_intelligence.feeds
+
+    @property
+    def report_enabled(self) -> bool:
+        return self.reporting.enabled
+
+    @property
+    def report_schedule(self) -> str:
+        return self.reporting.schedule
+
+    @property
+    def report_email_to(self) -> list:
+        return self.reporting.email_to
+
+    @property
+    def webhooks_enabled(self) -> bool:
+        return self.webhooks.enabled
+
+    @property
+    def discord_webhook_url(self) -> str:
+        return self.webhooks.discord
+
+    @property
+    def slack_webhook_url(self) -> str:
+        return self.webhooks.slack
+
+    @property
+    def log_level(self) -> str:
+        return self.logging.level
+
+    @property
+    def log_file(self) -> str:
+        return self.logging.file
+
+    @property
+    def log_max_bytes(self) -> int:
+        return self.logging.max_bytes
+
+    @property
+    def log_backup_count(self) -> int:
+        return self.logging.backup_count
+
+    @property
+    def multi_tenant_enabled(self) -> bool:
+        return self.multi_tenant.enabled
+
+    @property
+    def default_tenant(self) -> str:
+        return self.multi_tenant.default_tenant
+
+    @property
+    def tenants(self) -> list:
+        return self.multi_tenant.tenants
+
+    @property
+    def admin_api_key(self) -> str:
+        return self.ADMIN_KEY
 
     # ── Persistence ───────────────────────────────────────────────────────────
     def save(self, config_path: Optional[str] = None) -> None:
         """Serialize current settings to YAML, stripping computed fields."""
         path = Path(config_path or os.getenv("CONFIG_PATH", "config/config.yaml"))
         path.parent.mkdir(parents=True, exist_ok=True)
-        data = self.model_dump(
-            exclude={"parsed_allowed_origins", "parsed_allowed_hosts", "effective_repo1_url"}
-        )
+        data = self.model_dump(exclude={"parsed_allowed_origins", "parsed_allowed_hosts", "effective_repo1_url"})
         data["database"].pop("database_url", None)
         data["database"].pop("resolved_type", None)
         data["redis"].pop("redis_url", None)
@@ -330,5 +407,6 @@ class Settings(BaseSettings):
             target = getattr(target, part)
         setattr(target, parts[-1], value)
         self.save()
+
 
 config = Settings()
