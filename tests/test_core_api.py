@@ -1,4 +1,6 @@
 import os
+os.environ["admin_api_key"] = "changeme-admin-key"
+os.environ["ADMIN_KEY"] = "changeme-admin-key"
 
 import pytest
 from fastapi.testclient import TestClient

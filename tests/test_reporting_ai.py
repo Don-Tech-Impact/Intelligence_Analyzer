@@ -1,6 +1,7 @@
-"""Tests for Reporting and AI Assistant endpoints."""
-
 import os
+os.environ["admin_api_key"] = "changeme-admin-key"
+os.environ["ADMIN_KEY"] = "changeme-admin-key"
+
 from datetime import datetime, timedelta
 
 import pytest
@@ -9,9 +10,6 @@ from fastapi.testclient import TestClient
 from src.api.main import app
 from src.core.database import db_manager
 from src.models.database import Alert, NormalizedLog, Report
-
-# Force admin key so _get_admin_key() resolves correctly regardless of .env.production
-os.environ["admin_api_key"] = "changeme-admin-key"
 
 # Disable rate limiting for tests
 app.state.limiter.enabled = False
