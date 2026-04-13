@@ -190,6 +190,7 @@ class BruteForceAnalyzer(BaseAnalyzer):
                     severity="high",
                     source_ip=source_ip,
                     destination_ip=getattr(log, "destination_ip", None),
+                    device_id=getattr(log, "device_id", None),
                     description=(
                         f"Brute force attack detected: {count} failed authentication attempts "
                         f"from {source_ip} in the last {self.window_seconds - ttl} seconds"

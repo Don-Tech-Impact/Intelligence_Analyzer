@@ -1,4 +1,6 @@
 import os
+os.environ["admin_api_key"] = "changeme-admin-key"
+os.environ["ADMIN_KEY"] = "changeme-admin-key"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,7 +13,7 @@ from src.models.database import Alert, Base, Tenant
 @pytest.fixture(scope="module")
 def client():
     # Set admin key for tests
-    os.environ["ADMIN_API_KEY"] = "changeme-admin-key"
+    os.environ["admin_api_key"] = "changeme-admin-key"
     with TestClient(app) as c:
         yield c
 

@@ -69,6 +69,7 @@ async def lifespan(app):
 # Determine if documentation should be exposed (default: False in production)
 EXPOSE_DOCS = os.getenv("EXPOSE_DOCS", "false").lower() == "true"
 
+IP_ADDRESS = "192.168.56.1:8000"
 app = FastAPI(
     title="Intelligence Analyzer API",
     version="1.0.0",
@@ -219,11 +220,11 @@ async def add_security_headers(request: Request, call_next):
 
 
 # --- 4. CORS & Trusted Hosts ---
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=siem_config.allowed_hosts)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=siem_config.parsed_allowed_hosts)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=siem_config.allowed_origins,
+    allow_origins=siem_config.parsed_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

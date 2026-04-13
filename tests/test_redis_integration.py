@@ -79,7 +79,8 @@ class TestMessageRouting:
     def setup_method(self):
         self.consumer = RedisConsumer.__new__(RedisConsumer)
         from collections import defaultdict
-        self.consumer.known_devices = defaultdict(set)
+        self.consumer.device_cache = defaultdict(dict)
+        self.consumer.repo1_synced_ips = defaultdict(set)
         self.consumer.batch_dead = []
         self.consumer.batch_ingest = []
         self.consumer.batch_clean = []
@@ -102,7 +103,13 @@ class TestMessageRouting:
             business_context={},
         )
 
-    def test_ingest_queue_routes_to_handler(self):
+    @patch("requests.get")
+    @patch("requests.post")
+    def test_ingest_queue_routes_to_handler(self, mock_post, mock_get):
+        # Mock successful Repo1 checks to avoid real network attempts
+        mock_get.return_value.status_code = 404 # New device
+        mock_post.return_value.status_code = 201
+
         msg = '{"schema_version":"v1","tenant_id":"EBK","raw_log":"test","metadata":{}}'
         result = self.consumer.process_message("logs:EBK:ingest", msg)
         assert result is True
@@ -114,7 +121,13 @@ class TestMessageRouting:
         assert result is True
         assert len(self.consumer.batch_dead) == 1
 
-    def test_clean_queue_routes_to_handler(self):
+    @patch("requests.get")
+    @patch("requests.post")
+    def test_clean_queue_routes_to_handler(self, mock_post, mock_get):
+        # Mock successful Repo1 checks
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"ip_allowlist": [{"ip_range": "1.2.3.4"}]}
+        
         msg = '{"schema_version":"v2.0","tenant_id":"EBK","source":{"ip":"1.2.3.4"}}'
         result = self.consumer.process_message("logs:EBK:clean", msg)
         assert result is True

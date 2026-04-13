@@ -98,8 +98,10 @@ class RedisConsumer:
         # Log adapter for normalization
         self.log_adapter = LogAdapter()
 
-        # Device discovery cache: {tenant_id: set(known_ips)}
-        self.known_devices: Dict[str, Set[str]] = defaultdict(set)
+        # Device resolution cache: {tenant_id: {identifier: device_info_dict}}
+        self.device_cache: Dict[str, Dict[str, Any]] = defaultdict(dict)
+        # Record of IPs already synced to Repo 1
+        self.repo1_synced_ips: Dict[str, Set[str]] = defaultdict(set)
 
     def connect(self):
         """Establish connection to Redis using URL."""
@@ -307,6 +309,7 @@ class RedisConsumer:
                     "action": normalized.action,
                     "log_type": normalized.log_type if normalized.log_type != "raw_ingest" else "dead_recovered",
                     "vendor": normalized.vendor,
+                    "device_id": normalized.device_id,
                     "device_hostname": normalized.device_hostname,
                     "severity": normalized.severity or "medium",  # Allow normalized severity
                     "message": normalized.message,
@@ -329,6 +332,59 @@ class RedisConsumer:
 
         return True
 
+    def _enrich_log_with_device(self, log_dict: Dict[str, Any]):
+        """Enrich log with managed device info if available."""
+        tenant_id = log_dict.get("tenant_id")
+        if not tenant_id:
+            return
+
+        # Try to resolve by device_id or source_ip
+        identifiers = []
+        if log_dict.get("device_id"):
+            identifiers.append(log_dict["device_id"])
+        if log_dict.get("source_ip"):
+            identifiers.append(log_dict["source_ip"])
+
+        for identifier in identifiers:
+            # 1. Check cache
+            device_info = self.device_cache[tenant_id].get(identifier)
+
+            # 2. Lookup in DB if not in cache
+            if not device_info:
+                try:
+                    with db_manager.session_scope() as session:
+                        managed = AssetService.resolve_device_identifier(tenant_id, identifier, session)
+                        if managed:
+                            device_info = {
+                                "name": managed.name,
+                                "category": managed.category,
+                                "device_id": managed.device_id,
+                            }
+                            # Cache it
+                            self.device_cache[tenant_id][identifier] = device_info
+                            # Also cache by the other identifier if possible
+                            if managed.ip_address:
+                                self.device_cache[tenant_id][managed.ip_address] = device_info
+                            if managed.device_id:
+                                self.device_cache[tenant_id][managed.device_id] = device_info
+                except Exception as e:
+                    logger.debug(f"Device lookup failed for {identifier}: {e}")
+
+            # 3. Apply enrichment
+            if device_info:
+                # If the log already has a specific ID but no hostname, or vice versa
+                if not log_dict.get("device_id"):
+                    log_dict["device_id"] = device_info.get("device_id") or device_info.get("name")
+
+                # Prioritize showing the human-readable Managed Name in the device field
+                # This directly answers the user's request
+                log_dict["device_id"] = device_info["name"]
+                logger.debug(f"Enriched log with managed device: {device_info['name']}")
+
+                if not log_dict.get("log_type") or log_dict["log_type"] == "generic":
+                    log_dict["log_type"] = device_info.get("category")
+                break
+
     def _auto_register_device(self, tenant_id: str, source_ip: str, log_info: Dict[str, Any]):
         """
         Auto-register a device with Repo 1 if it's new.
@@ -338,12 +394,12 @@ class RedisConsumer:
             return
 
         # 1. Check local cache first to avoid redundant API calls
-        if source_ip in self.known_devices[tenant_id]:
+        if source_ip in self.repo1_synced_ips[tenant_id]:
             return
 
         try:
             repo1_url = (os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080").rstrip("/")
-            admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY") or "changeme-admin-key"
+            admin_key = os.getenv("ADMIN_KEY") or os.getenv("admin_api_key") or "changeme-admin-key"
 
             import requests
 
@@ -361,7 +417,7 @@ class RedisConsumer:
 
                     if source_ip in existing_ips:
                         # Add to local cache and skip
-                        self.known_devices[tenant_id].add(source_ip)
+                        self.repo1_synced_ips[tenant_id].add(source_ip)
                         return
             except Exception as check_err:
                 logger.debug(f"Repo1 IP check failed for {tenant_id}, assuming new: {check_err}")
@@ -389,7 +445,7 @@ class RedisConsumer:
 
             if sync_res.status_code in (200, 201):
                 # Only cache if truly successful
-                self.known_devices[tenant_id].add(source_ip)
+                self.repo1_synced_ips[tenant_id].add(source_ip)
                 logger.debug(f"Successfully synced {source_ip} to Repo 1 allowlist.")
             else:
                 logger.warning(f"Failed to sync IP {source_ip} to Repo 1: {sync_res.status_code}")
@@ -419,6 +475,7 @@ class RedisConsumer:
                 "action": normalized.action,
                 "log_type": normalized.log_type,
                 "vendor": normalized.vendor,
+                "device_id": normalized.device_id,
                 "device_hostname": normalized.device_hostname,
                 "severity": normalized.severity,
                 "message": normalized.message,
@@ -426,6 +483,9 @@ class RedisConsumer:
                 "business_context": normalized.business_context or {},
                 "created_at": datetime.utcnow(),
             }
+
+            # NEW: Enrich with Managed Device info (Link IP/ID to Human Readable Name)
+            self._enrich_log_with_device(log_dict)
 
             self.batch_ingest.append(log_dict)
 
@@ -467,6 +527,7 @@ class RedisConsumer:
                 "action": normalized.action,
                 "log_type": normalized.log_type,
                 "vendor": normalized.vendor,
+                "device_id": normalized.device_id,
                 "device_hostname": normalized.device_hostname,
                 "severity": normalized.severity,
                 "message": normalized.message,
@@ -474,6 +535,9 @@ class RedisConsumer:
                 "business_context": normalized.business_context or {},
                 "created_at": datetime.utcnow(),
             }
+
+            # NEW: Enrich with Managed Device info (Link IP/ID to Human Readable Name)
+            self._enrich_log_with_device(log_dict)
 
             self.batch_clean.append(log_dict)
 

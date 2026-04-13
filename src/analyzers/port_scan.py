@@ -194,6 +194,7 @@ class PortScanAnalyzer(BaseAnalyzer):
                     severity="medium",
                     source_ip=source_ip,
                     destination_ip=dest_ip,
+                    device_id=getattr(log, "device_id", None),
                     description=(
                         f"Port scan detected: {source_ip} scanned {unique_ports} unique ports "
                         f"on {dest_ip} within {self.window_seconds}s"

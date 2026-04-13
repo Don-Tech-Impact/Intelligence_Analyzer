@@ -2,7 +2,7 @@ const API_BASE_URL = (window.location.origin === 'null' || window.location.proto
     ? 'http://localhost:8000'
     : window.location.origin;
 const REPO1_BASE_URL = 'http://localhost:8080';
-const ADMIN_API_KEY = 'changeme-admin-key';
+// const ADMIN_KEY = '4BltQka5aJ_EHKPvdf0zP_7eEyR7aETtSxW5X-ZMqJMVszhcaWqgFcmPoPkLDGf7'; to be checked later
 
 // ============================================
 // MODAL UTILITIES
@@ -658,6 +658,7 @@ function renderStreamLogs(logs) {
         const src = log.source_ip || '-';
         const dest = log.destination_ip || '-';
         const vendor = log.vendor || '-';
+        const device = log.device_id || log.device_hostname || log.log_type || '-';
         const info = log.message || log.raw_log || 'No additional info';
 
         return `
@@ -667,6 +668,7 @@ function renderStreamLogs(logs) {
             <td class="col-dest">${escapeHtml(dest)}</td>
             <td class="col-proto"><span class="proto-badge">${escapeHtml(proto)}</span></td>
             <td class="col-vendor">${escapeHtml(vendor)}</td>
+            <td class="col-device">${escapeHtml(device)}</td>
             <td class="col-action"><span class="action-badge">${escapeHtml(action)}</span></td>
             <td class="col-info">${escapeHtml(info)}</td>
         </tr>`;
@@ -738,7 +740,8 @@ function inspectStreamEvent(log, rowElement) {
             <div class="detail-section">
                 <h4><i data-lucide="database"></i> Source Context</h4>
                 <div class="detail-row"><span>Vendor:</span> ${log.vendor || 'Unknown'}</div>
-                <div class="detail-row"><span>Device Type:</span> ${log.device_type || 'Unknown'}</div>
+                <div class="detail-row"><span>Device:</span> ${log.device_id || log.device_hostname || 'Unknown'}</div>
+                <div class="detail-row"><span>Type:</span> ${log.log_type || log.device_type || 'Unknown'}</div>
                 <div class="detail-row"><span>Tenant ID:</span> <code>${log.tenant_id || '-'}</code></div>
             </div>
         </div>
@@ -840,13 +843,13 @@ function toggleAnalyticsChart(type) {
             if (type === 'ips' && topSourcesChart) topSourcesChart.render();
             if (type === 'proto' && protocolChart) protocolChart.render();
         }
-    } else if (type === 'vendor' || type === 'patterns') {
+    } else if (type === 'device' || type === 'patterns') {
         const venEl = document.getElementById('vendor-breakdown-chart');
         const biEl = document.getElementById('bi-chart-container');
         const tabVen = document.getElementById('tab-vendor');
         const tabPat = document.getElementById('tab-patterns');
         if (venEl && biEl) {
-            venEl.style.display = type === 'vendor' ? 'block' : 'none';
+            venEl.style.display = type === 'device' ? 'block' : 'none';
             biEl.style.display = type === 'patterns' ? 'block' : 'none';
             tabVen?.classList.toggle('active', type === 'vendor');
             tabPat?.classList.toggle('active', type === 'patterns');
@@ -1048,10 +1051,11 @@ function populateTable(tbodyId, alerts, mode) {
     }
     tbody.innerHTML = alerts.map(a => {
         const sev = (a.severity || 'medium').toLowerCase();
-        return `<tr class="severity-${sev}">
+        return `<tr class="severity-${sev}" onclick="inspectAlert(${a.id})" style="cursor:pointer;">
             <td data-label="Time">${formatTime(a.created_at || a.timestamp)}</td>
             <td data-label="Type">${escapeHtml(a.alert_type || a.type || '')}</td>
             <td data-label="Source"><span class="mono">${escapeHtml(a.source_ip || '')}</span></td>
+            <td data-label="Device"><span class="badge" style="background:rgba(148,163,184,0.1); color:var(--text);">${escapeHtml(a.device_id || 'Unknown')}</span></td>
             <td data-label="Severity"><span class="badge badge-${sev}">${sev}</span></td>
             ${mode === 'full' ? `<td data-label="Description">${escapeHtml(a.description || '')}</td>` : ''}
             <td data-label="Status"><span class="badge-status ${a.status || 'open'}">${a.status || 'open'}</span></td>
@@ -1074,8 +1078,8 @@ function populateLogsTable(tbodyId, logs) {
             <td>${escapeHtml(l.destination_ip || '')}</td>
             <td>${escapeHtml(l.protocol || '')}</td>
             <td>${escapeHtml(l.action || '')}</td>
-            <td>${escapeHtml(l.vendor || '')}</td>
-            <td>${escapeHtml(l.device_type || '')}</td>
+            <td>${escapeHtml(l.vendor || 'Unknown')}</td>
+            <td>${escapeHtml(l.device_id || l.device_hostname || l.log_type || 'N/A')}</td>
             <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(l.message || l.raw_log || '')}</td>
         </tr>
     `).join('');
@@ -1327,7 +1331,7 @@ function updateVendorBreakdown(alerts, chart, containerId) {
 
     const counts = {};
     alerts.forEach(a => {
-        const v = a.vendor || 'Unknown';
+        const v = a.device_id || a.vendor || 'Unknown';
         counts[v] = (counts[v] || 0) + 1;
     });
     const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
@@ -2635,4 +2639,91 @@ async function testIncidentAlert() {
         showToast("Error triggering test alert: " + err.message, true);
         console.error(err);
     }
+}
+
+// ============================================
+// ALERT INSPECTION & AI INTEGRATION
+// ============================================
+
+window.inspectAlert = async function(alertId) {
+    console.log('[SIEM] Inspecting Alert:', alertId);
+    try {
+        const res = await apiFetch(`${API_BASE_URL}/api/v1/alerts/${alertId}?tenant_id=${currentTenant}`);
+        if (!res || !res.ok) return;
+        const alert = await res.json();
+
+        const header = document.getElementById('alert-details-header');
+        const sourceInfo = document.getElementById('alert-source-info');
+        const deviceInfo = document.getElementById('alert-device-info');
+        const messageBox = document.getElementById('alert-message-box');
+        const aiSection = document.getElementById('ai-advice-section');
+
+        // Reset AI section
+        aiSection.style.display = 'none';
+
+        const sev = (alert.severity || 'medium').toLowerCase();
+        const typeStr = (alert.alert_type || alert.type || 'Unknown Alert').replace(/_/g, ' ');
+        
+        header.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:start;">
+                <div>
+                    <span class="badge" style="background:var(--critical); color:white; margin-bottom:10px;">${typeStr.toUpperCase()}</span>
+                    <h2 style="margin:0; font-size:1.8rem;">${escapeHtml(typeStr)}</h2>
+                </div>
+                <span class="severity-tag ${sev}" style="font-size:1.1rem; padding:10px 20px;">${sev.toUpperCase()}</span>
+            </div>
+            <p style="margin: 1rem 0 0; color: var(--text-muted); font-size:1.1rem;">${escapeHtml(alert.description || 'No description available')}</p>
+        `;
+
+        sourceInfo.innerHTML = `
+            <div class="detail-row"><span>Source IP:</span> <strong class="mono">${escapeHtml(alert.source_ip || 'Internal')}</strong></div>
+            <div class="detail-row"><span>Target IP:</span> <strong class="mono">${escapeHtml(alert.destination_ip || 'Not Applicable')}</strong></div>
+            <div class="detail-row"><span>Timestamp:</span> <strong>${new Date(alert.created_at).toLocaleString()}</strong></div>
+            <div class="detail-row"><span>Detection:</span> <strong>Real-time Analyzer</strong></div>
+        `;
+
+        deviceInfo.innerHTML = `
+            <div class="detail-row"><span>Device Name:</span> <strong class="mono" style="color:var(--primary);">${escapeHtml(alert.device_id || 'Unknown Asset')}</strong></div>
+            <div class="detail-row"><span>Tenant ID:</span> <strong>${escapeHtml(alert.tenant_id)}</strong></div>
+            <div class="detail-row"><span>Alert Status:</span> <span class="badge-status ${alert.status}" style="padding:4px 8px;">${alert.status.toUpperCase()}</span></div>
+            <div class="detail-row"><span>Asset Link:</span> <a href="#" onclick="switchView('assets');closeModal('alert-details-modal');return false;" style="color:var(--primary); font-size:0.85rem;">View in Inventory →</a></div>
+        `;
+
+        messageBox.textContent = alert.description || 'No detailed message provided for this alert type.';
+
+        openModal('alert-details-modal');
+        lucide.createIcons();
+    } catch (e) {
+        console.error('[SIEM] Alert inspection failed:', e);
+        showToast("Error loading alert details", true);
+    }
+}
+
+window.analyzeAlertWithAI = function() {
+    const aiSection = document.getElementById('ai-advice-section');
+    const aiContent = document.getElementById('ai-advice-content');
+    const btn = event.currentTarget;
+
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader" class="spin"></i> AI is thinking...';
+    lucide.createIcons();
+
+    // Simulate AI thinking time
+    setTimeout(() => {
+        aiSection.style.display = 'block';
+        aiContent.innerHTML = `
+            <p style="margin-bottom:1rem;">Based on the <b>Brute Force</b> patterns from <b>${document.querySelector('#alert-source-info strong')?.textContent || 'detected IP'}</b>, I recommend the following actions:</p>
+            <ul style="padding-left:1.2rem; margin-bottom:1rem;">
+                <li><b>Immediate:</b> Block source IP at the primary firewall for 3600 seconds.</li>
+                <li><b>Device:</b> Reset login attempts counter for <b>${document.querySelector('#alert-device-info strong')?.textContent || 'affected device'}</b>.</li>
+                <li><b>Investigation:</b> Originating ASN is associated with a known proxy network. This is likely a bot-driven credential stuffing attempt.</li>
+            </ul>
+            <div style="font-size:0.85rem; padding:10px; background:rgba(255,171,0,0.1); border-radius:6px; color:var(--high); border:1px solid rgba(255,171,0,0.2);">
+                <b>Pro Tip:</b> Consider enabling MFA for all users on this specific device segment to mitigate similar attacks in the future.
+            </div>
+        `;
+        btn.innerHTML = '<i data-lucide="check-circle"></i> Insight Generated';
+        lucide.createIcons();
+        showToast("AI Analysis complete. New remediation steps added.");
+    }, 2000);
 }

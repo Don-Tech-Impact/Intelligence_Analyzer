@@ -1,15 +1,12 @@
 import os
+os.environ["admin_api_key"] = "changeme-admin-key"
+os.environ["ADMIN_KEY"] = "changeme-admin-key"
 
 import pytest
 from fastapi.testclient import TestClient
 
 from src.api.main import app
 from src.core.database import db_manager
-
-# Force both ADMIN_KEY and ADMIN_API_KEY so _get_admin_key() in admin_router
-# resolves to "changeme-admin-key" regardless of any .env.production overrides.
-os.environ["ADMIN_KEY"] = "changeme-admin-key"
-os.environ["ADMIN_API_KEY"] = "changeme-admin-key"
 
 client = TestClient(app)
 
@@ -18,8 +15,7 @@ ADMIN_KEY = "changeme-admin-key"
 
 @pytest.fixture(autouse=True)
 def setup_env():
-    os.environ["ADMIN_KEY"] = ADMIN_KEY
-    os.environ["ADMIN_API_KEY"] = ADMIN_KEY
+    os.environ["admin_api_key"] = ADMIN_KEY
     db_manager.initialize()
 
 

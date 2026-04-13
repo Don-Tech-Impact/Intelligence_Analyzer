@@ -253,6 +253,7 @@ class BeaconingAnalyzer(BaseAnalyzer):
                     severity="critical",  # C2 = critical
                     source_ip=source_ip,
                     destination_ip=dest_ip,
+                    device_id=getattr(log, "device_id", None),
                     description=(
                         f"Potential C2 beaconing detected: {source_ip} → {dest_ip} "
                         f"with {len(timestamps)} regular connections "

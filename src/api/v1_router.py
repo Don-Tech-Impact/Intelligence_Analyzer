@@ -446,9 +446,11 @@ def get_alert_detail(alert_id: int, tenant_id: str = Depends(get_tenant_id), db:
         data={
             "id": alert.id,
             "type": alert.alert_type,
+            "alert_type": alert.alert_type,
             "severity": alert.severity,
             "source_ip": alert.source_ip,
             "destination_ip": alert.destination_ip,
+            "device_id": alert.device_id,
             "description": alert.description,
             "status": alert.status,
             "details": alert.details,
@@ -933,7 +935,7 @@ async def update_tenant_metadata(request: Request, tenant_id: str = Depends(get_
     from the dashboard directly to Repo 1's deep merge endpoint.
     """
     repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
-    admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY") or "changeme-admin-key"
+    admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_KEY") or "changeme-admin-key"
 
     try:
         body = await request.json()
@@ -963,7 +965,7 @@ async def get_tenant_metadata(tenant_id: str = Depends(get_tenant_id)):
     """
     # Use verified paths from Repo 1 Swagger: /admin/tenants/{tid}
     repo1_url = (os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080").rstrip("/")
-    admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_API_KEY") or "changeme-admin-key"
+    admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_KEY") or "changeme-admin-key"
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:

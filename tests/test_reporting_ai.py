@@ -1,6 +1,7 @@
-"""Tests for Reporting and AI Assistant endpoints."""
-
 import os
+os.environ["admin_api_key"] = "changeme-admin-key"
+os.environ["ADMIN_KEY"] = "changeme-admin-key"
+
 from datetime import datetime, timedelta
 
 import pytest
@@ -10,15 +11,11 @@ from src.api.main import app
 from src.core.database import db_manager
 from src.models.database import Alert, NormalizedLog, Report
 
-# Force admin key so _get_admin_key() resolves correctly regardless of .env.production
-os.environ["ADMIN_KEY"] = "changeme-admin-key"
-os.environ["ADMIN_API_KEY"] = "changeme-admin-key"
-
 # Disable rate limiting for tests
 app.state.limiter.enabled = False
 
 client = TestClient(app)
-ADMIN_API_KEY = "changeme-admin-key"
+admin_api_key = "changeme-admin-key"
 
 
 @pytest.fixture(scope="module")
@@ -75,7 +72,7 @@ class TestReportingAI:
             "start_date": (datetime.utcnow() - timedelta(days=5)).isoformat(),
             "end_date": datetime.utcnow().isoformat(),
         }
-        headers = {"X-Admin-Key": ADMIN_API_KEY}
+        headers = {"X-Admin-Key": admin_api_key}
         response = client.post("/reports/generate", json=payload, headers=headers)
 
         assert response.status_code == 200
@@ -84,7 +81,7 @@ class TestReportingAI:
         assert "report_id" in data
         """Test the manual report generation endpoint."""
         payload = {"tenant_id": "default", "report_type": "daily", "days_back": 1}
-        headers = {"X-Admin-Key": ADMIN_API_KEY}
+        headers = {"X-Admin-Key": admin_api_key}
         response = client.post("/reports/generate", json=payload, headers=headers)
 
         assert response.status_code == 200
@@ -94,7 +91,7 @@ class TestReportingAI:
 
     def test_list_reports(self, sample_data):
         """Test listing reports."""
-        headers = {"X-Admin-Key": ADMIN_API_KEY}
+        headers = {"X-Admin-Key": admin_api_key}
         response = client.get("/reports?tenant_id=default", headers=headers)
 
         assert response.status_code == 200
@@ -105,7 +102,7 @@ class TestReportingAI:
     def test_get_report_content(self, sample_data):
         """Test fetching report HTML content."""
         # First generate a report
-        headers = {"X-Admin-Key": ADMIN_API_KEY}
+        headers = {"X-Admin-Key": admin_api_key}
         gen_res = client.post("/reports/generate", json={"tenant_id": "default"}, headers=headers)
         report_id = gen_res.json()["report_id"]
 
@@ -119,7 +116,7 @@ class TestReportingAI:
 
     def test_report_download(self, sample_data):
         """Test the report download endpoint."""
-        headers = {"X-Admin-Key": ADMIN_API_KEY}
+        headers = {"X-Admin-Key": admin_api_key}
         gen_res = client.post("/reports/generate", json={"tenant_id": "default"}, headers=headers)
         report_id = gen_res.json()["report_id"]
 

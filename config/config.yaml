@@ -38,11 +38,11 @@ multi_tenant:
     name: tenant1
 redis:
   alert_queue: siem:alerts
-  clean_queue: logs:default:clean
+  clean_queue: clean_logs
   db: 0
-  dead_queue: logs:default:dead
+  dead_queue: dead_logs
   host: 127.0.0.1
-  ingest_queue: logs:default:ingest
+  ingest_queue: ingest_logs
   log_queue: log_queue
   password: ''
   port: 6379

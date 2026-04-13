@@ -1,5 +1,6 @@
 # Core dependencies
 psycopg2-binary
+alembic
 
 # Email support
 email-validator
@@ -14,6 +15,7 @@ python-json-logger
 # Utilities
 requests
 pydantic
+pydantic-settings
 fastapi
 pandas
 jinja2

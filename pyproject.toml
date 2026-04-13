@@ -1,3 +1,12 @@
+[tool.pyright]
+venvPath = "."
+venv = "env"
+pythonVersion = "3.11"
+extraPaths = ["."]
+executionEnvironments = [
+    { root = ".", pythonVersion = "3.11" }
+]
+
 [tool.black]
 line-length = 120
 target-version = ['py311']
@@ -39,3 +48,5 @@ test = [
     "respx>=0.21.0",       # ← add this
     "coverage[toml]>=7.4.0",
 ]
+
+
