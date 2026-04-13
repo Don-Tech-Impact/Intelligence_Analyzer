@@ -287,9 +287,8 @@ jobs:
           username:          ${{ secrets.PROD_USER }}
           key:               ${{ secrets.PROD_SSH_KEY }}
           port:              22
-          source:            "docker-compose.yml"
+          source:            "docker/docker-compose-prod.yml"
           target:            "/opt/intelligence-analyzer/"
-          strip_components:  1
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
