@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, computed_field
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 # ─── .env loading (same precedence as original) ───────────────────────────────
@@ -47,7 +47,7 @@ class DatabaseSettings(BaseModel):
 
     type: str = "sqlite"
     url: Optional[str] = None
-    host: str = "localhost"
+    host: str = os.getenv("REDIS_HOST", "afric-analyzer-redis-local")
     port: int = 5432
     name: str = "siem_analyzer"
     user: str = "admin"
@@ -87,7 +87,7 @@ class RedisSettings(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
     url: Optional[str] = None
-    host: str = "localhost"
+    host: str = os.getenv("REDIS_HOST", "afric-analyzer-redis-local")
     port: int = 6379
     db: int = 0
     password: Optional[str] = None
@@ -100,7 +100,7 @@ class RedisSettings(BaseModel):
     @computed_field
     @property
     def redis_url(self) -> str:
-        env_url = os.getenv("REDIS_URL")
+        env_url = (os.getenv("REDIS_URL") or "").strip()
         if env_url:
             return env_url
         if self.url:
@@ -175,9 +175,12 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # # Top-level secrets
-    secret_key: Optional[str] = None
-    admin_api_key: Optional[str] = None
+    # Top-level secrets
+    # Pydantic reads the field name uppercased (e.g. secret_key → SECRET_KEY).
+    # admin_api_key → would look for ADMIN_API_KEY, but the env file uses ADMIN_KEY,
+    # so we add a validation_alias to accept both names.
+    secret_key: Optional[str] = Field(None, validation_alias=AliasChoices("SECRET_KEY", "secret_key"))
+    admin_api_key: Optional[str] = Field(None, validation_alias=AliasChoices("ADMIN_KEY", "ADMIN_API_KEY", "admin_api_key"))
     jwt_public_key: Optional[str] = None
     allowed_origins: Optional[str] = None
     allowed_hosts: Optional[str] = None

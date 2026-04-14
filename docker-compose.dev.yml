@@ -40,11 +40,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}:${POSTGRES_DB}@db:5432/${POSTGRES_DB}
-      - REDIS_URL=${REDIS_URL}
-      - REPO1_BASE_URL=${REPO1_BASE_URL}
-      - SECRET_KEY=${SECRET_KEY}
-      - ADMIN_KEY=${ADMIN_KEY}
+      # Only vars that need shell-level computation go here.
+      # Secrets (SECRET_KEY, ADMIN_KEY, etc.) are loaded from env_file below
+      # so Docker doesn't blank them out when the host shell doesn't have them set.
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-siem_user}:${POSTGRES_PASSWORD:-siem_password}@db:5432/${POSTGRES_DB:-siem_db}
+      - REDIS_URL=${REDIS_URL:-redis://afric-analyzer-redis-local:6379/0}
+      - REPO1_URL=${REPO1_URL:-http://afric-analyzer-api-local:8080}
     env_file: ./config/.env.development
     volumes:
       - .:/app:rw

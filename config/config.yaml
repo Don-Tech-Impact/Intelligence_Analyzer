@@ -41,7 +41,7 @@ redis:
   clean_queue: clean_logs
   db: 0
   dead_queue: dead_logs
-  host: 127.0.0.1
+  host: afric-analyzer-redis-local
   ingest_queue: ingest_logs
   log_queue: log_queue
   password: ''
