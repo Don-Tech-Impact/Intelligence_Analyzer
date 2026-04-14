@@ -1,11 +1,10 @@
 import logging
 import os
-import time
 import traceback
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -167,7 +166,7 @@ async def diagnostic_logging(request: Request, call_next):
     r_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
     r_meth = request.method
     r_url = str(request.url)
-    
+
     logger.info(f"Request started: {r_meth} {r_url} - ID: {r_id}")
 
     try:
@@ -176,7 +175,7 @@ async def diagnostic_logging(request: Request, call_next):
             logger.warning(f"Request failed: {r_meth} {r_url} - ID: {r_id} - Status: {response.status_code}")
         else:
             logger.info(f"Request completed: {r_meth} {r_url} - ID: {r_id} - Status: {response.status_code}")
-        
+
         response.headers["X-Request-ID"] = r_id
         return response
     except Exception as e:

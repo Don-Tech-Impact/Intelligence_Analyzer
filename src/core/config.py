@@ -13,7 +13,9 @@ _project_root = Path(__file__).parents[2]
 for _env_path in [
     # _project_root / ".env",
     # _project_root / "config" / ".env.production",
-    _project_root / "config" / ".env.development",
+    _project_root
+    / "config"
+    / ".env.development",
 ]:
     if _env_path.exists():
         load_dotenv(_env_path)
@@ -117,6 +119,7 @@ class SmtpSettings(BaseModel):
     password: str = ""
     use_tls: bool = True
 
+
 class EmailSettings(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -125,32 +128,39 @@ class EmailSettings(BaseModel):
     from_address: str = Field("siem-alerts@company.com", alias="from")
     to: List[str] = Field(default_factory=lambda: ["security-team@company.com"])
 
+
 class BruteForceSettings(BaseModel):
     threshold: int = 5
     time_window: int = 300
+
 
 class PortScanSettings(BaseModel):
     threshold: int = 10
     time_window: int = 60
 
+
 class DetectionSettings(BaseModel):
     brute_force: BruteForceSettings = Field(default_factory=BruteForceSettings)
     port_scan: PortScanSettings = Field(default_factory=PortScanSettings)
+
 
 class ThreatIntelSettings(BaseModel):
     enabled: bool = True
     update_interval: int = 3600
     feeds: List[Any] = Field(default_factory=list)
 
+
 class ReportingSettings(BaseModel):
     enabled: bool = True
     schedule: str = "0 9 * * *"
     email_to: List[str] = Field(default_factory=lambda: ["reports@company.com"])
 
+
 class WebhookSettings(BaseModel):
     enabled: bool = False
     discord: str = ""
     slack: str = ""
+
 
 class LoggingSettings(BaseModel):
     level: str = "INFO"
@@ -170,7 +180,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         # env_nested_delimiter="__",  # REDIS__QUEUE_PATTERN → redis.queue_pattern
         env_file=("config/.env.development", "config/.env.production", ".env"),
-        env_file_encoding="utf-8",  
+        env_file_encoding="utf-8",
         populate_by_name=True,
         extra="ignore",
     )
@@ -180,7 +190,9 @@ class Settings(BaseSettings):
     # admin_api_key → would look for ADMIN_API_KEY, but the env file uses ADMIN_KEY,
     # so we add a validation_alias to accept both names.
     secret_key: Optional[str] = Field(None, validation_alias=AliasChoices("SECRET_KEY", "secret_key"))
-    admin_api_key: Optional[str] = Field(None, validation_alias=AliasChoices("ADMIN_KEY", "ADMIN_API_KEY", "admin_api_key"))
+    admin_api_key: Optional[str] = Field(
+        None, validation_alias=AliasChoices("ADMIN_KEY", "ADMIN_API_KEY", "admin_api_key")
+    )
     jwt_public_key: Optional[str] = None
     allowed_origins: Optional[str] = None
     allowed_hosts: Optional[str] = None
@@ -190,8 +202,9 @@ class Settings(BaseSettings):
     #     "http://ingestion-api:8080",
     #     validation_alias=AliasChoices("REPO1_BASE_URL", "REPO1_URL", "repo1_base_url"),
     # )
-    repo1_base_url: Optional[str] = Field(None, validation_alias=AliasChoices("REPO1_BASE_URL", "REPO1_URL", "repo1_base_url"))
-
+    repo1_base_url: Optional[str] = Field(
+        None, validation_alias=AliasChoices("REPO1_BASE_URL", "REPO1_URL", "repo1_base_url")
+    )
 
     # Nested sections
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
