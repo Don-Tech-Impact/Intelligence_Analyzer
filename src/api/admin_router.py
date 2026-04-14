@@ -30,24 +30,17 @@ router = APIRouter(prefix="/api/admin", tags=["Admin (Service-to-Service)"])
 
 
 # ---------- Auth ----------
-
-
 def _get_admin_key() -> str:
     """Return the admin API key from config."""
     return siem_config.admin_api_key
 
 
-# def _get_repo1_base() -> str:
-#     """Return the base URL of Repo 1."""
-
-#     if hasattr(siem_config, "effective_repo1_url"):
-#         return getattr(siem_config, "effective_repo1_url")
-#     return siem_config.repo1_base_url.rstrip("/")
-
-
 def _get_repo1_base() -> str:
-    base_url = "http://afric-analyzer-api-local:8080"
-    return base_url
+    """Return the base URL of Repo 1."""
+
+    if siem_config.effective_repo1_url:
+        return siem_config.effective_repo1_url.rstrip("/")
+    return siem_config.repo1_base_url.rstrip("/")
 
 
 def verify_admin_key(x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key")) -> str:

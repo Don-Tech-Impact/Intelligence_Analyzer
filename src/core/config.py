@@ -11,13 +11,16 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 # ─── .env loading (same precedence as original) ───────────────────────────────
 _project_root = Path(__file__).parents[2]
 for _env_path in [
-    _project_root / ".env",
-    _project_root / "config" / ".env.production",
+    # _project_root / ".env",
+    # _project_root / "config" / ".env.production",
     _project_root / "config" / ".env.development",
 ]:
     if _env_path.exists():
         load_dotenv(_env_path)
         break
+
+print("DEBUG _env_path used:", _env_path)
+print("DEBUG REPO1_URL from os after load_dotenv:", os.getenv("REPO1_URL"))
 
 
 # ─── Custom YAML settings source ──────────────────────────────────────────────
@@ -114,7 +117,6 @@ class SmtpSettings(BaseModel):
     password: str = ""
     use_tls: bool = True
 
-
 class EmailSettings(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -123,39 +125,32 @@ class EmailSettings(BaseModel):
     from_address: str = Field("siem-alerts@company.com", alias="from")
     to: List[str] = Field(default_factory=lambda: ["security-team@company.com"])
 
-
 class BruteForceSettings(BaseModel):
     threshold: int = 5
     time_window: int = 300
-
 
 class PortScanSettings(BaseModel):
     threshold: int = 10
     time_window: int = 60
 
-
 class DetectionSettings(BaseModel):
     brute_force: BruteForceSettings = Field(default_factory=BruteForceSettings)
     port_scan: PortScanSettings = Field(default_factory=PortScanSettings)
-
 
 class ThreatIntelSettings(BaseModel):
     enabled: bool = True
     update_interval: int = 3600
     feeds: List[Any] = Field(default_factory=list)
 
-
 class ReportingSettings(BaseModel):
     enabled: bool = True
     schedule: str = "0 9 * * *"
     email_to: List[str] = Field(default_factory=lambda: ["reports@company.com"])
 
-
 class WebhookSettings(BaseModel):
     enabled: bool = False
     discord: str = ""
     slack: str = ""
-
 
 class LoggingSettings(BaseModel):
     level: str = "INFO"
@@ -173,19 +168,20 @@ class MultiTenantSettings(BaseModel):
 # ─── Root settings (env vars take priority over YAML) ─────────────────────────
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_nested_delimiter="__",  # REDIS__QUEUE_PATTERN → redis.queue_pattern
+        # env_nested_delimiter="__",  # REDIS__QUEUE_PATTERN → redis.queue_pattern
+        env_file=("config/.env.development", "config/.env.production", ".env"),
+        env_file_encoding="utf-8",  
         populate_by_name=True,
         extra="ignore",
     )
 
-    # Top-level secrets
-    secret_key: str = "fallback-secret-key-for-diagnostic-suffix"
-    admin_api_key: str = "changeme-admin-key"
+    # # Top-level secrets
+    secret_key: Optional[str] = None
+    admin_api_key: Optional[str] = None
     jwt_public_key: Optional[str] = None
-    allowed_origins: str = "http://localhost:3000,http://localhost:8000"
-    allowed_hosts: str = "localhost,127.0.0.1,testserver"
+    allowed_origins: Optional[str] = None
+    allowed_hosts: Optional[str] = None
     repo1_url: Optional[str] = None
-    repo1_base_url: str = "http://ingestion-api:8080"
 
     # Nested sections
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
@@ -214,18 +210,24 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def parsed_allowed_origins(self) -> List[str]:
+        if not self.allowed_origins:
+            return []
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
 
     @computed_field
     @property
     def parsed_allowed_hosts(self) -> List[str]:
+        if not self.allowed_hosts:
+            return []
         return [h.strip() for h in self.allowed_hosts.split(",") if h.strip()]
 
     @computed_field
     @property
     def effective_repo1_url(self) -> str:
-        """Returns the fully qualified URL for Repo 1 based on environment."""
-        return str(self.repo1_url or self.repo1_base_url).strip().rstrip("/")
+        base = os.getenv("REPO1_URL")
+        if not base:
+            raise ValueError("REPO1_URL is not set")
+        return str(base).strip().rstrip("/")
 
     # ── Backward-compatible shortcuts (keeps all original call sites working) ─
     @property
