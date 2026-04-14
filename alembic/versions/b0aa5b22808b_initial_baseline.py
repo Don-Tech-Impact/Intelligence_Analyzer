@@ -41,18 +41,17 @@ def upgrade() -> None:
     sa.Column('resolved_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
-
-    op.create_index('idx_alerts_source_ip', 'alerts', ['source_ip', 'created_at'], unique=False)
-    op.create_index('idx_alerts_tenant_severity', 'alerts', ['tenant_id', 'severity', 'created_at'], unique=False)
-    op.create_index('idx_alerts_tenant_status', 'alerts', ['tenant_id', 'status', 'created_at'], unique=False)
-    op.create_index(op.f('ix_alerts_alert_type'), 'alerts', ['alert_type'], unique=False)
-    op.create_index(op.f('ix_alerts_company_id'), 'alerts', ['company_id'], unique=False)
-    op.create_index(op.f('ix_alerts_created_at'), 'alerts', ['created_at'], unique=False)
-    op.create_index(op.f('ix_alerts_device_id'), 'alerts', ['device_id'], unique=False)
-    op.create_index(op.f('ix_alerts_severity'), 'alerts', ['severity'], unique=False)
-    op.create_index(op.f('ix_alerts_source_ip'), 'alerts', ['source_ip'], unique=False)
-    op.create_index(op.f('ix_alerts_status'), 'alerts', ['status'], unique=False)
-    op.create_index(op.f('ix_alerts_tenant_id'), 'alerts', ['tenant_id'], unique=False)
+        op.create_index('idx_alerts_source_ip', 'alerts', ['source_ip', 'created_at'], unique=False)
+        op.create_index('idx_alerts_tenant_severity', 'alerts', ['tenant_id', 'severity', 'created_at'], unique=False)
+        op.create_index('idx_alerts_tenant_status', 'alerts', ['tenant_id', 'status', 'created_at'], unique=False)
+        op.create_index(op.f('ix_alerts_alert_type'), 'alerts', ['alert_type'], unique=False)
+        op.create_index(op.f('ix_alerts_company_id'), 'alerts', ['company_id'], unique=False)
+        op.create_index(op.f('ix_alerts_created_at'), 'alerts', ['created_at'], unique=False)
+        op.create_index(op.f('ix_alerts_device_id'), 'alerts', ['device_id'], unique=False)
+        op.create_index(op.f('ix_alerts_severity'), 'alerts', ['severity'], unique=False)
+        op.create_index(op.f('ix_alerts_source_ip'), 'alerts', ['source_ip'], unique=False)
+        op.create_index(op.f('ix_alerts_status'), 'alerts', ['status'], unique=False)
+        op.create_index(op.f('ix_alerts_tenant_id'), 'alerts', ['tenant_id'], unique=False)
 
     if 'dead_letters' not in existing_tables:
         op.create_table('dead_letters',
@@ -67,10 +66,10 @@ def upgrade() -> None:
     sa.Column('last_retry_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index('idx_dead_letters_error_type', 'dead_letters', ['error_type', 'received_at'], unique=False)
-    op.create_index('idx_dead_letters_tenant_received', 'dead_letters', ['tenant_id', 'received_at'], unique=False)
-    op.create_index(op.f('ix_dead_letters_received_at'), 'dead_letters', ['received_at'], unique=False)
-    op.create_index(op.f('ix_dead_letters_tenant_id'), 'dead_letters', ['tenant_id'], unique=False)
+        op.create_index('idx_dead_letters_error_type', 'dead_letters', ['error_type', 'received_at'], unique=False)
+        op.create_index('idx_dead_letters_tenant_received', 'dead_letters', ['tenant_id', 'received_at'], unique=False)
+        op.create_index(op.f('ix_dead_letters_received_at'), 'dead_letters', ['received_at'], unique=False)
+        op.create_index(op.f('ix_dead_letters_tenant_id'), 'dead_letters', ['tenant_id'], unique=False)
     if 'logs' not in existing_tables:
         op.create_table('logs',
     sa.Column('id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), autoincrement=True, nullable=False),
@@ -94,21 +93,21 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index('idx_logs_dest_ip_timestamp', 'logs', ['destination_ip', 'timestamp'], unique=False)
-    op.create_index('idx_logs_source_ip_timestamp', 'logs', ['source_ip', 'timestamp'], unique=False)
-    op.create_index('idx_logs_tenant_severity', 'logs', ['tenant_id', 'severity', 'timestamp'], unique=False)
-    op.create_index('idx_logs_tenant_timestamp', 'logs', ['tenant_id', 'timestamp'], unique=False)
-    op.create_index('idx_logs_type_tenant', 'logs', ['log_type', 'tenant_id'], unique=False)
-    op.create_index(op.f('ix_logs_company_id'), 'logs', ['company_id'], unique=False)
-    op.create_index(op.f('ix_logs_destination_ip'), 'logs', ['destination_ip'], unique=False)
-    op.create_index(op.f('ix_logs_device_hostname'), 'logs', ['device_hostname'], unique=False)
-    op.create_index(op.f('ix_logs_device_id'), 'logs', ['device_id'], unique=False)
-    op.create_index(op.f('ix_logs_log_type'), 'logs', ['log_type'], unique=False)
-    op.create_index(op.f('ix_logs_severity'), 'logs', ['severity'], unique=False)
-    op.create_index(op.f('ix_logs_source_ip'), 'logs', ['source_ip'], unique=False)
-    op.create_index(op.f('ix_logs_tenant_id'), 'logs', ['tenant_id'], unique=False)
-    op.create_index(op.f('ix_logs_timestamp'), 'logs', ['timestamp'], unique=False)
-    op.create_index(op.f('ix_logs_vendor'), 'logs', ['vendor'], unique=False)
+        op.create_index('idx_logs_dest_ip_timestamp', 'logs', ['destination_ip', 'timestamp'], unique=False)
+        op.create_index('idx_logs_source_ip_timestamp', 'logs', ['source_ip', 'timestamp'], unique=False)
+        op.create_index('idx_logs_tenant_severity', 'logs', ['tenant_id', 'severity', 'timestamp'], unique=False)
+        op.create_index('idx_logs_tenant_timestamp', 'logs', ['tenant_id', 'timestamp'], unique=False)
+        op.create_index('idx_logs_type_tenant', 'logs', ['log_type', 'tenant_id'], unique=False)
+        op.create_index(op.f('ix_logs_company_id'), 'logs', ['company_id'], unique=False)
+        op.create_index(op.f('ix_logs_destination_ip'), 'logs', ['destination_ip'], unique=False)
+        op.create_index(op.f('ix_logs_device_hostname'), 'logs', ['device_hostname'], unique=False)
+        op.create_index(op.f('ix_logs_device_id'), 'logs', ['device_id'], unique=False)
+        op.create_index(op.f('ix_logs_log_type'), 'logs', ['log_type'], unique=False)
+        op.create_index(op.f('ix_logs_severity'), 'logs', ['severity'], unique=False)
+        op.create_index(op.f('ix_logs_source_ip'), 'logs', ['source_ip'], unique=False)
+        op.create_index(op.f('ix_logs_tenant_id'), 'logs', ['tenant_id'], unique=False)
+        op.create_index(op.f('ix_logs_timestamp'), 'logs', ['timestamp'], unique=False)
+        op.create_index(op.f('ix_logs_vendor'), 'logs', ['vendor'], unique=False)
     if 'managed_devices' not in existing_tables:
         op.create_table('managed_devices',
     sa.Column('id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), autoincrement=True, nullable=False),
@@ -124,11 +123,11 @@ def upgrade() -> None:
     sa.Column('last_log_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index('idx_managed_dev_tenant_id_corr', 'managed_devices', ['tenant_id', 'device_id'], unique=False)
-    op.create_index('idx_managed_dev_tenant_ip', 'managed_devices', ['tenant_id', 'ip_address'], unique=False)
-    op.create_index(op.f('ix_managed_devices_device_id'), 'managed_devices', ['device_id'], unique=False)
-    op.create_index(op.f('ix_managed_devices_ip_address'), 'managed_devices', ['ip_address'], unique=False)
-    op.create_index(op.f('ix_managed_devices_tenant_id'), 'managed_devices', ['tenant_id'], unique=False)
+        op.create_index('idx_managed_dev_tenant_id_corr', 'managed_devices', ['tenant_id', 'device_id'], unique=False)
+        op.create_index('idx_managed_dev_tenant_ip', 'managed_devices', ['tenant_id', 'ip_address'], unique=False)
+        op.create_index(op.f('ix_managed_devices_device_id'), 'managed_devices', ['device_id'], unique=False)
+        op.create_index(op.f('ix_managed_devices_ip_address'), 'managed_devices', ['ip_address'], unique=False)
+        op.create_index(op.f('ix_managed_devices_tenant_id'), 'managed_devices', ['tenant_id'], unique=False)
     if 'reports' not in existing_tables:
         op.create_table('reports',
     sa.Column('id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), autoincrement=True, nullable=False),
@@ -147,8 +146,8 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_reports_created_at'), 'reports', ['created_at'], unique=False)
-    op.create_index(op.f('ix_reports_tenant_id'), 'reports', ['tenant_id'], unique=False)
+        op.create_index(op.f('ix_reports_created_at'), 'reports', ['created_at'], unique=False)
+        op.create_index(op.f('ix_reports_tenant_id'), 'reports', ['tenant_id'], unique=False)
     if 'tenants' not in existing_tables:
         op.create_table('tenants',
     sa.Column('id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), autoincrement=True, nullable=False),
@@ -161,8 +160,8 @@ def upgrade() -> None:
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_tenants_is_active'), 'tenants', ['is_active'], unique=False)
-    op.create_index(op.f('ix_tenants_tenant_id'), 'tenants', ['tenant_id'], unique=True)
+        op.create_index(op.f('ix_tenants_is_active'), 'tenants', ['is_active'], unique=False)
+        op.create_index(op.f('ix_tenants_tenant_id'), 'tenants', ['tenant_id'], unique=True)
     if 'threat_intelligence' not in existing_tables:
         op.create_table('threat_intelligence',
     sa.Column('id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), autoincrement=True, nullable=False),
@@ -179,10 +178,10 @@ def upgrade() -> None:
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index('idx_threat_intel_active', 'threat_intelligence', ['indicator_type', 'indicator_value', 'is_active'], unique=False)
-    op.create_index(op.f('ix_threat_intelligence_indicator_type'), 'threat_intelligence', ['indicator_type'], unique=False)
-    op.create_index(op.f('ix_threat_intelligence_indicator_value'), 'threat_intelligence', ['indicator_value'], unique=True)
-    op.create_index(op.f('ix_threat_intelligence_is_active'), 'threat_intelligence', ['is_active'], unique=False)
+        op.create_index('idx_threat_intel_active', 'threat_intelligence', ['indicator_type', 'indicator_value', 'is_active'], unique=False)
+        op.create_index(op.f('ix_threat_intelligence_indicator_type'), 'threat_intelligence', ['indicator_type'], unique=False)
+        op.create_index(op.f('ix_threat_intelligence_indicator_value'), 'threat_intelligence', ['indicator_value'], unique=True)
+        op.create_index(op.f('ix_threat_intelligence_is_active'), 'threat_intelligence', ['is_active'], unique=False)
     if 'users' not in existing_tables:
         op.create_table('users',
     sa.Column('id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), autoincrement=True, nullable=False),
@@ -199,10 +198,10 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('email')
     )
-    op.create_index(op.f('ix_users_is_superadmin'), 'users', ['is_superadmin'], unique=False)
-    op.create_index(op.f('ix_users_role'), 'users', ['role'], unique=False)
-    op.create_index(op.f('ix_users_tenant_id'), 'users', ['tenant_id'], unique=False)
-    op.create_index(op.f('ix_users_username'), 'users', ['username'], unique=True)
+        op.create_index(op.f('ix_users_is_superadmin'), 'users', ['is_superadmin'], unique=False)
+        op.create_index(op.f('ix_users_role'), 'users', ['role'], unique=False)
+        op.create_index(op.f('ix_users_tenant_id'), 'users', ['tenant_id'], unique=False)
+        op.create_index(op.f('ix_users_username'), 'users', ['username'], unique=True)
     # ### end Alembic commands ###
 
 
