@@ -562,8 +562,7 @@ async def proxy_login(request: Request, payload: dict, response: Response):
     Proxy login request to Repo 1 to bypass browser CORS issues.
     Relays the status code and JSON body from Repo 1.
     """
-    # repo1_base = _get_repo1_base()
-    repo1_base = "http://afric-analyzer-api-local:8080"
+    repo1_base = _get_repo1_base()
 
     # Smart Routing: Check if this is an Admin (email) or Tenant (username) login
     if "username" in payload and "email" not in payload:

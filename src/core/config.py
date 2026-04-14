@@ -8,21 +8,28 @@ from dotenv import load_dotenv
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, computed_field
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
-# ─── .env loading (same precedence as original) ───────────────────────────────
+# ─── .env loading (environment-aware) ─────────────────────────────────────────
 _project_root = Path(__file__).parents[2]
-for _env_path in [
-    # _project_root / ".env",
-    # _project_root / "config" / ".env.production",
-    _project_root
-    / "config"
-    / ".env.development",
-]:
-    if _env_path.exists():
-        load_dotenv(_env_path)
+_app_env = os.getenv("APP_ENV", "development").strip().lower()
+
+# Resolve env file: APP_ENV=production → .env.production, else → .env.development
+_env_candidates = [
+    _project_root / "config" / f".env.{_app_env}",  # e.g. .env.production
+    _project_root / "config" / ".env.development",  # fallback for local dev
+    _project_root / ".env",  # last resort project root
+]
+
+_env_path = None
+for _candidate in _env_candidates:
+    if _candidate.exists():
+        load_dotenv(_candidate, override=False)  # override=False: real env vars win
+        _env_path = _candidate
         break
 
-print("DEBUG _env_path used:", _env_path)
-print("DEBUG REPO1_URL from os after load_dotenv:", os.getenv("REPO1_URL"))
+if _env_path:
+    print(f"INFO  Config env file loaded: {_env_path}")
+else:
+    print("WARNING  No .env file found — relying on system environment variables only")
 
 
 # ─── Custom YAML settings source ──────────────────────────────────────────────

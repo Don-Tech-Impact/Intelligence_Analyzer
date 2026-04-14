@@ -53,6 +53,8 @@ services:
     ports:
       - "127.0.0.1:8000:8000" # Bridged via Cloudflare Tunnel internally
       - "127.0.0.1:9091:9091" # Metrics
+    environment:
+      APP_ENV: production  # Tells config.py to load .env.production, not .env.development
     env_file:
       - ./config/.env.production
     volumes:

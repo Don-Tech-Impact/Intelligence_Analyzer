@@ -4,7 +4,6 @@ import logging
 import os
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
-
 import httpx
 import redis
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -842,8 +841,6 @@ def download_report(report_id: int, tenant_id: str = Depends(get_tenant_id), db:
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    import os
-
     if not os.path.exists(report.file_path):
         raise HTTPException(status_code=404, detail="Report file missing on server")
 
@@ -858,8 +855,6 @@ def get_report_content(report_id: int, tenant_id: str = Depends(get_tenant_id), 
     report = db.query(Report).filter(Report.id == report_id, Report.tenant_id == tenant_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
-
-    import os
 
     if not os.path.exists(report.file_path):
         raise HTTPException(status_code=404, detail="Report file missing on server")
@@ -934,8 +929,8 @@ async def update_tenant_metadata(request: Request, tenant_id: str = Depends(get_
     Proxies metadata updates (Compliance, Incident Response, Onboarding)
     from the dashboard directly to Repo 1's deep merge endpoint.
     """
-    repo1_url = os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080"
-    admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_KEY") or "changeme-admin-key"
+    repo1_url = (siem_config.repo1_base_url or "").rstrip("/")
+    admin_key = siem_config.admin_api_key or ""
 
     try:
         body = await request.json()
@@ -964,8 +959,8 @@ async def get_tenant_metadata(tenant_id: str = Depends(get_tenant_id)):
     Proxies a request to Repo 1 to fetch the tenant's current settings/metadata.
     """
     # Use verified paths from Repo 1 Swagger: /admin/tenants/{tid}
-    repo1_url = (os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080").rstrip("/")
-    admin_key = os.getenv("ADMIN_KEY") or os.getenv("ADMIN_KEY") or "changeme-admin-key"
+    repo1_url = (siem_config.repo1_base_url or "").rstrip("/")
+    admin_key = siem_config.admin_api_key or ""
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
