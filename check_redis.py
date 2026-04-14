@@ -13,7 +13,7 @@ def __get_Admin() -> str:
     return config.admin_api_key
 
 def _get_repo1_base() -> str:
-    return config.effective_repo1_url
+    return config.repo1_base_url
 
 if __name__ == "__main__":
     print(_get_repo1_base())    

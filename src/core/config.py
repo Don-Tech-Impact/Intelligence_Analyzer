@@ -185,6 +185,13 @@ class Settings(BaseSettings):
     allowed_origins: Optional[str] = None
     allowed_hosts: Optional[str] = None
     repo1_url: Optional[str] = None
+    # repo1_base_url kept as a backward-compatible alias — many routes call siem_config.repo1_base_url
+    # repo1_base_url: str = Field(
+    #     "http://ingestion-api:8080",
+    #     validation_alias=AliasChoices("REPO1_BASE_URL", "REPO1_URL", "repo1_base_url"),
+    # )
+    repo1_base_url: Optional[str] = Field(None, validation_alias=AliasChoices("REPO1_BASE_URL", "REPO1_URL", "repo1_base_url"))
+
 
     # Nested sections
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
