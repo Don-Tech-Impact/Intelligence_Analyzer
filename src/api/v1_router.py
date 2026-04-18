@@ -533,10 +533,17 @@ def list_managed_devices(tenant_id: str = Depends(get_tenant_id), db: Session = 
     """List all formally registered devices for this tenant."""
     devices = db.query(ManagedDevice).filter(ManagedDevice.tenant_id == tenant_id).all()
     results = []
-    now = datetime.utcnow()
+    # Use timezone-aware now — PostgreSQL returns aware datetimes (UTC).
+    # datetime.utcnow() is naive and causes TypeError when subtracted from aware.
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
     for d in devices:
         dict_d = d.to_dict()
-        is_online = d.last_log_at and (now - d.last_log_at) < timedelta(minutes=10)
+        last_log = d.last_log_at
+        # Normalise: if DB returned a naive datetime, treat it as UTC
+        if last_log and last_log.tzinfo is None:
+            last_log = last_log.replace(tzinfo=timezone.utc)
+        is_online = last_log and (now - last_log) < timedelta(minutes=10)
         dict_d["is_online"] = bool(is_online)
         results.append(dict_d)
     return ApiResponse(status="success", data=results)
@@ -855,6 +862,8 @@ def get_report_content(report_id: int, tenant_id: str = Depends(get_tenant_id), 
     report = db.query(Report).filter(Report.id == report_id, Report.tenant_id == tenant_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+
+    import os
 
     if not os.path.exists(report.file_path):
         raise HTTPException(status_code=404, detail="Report file missing on server")

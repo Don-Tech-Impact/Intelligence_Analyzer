@@ -661,8 +661,24 @@ function renderStreamLogs(logs) {
         const device = log.device_id || log.device_hostname || log.log_type || '-';
         const info = log.message || log.raw_log || 'No additional info';
 
+        // Dead-recovered logs: full red row with pulsing badge
+        const isDeadThreat = log.log_type === 'dead_recovered' ||
+            (log.business_context && log.business_context.is_dead_recovery);
+
+        const rowClass = isDeadThreat
+            ? `stream-row dead-threat severity-critical`
+            : `stream-row protocol-${proto.toLowerCase()} action-${action} severity-${sev}`;
+
+        const deadBadge = isDeadThreat
+            ? `<span class="dead-threat-badge" title="Intercepted from dead queue — Repo 1 could not resolve this tenant">⚠ DEAD THREAT</span> `
+            : '';
+
+        const infoCellContent = isDeadThreat
+            ? `${deadBadge}<span style="color:#ff5630;font-weight:600;">${escapeHtml(info)}</span>`
+            : escapeHtml(info);
+
         return `
-        <tr class="stream-row protocol-${proto.toLowerCase()} action-${action} severity-${sev}" data-index="${index}">
+        <tr class="${rowClass}" data-index="${index}">
             <td class="col-time">${timestamp}</td>
             <td class="col-src">${escapeHtml(src)}</td>
             <td class="col-dest">${escapeHtml(dest)}</td>
@@ -670,7 +686,7 @@ function renderStreamLogs(logs) {
             <td class="col-vendor">${escapeHtml(vendor)}</td>
             <td class="col-device">${escapeHtml(device)}</td>
             <td class="col-action"><span class="action-badge">${escapeHtml(action)}</span></td>
-            <td class="col-info">${escapeHtml(info)}</td>
+            <td class="col-info">${infoCellContent}</td>
         </tr>`;
     }).join('');
 
@@ -682,6 +698,7 @@ function renderStreamLogs(logs) {
         };
     });
 }
+
 
 function detectProtocol(log) {
     const msg = (log.message || log.raw_log || '').toLowerCase();
@@ -1055,7 +1072,7 @@ function populateTable(tbodyId, alerts, mode) {
             <td data-label="Time">${formatTime(a.created_at || a.timestamp)}</td>
             <td data-label="Type">${escapeHtml(a.alert_type || a.type || '')}</td>
             <td data-label="Source"><span class="mono">${escapeHtml(a.source_ip || '')}</span></td>
-            <td data-label="Device"><span class="badge" style="background:rgba(148,163,184,0.1); color:var(--text);">${escapeHtml(a.device_id || 'Unknown')}</span></td>
+            <td data-label="Device"><span class="badge" style="background:rgba(148,163,184,0.1); color:var(--text);">${escapeHtml(a.device_id || a.source_ip || 'Unknown')}</span></td>
             <td data-label="Severity"><span class="badge badge-${sev}">${sev}</span></td>
             ${mode === 'full' ? `<td data-label="Description">${escapeHtml(a.description || '')}</td>` : ''}
             <td data-label="Status"><span class="badge-status ${a.status || 'open'}">${a.status || 'open'}</span></td>

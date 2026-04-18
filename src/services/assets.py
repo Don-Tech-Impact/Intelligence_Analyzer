@@ -1,7 +1,7 @@
 """V1 Asset Service for device inventory management."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import String, cast, desc, func
@@ -239,7 +239,7 @@ class AssetService:
             type_counts[asset_type] = type_counts.get(asset_type, 0) + v.total_count
 
         # Assets with threats (last 24h)
-        last_24h = datetime.utcnow() - timedelta(hours=24)
+        last_24h = datetime.now(timezone.utc) - timedelta(hours=24)
         assets_with_threats = (
             db.query(func.count(func.distinct(NormalizedLog.device_id)))
             .filter(

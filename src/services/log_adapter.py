@@ -136,21 +136,35 @@ class LogAdapter:
         device_type = metadata.get("device_type", "unknown")
         vendor = LogAdapter._map_device_type_to_vendor(device_type)
 
-        # Determine severity from raw level or metadata
-        raw_level = log.get("level") or metadata.get("severity") or "info"
-        severity = str(raw_level).lower()
-        if severity not in ["low", "medium", "high", "critical", "info", "warning", "error"]:
-            severity = "info"
-
         # Attempt to extract networking fields from raw message
         message = log.get("raw_log", "")
         network = LogAdapter._parse_network_fields(message)
+
+        # ── Content-aware severity & action ──────────────────────────────────
+        # Try to classify the log from syslog CONTENT first (most accurate).
+        # Fall back to the generic level field only if content gives nothing.
+        syslog_class = LogAdapter._parse_syslog_auth(message)
+        if syslog_class["severity"]:
+            severity = syslog_class["severity"]
+        else:
+            raw_level = (log.get("level") or metadata.get("severity") or "info").lower()
+            severity = raw_level if raw_level in ["low", "medium", "high", "critical"] else "low"
+
+        action = (
+            syslog_class["action"]
+            or network.get("action")
+            or ("deny" if "BLOCK" in message.upper() or "DENIED" in message.upper() else None)
+        )
+
+        log_type = (
+            syslog_class["log_type"]
+            or ("firewall" if "firewall" in device_type.lower() or "UFW" in message.upper() else "raw_ingest")
+        )
 
         device_hostname = metadata.get("device_name") or metadata.get("hostname")
 
         # Ultimate Fallback: Scrape the raw message for anything that looks like a hostname
         if (not device_hostname or device_hostname == "unknown") and message:
-            # Look for common host patterns or specifically 'LOCAL-TEST-DEVICE' mentioned by user
             if "LOCAL-TEST-DEVICE" in message.upper():
                 device_hostname = "LOCAL-TEST-DEVICE"
             else:
@@ -171,14 +185,14 @@ class LogAdapter:
             source_port=network.get("source_port"),
             destination_port=network.get("destination_port"),
             protocol=network.get("protocol"),
-            action=network.get("action") or ("blocked" if "BLOCK" in message.upper() else None),
-            log_type="firewall" if "firewall" in device_type.lower() or "UFW" in message.upper() else "raw_ingest",
+            action=action,
+            log_type=log_type,
             vendor=vendor,
             device_hostname=device_hostname,
             severity=severity,
             message=message,
             raw_data=log,
-            business_context={},
+            business_context=syslog_class.get("business_context", {}),
         )
 
     @staticmethod
@@ -339,6 +353,125 @@ class LogAdapter:
             severity="low",
             log_type="error",
         )
+
+    @staticmethod
+    def _parse_syslog_auth(message: str) -> Dict[str, Any]:
+        """
+        Classify common Linux auth/syslog messages into severity, action, and log_type.
+
+        This is the primary mechanism for turning "level: info" logs into
+        meaningful threat signals. Content beats the generic level field.
+
+        Returns dict with keys: severity, action, log_type, business_context
+        """
+        result: Dict[str, Any] = {
+            "severity": None, "action": None, "log_type": None, "business_context": {}
+        }
+        if not message or not isinstance(message, str):
+            return result
+
+        msg_upper = message.upper()
+
+        # ── SSH / SSHD ────────────────────────────────────────────────────────
+        if "SSHD" in msg_upper or "SSH2" in msg_upper:
+            if "FAILED PASSWORD" in msg_upper or "FAILED PUBLICKEY" in msg_upper or "AUTHENTICATION FAILURE" in msg_upper:
+                result["severity"] = "high"
+                result["action"] = "deny"
+                result["log_type"] = "auth_failure"
+                result["business_context"] = {"threat_category": "brute_force_candidate"}
+                return result
+            if "INVALID USER" in msg_upper or "ILLEGAL USER" in msg_upper:
+                result["severity"] = "high"
+                result["action"] = "deny"
+                result["log_type"] = "auth_failure"
+                result["business_context"] = {"threat_category": "invalid_user"}
+                return result
+            if "ACCEPTED PASSWORD" in msg_upper or "ACCEPTED PUBLICKEY" in msg_upper:
+                # Accepted root login is higher risk
+                if " ROOT " in msg_upper or "FOR ROOT" in msg_upper:
+                    result["severity"] = "high"
+                    result["business_context"] = {"threat_category": "root_login"}
+                else:
+                    result["severity"] = "medium"
+                result["action"] = "allow"
+                result["log_type"] = "auth_success"
+                return result
+            if "DISCONNECTED" in msg_upper or "CONNECTION CLOSED" in msg_upper:
+                result["severity"] = "low"
+                result["action"] = "allow"
+                result["log_type"] = "auth_session"
+                return result
+            if "SERVER LISTENING" in msg_upper or "RESTARTING" in msg_upper or "SIGHUP" in msg_upper:
+                result["severity"] = "low"
+                result["action"] = "allow"
+                result["log_type"] = "service_event"
+                return result
+
+        # ── SUDO ─────────────────────────────────────────────────────────────
+        if "SUDO:" in msg_upper or " SUDO " in msg_upper:
+            if "FAILED" in msg_upper or "AUTHENTICATION FAILURE" in msg_upper:
+                result["severity"] = "high"
+                result["action"] = "deny"
+                result["log_type"] = "priv_escalation"
+                result["business_context"] = {"threat_category": "sudo_failure"}
+                return result
+            # Dangerous sudo commands
+            dangerous = ["/ETC/SHADOW", "/BIN/BASH", "/BIN/SH", "CHMOD 777",
+                        "USERADD -O", "CHPASSWD", "VISUDO", "/BIN/SU -"]
+            if any(d in msg_upper for d in dangerous):
+                result["severity"] = "critical"
+                result["action"] = "allow"
+                result["log_type"] = "priv_escalation"
+                result["business_context"] = {"threat_category": "dangerous_sudo"}
+                return result
+            result["severity"] = "medium"
+            result["action"] = "allow"
+            result["log_type"] = "priv_escalation"
+            result["business_context"] = {"threat_category": "sudo_usage"}
+            return result
+
+        # ── SU (switch user) ─────────────────────────────────────────────────
+        if "FAILED SU" in msg_upper or "SU[" in msg_upper:
+            if "FAILED" in msg_upper:
+                result["severity"] = "high"
+                result["action"] = "deny"
+                result["log_type"] = "priv_escalation"
+                result["business_context"] = {"threat_category": "su_failure"}
+            else:
+                result["severity"] = "medium"
+                result["action"] = "allow"
+                result["log_type"] = "priv_escalation"
+            return result
+
+        # ── User / Group Management ───────────────────────────────────────────
+        if any(k in msg_upper for k in ["USERADD", "USERDEL", "USERMOD", "GROUPADD", "GROUPDEL", "PASSWD["]):
+            result["severity"] = "high"
+            result["action"] = "allow"
+            result["log_type"] = "user_management"
+            result["business_context"] = {"threat_category": "account_change"}
+            return result
+
+        # ── Systemd / Service events ──────────────────────────────────────────
+        if "SYSTEMD" in msg_upper or "SYSTEMCTL" in msg_upper:
+            result["severity"] = "low"
+            result["action"] = "allow"
+            result["log_type"] = "service_event"
+            return result
+
+        # ── PAM / Auth framework ──────────────────────────────────────────────
+        if "PAM_UNIX" in msg_upper or "PAM:" in msg_upper:
+            if "AUTHENTICATION FAILURE" in msg_upper:
+                result["severity"] = "high"
+                result["action"] = "deny"
+                result["log_type"] = "auth_failure"
+                return result
+            result["severity"] = "low"
+            result["action"] = "allow"
+            result["log_type"] = "auth_session"
+            return result
+
+        # No pattern matched — caller will fall back to level field
+        return result
 
     @staticmethod
     def _parse_network_fields(message: str) -> Dict[str, Any]:

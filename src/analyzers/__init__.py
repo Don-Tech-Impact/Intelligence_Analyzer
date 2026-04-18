@@ -59,6 +59,8 @@ from src.analyzers.brute_force import BruteForceAnalyzer
 from src.analyzers.payload_analysis import PayloadAnalysisAnalyzer, PayloadAnalyzer
 from src.analyzers.port_scan import PortScanAnalyzer
 from src.analyzers.threat_intel import ThreatIntelAnalyzer
+from src.analyzers.privilege_escalation import PrivilegeEscalationAnalyzer
+from src.analyzers.account_management import AccountManagementAnalyzer
 
 # Get shared Redis for all analyzers
 _redis = get_shared_redis()
@@ -68,8 +70,10 @@ _analyzers = [
     BruteForceAnalyzer(redis_client=_redis),
     PortScanAnalyzer(redis_client=_redis),
     BeaconingAnalyzer(redis_client=_redis),
-    PayloadAnalysisAnalyzer(),  # No Redis needed (pure regex)
-    ThreatIntelAnalyzer(),
+    PayloadAnalysisAnalyzer(),         # No Redis needed (pure regex)
+    ThreatIntelAnalyzer(),             # No Redis needed
+    PrivilegeEscalationAnalyzer(),     # No Redis needed (per-event)
+    AccountManagementAnalyzer(),       # No Redis needed (per-event)
 ]
 
 # Register all analyzers
@@ -88,5 +92,7 @@ __all__ = [
     "PayloadAnalysisAnalyzer",
     "PayloadAnalyzer",
     "ThreatIntelAnalyzer",
+    "PrivilegeEscalationAnalyzer",
+    "AccountManagementAnalyzer",
     "get_shared_redis",
 ]

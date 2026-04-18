@@ -89,6 +89,8 @@ services:
     restart: unless-stopped
     user: "1000:1000"
     command: [ "python", "-m", "src.services.redis_consumer" ]
+    environment:
+      APP_ENV: production
     env_file:
       - ./config/.env.production
     volumes:

@@ -277,17 +277,21 @@ class RedisConsumer:
             }
         )
 
-        # 2. NEW: Try to extract intelligence from raw_log
+        # 2. Recover intelligence from raw_log AND immediately raise a threat alert.
+        #    Dead logs represent real security events that Repo 1 failed to process.
+        #    They MUST appear highlighted in the live stream and surface in the Threats section.
         raw_log = log_data.get("raw_log", "")
         if raw_log and isinstance(raw_log, str) and len(raw_log) > 5:
             try:
-                # Wrap as v1 schema so LogAdapter can parse the raw syslog
+                # Wrap as v1 schema so LogAdapter can parse the raw syslog.
+                # We do NOT force level:"critical" here — we let the LogAdapter
+                # infer severity from the actual log CONTENT (SSH brute force,
+                # sudo escalation, accepted login, etc.)
                 v1_wrapper = {
                     "schema_version": "v1",
                     "tenant_id": tenant_id,
                     "raw_log": raw_log,
                     "timestamp": failed_at,
-                    "level": "info",
                     "metadata": {
                         "device_type": log_data.get("vendor") or "unknown",
                         "source_ip": (log_data.get("source_info") or {}).get("source_ip"),
@@ -295,8 +299,28 @@ class RedisConsumer:
                 }
                 normalized = self.log_adapter.normalize(v1_wrapper)
 
-                # Boost confidence if we managed to map to a known vendor
-                recovery_confidence = 0.7 if normalized.vendor and normalized.vendor != "unknown" else 0.4
+                # ── Severity: content-driven with a minimum floor ──────────────
+                # The LogAdapter reads the actual log content to set severity.
+                # Dead queue = always suspicious, so we enforce a minimum floor:
+                #   "low"  → elevated to "medium"  (suspicious context)
+                #   "medium"/"high"/"critical" → kept as-is (content-driven)
+                # This means:
+                #   "Accepted publickey for admin" → medium  (unusual but not critical)
+                #   "Failed password for root x5" → high/critical (brute force)
+                #   "COMMAND=/bin/cat /etc/shadow" → high   (priv escalation)
+                SEVERITY_FLOOR = "medium"
+                SEVERITY_ORDER = ["low", "medium", "high", "critical"]
+                raw_severity = (normalized.severity or "low").lower()
+                effective_severity = (
+                    raw_severity
+                    if SEVERITY_ORDER.index(raw_severity) >= SEVERITY_ORDER.index(SEVERITY_FLOOR)
+                    else SEVERITY_FLOOR
+                )
+
+                # Dead logs are high-confidence because the raw security data is real;
+                # the failure was a Repo 1 tenant config issue, not a data quality issue.
+                # Confidence 0.9 ensures _run_analysis_on_batch does NOT downgrade alerts.
+                DEAD_LOG_CONFIDENCE = 0.9
 
                 log_dict = {
                     "tenant_id": normalized.tenant_id,
@@ -307,26 +331,78 @@ class RedisConsumer:
                     "destination_port": normalized.destination_port,
                     "protocol": normalized.protocol,
                     "action": normalized.action,
-                    "log_type": normalized.log_type if normalized.log_type != "raw_ingest" else "dead_recovered",
+                    # Always mark as dead_recovered — frontend uses this for the red badge
+                    "log_type": "dead_recovered",
                     "vendor": normalized.vendor,
                     "device_id": normalized.device_id,
                     "device_hostname": normalized.device_hostname,
-                    "severity": normalized.severity or "medium",  # Allow normalized severity
+                    # Content-driven severity with minimum floor (never "low" from dead queue)
+                    "severity": effective_severity,
                     "message": normalized.message,
                     "raw_data": normalized.raw_data,
                     "business_context": {
                         **(normalized.business_context or {}),
-                        "confidence": recovery_confidence,
+                        "confidence": DEAD_LOG_CONFIDENCE,
                         "source_queue": "dead",
                         "original_error": log_data.get("error_type"),
+                        "error_message": log_data.get("error_message", ""),
                         "recovered_at": datetime.utcnow().isoformat(),
+                        "raw_severity": raw_severity,       # Original normalizer output
+                        "effective_severity": effective_severity,  # After floor applied
+                        # Flag so the live stream renders the DEAD THREAT badge
+                        "is_dead_recovery": True,
                     },
                     "created_at": datetime.utcnow(),
                 }
-                self.batch_clean.append(log_dict)  # Enters analysis pipeline
-                logger.info(
-                    f"Dead log recovered with {recovery_confidence} confidence: {tenant_id} ({normalized.vendor})"
+                self.batch_clean.append(log_dict)
+
+                # ── Immediate alert: only for medium+ severity ─────────────────
+                # "Accepted publickey" → medium → alert created (unusual, flag it)
+                # "Failed password x5" → high   → alert created (brute force)
+                # Future low-sev dead logs → no alert (just stored + badge in stream)
+                ALERT_THRESHOLD = "medium"
+                if SEVERITY_ORDER.index(effective_severity) >= SEVERITY_ORDER.index(ALERT_THRESHOLD):
+                    try:
+                        source_ip = normalized.source_ip or (log_data.get("source_info") or {}).get("source_ip")
+                        description = (
+                            f"[DEAD QUEUE THREAT — {effective_severity.upper()}] "
+                            f"Tenant '{tenant_id}' has no Repo 1 configuration. "
+                            f"Event: {(normalized.message or raw_log)[:300]}"
+                        )
+                        dead_alert = Alert(
+                            tenant_id=tenant_id,
+                            alert_type="dead_log_recovery",
+                            severity=effective_severity,
+                            source_ip=source_ip,
+                            description=description,
+                            status="open",
+                            details={
+                                "error_type": log_data.get("error_type"),
+                                "error_message": log_data.get("error_message"),
+                                "original_vendor": log_data.get("vendor"),
+                                "recovered_vendor": normalized.vendor,
+                                "source_queue": "dead",
+                                "raw_severity": raw_severity,
+                                "effective_severity": effective_severity,
+                                "raw_log_preview": raw_log[:500],
+                            },
+                        )
+                        self._store_alerts([dead_alert])
+                        logger.warning(
+                            f"[DEAD LOG ALERT — {effective_severity.upper()}] "
+                            f"tenant={tenant_id}, source_ip={source_ip}, vendor={normalized.vendor}"
+                        )
+                    except Exception as alert_err:
+                        logger.error(f"Failed to create dead log alert: {alert_err}")
+
+                logger.warning(
+                    f"Dead log recovered: tenant={tenant_id}, "
+                    f"severity={effective_severity} (raw={raw_severity}), "
+                    f"vendor={normalized.vendor}, source_ip={normalized.source_ip}"
                 )
+            except Exception as e:
+                logger.debug(f"Dead log recovery analysis failed (skipped): {e}")
+
             except Exception as e:
                 logger.debug(f"Dead log recovery analysis failed (skipped): {e}")
 
@@ -398,8 +474,8 @@ class RedisConsumer:
             return
 
         try:
-            repo1_url = (os.getenv("REPO1_BASE_URL") or "http://host.docker.internal:8080").rstrip("/")
-            admin_key = os.getenv("ADMIN_KEY") or os.getenv("admin_api_key") or "changeme-admin-key"
+            repo1_url = (config.repo1_base_url or "").rstrip("/")
+            admin_key = config.admin_api_key or ""
 
             import requests
 
